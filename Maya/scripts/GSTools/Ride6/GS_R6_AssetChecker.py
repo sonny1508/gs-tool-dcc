@@ -75,11 +75,27 @@ def getPiecesList():
                 pieceInfo("F_SUSP_BRAKE_CABLE_LOD", ["mat_mechanics"]),
                 pieceInfo("B_BRAKE_CABLE_LOD", ["mat_mechanics"]),
                 pieceInfo("KICKSTAND_LOD", ["mat_mechanics"]),
-                pieceInfo("R_HANDGUARD_LOD", ["mat_handguard"]),
-                pieceInfo("L_HANDGUARD_LOD", ["mat_handguard"]),
+                #pieceInfo("R_HANDGUARD_LOD", ["mat_handguard"]),
+                #pieceInfo("L_HANDGUARD_LOD", ["mat_handguard"]),
                 pieceInfo("BARPAD_LOD", ["mat_barpad"]),
                 pieceInfo("KEY_LOD", ["mat_cockpit"]),
-                pieceInfo("REFLECTOR_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics"])]
+                pieceInfo("REFLECTOR_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics", "mat_glass"]),
+                # Modify for Ride6
+                pieceInfo("FAIRING_BAR_LOD", ["mat_mechanics"]),
+                pieceInfo("FAIRING_BAR_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("HEADLIGHT_GRILLE_LOD", ["mat_mechanics"]),
+                pieceInfo("HEADLIGHT_GRILLE_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("R_HANDGUARDS_LOD", ["mat_livery_0", "mat_livery_1"]),
+                pieceInfo("L_HANDGUARDS_LOD", ["mat_livery_0", "mat_livery_1"]),
+                pieceInfo("R_HANDGUARDS_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("L_HANDGUARDS_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("SUMP_GUARD_LOD", ["mat_mechanics"]),
+                pieceInfo("SUMP_GUARD_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("RADIATOR_GRILLE_LOD", ["mat_mechanics"]),
+                pieceInfo("RADIATOR_GRILLE_ENDURO_LOD", ["mat_preset_enduro"])
+                #pieceInfo("MUFFLER_00*_LOD", ["mat_muffler"])
+    ]
+
     
     def addPiece(pieceName, materialsList):
         pieces = pm.ls(pieceName, type="transform")
@@ -99,39 +115,47 @@ def check(self):
     
     polyCount = {"LODA": 200000}                  
     
-    matCorrectNameList = ["mat_livery_0", 
-                         "mat_livery_1",
-                         "mat_mechanics",  
-                         "mat_cockpit", 
-                         "mat_chain", 
-                         "mat_gauge", 
-                         "mat_glass", 
-                         "mat_glasstint",                        
-                         "mat_glassdecal",
-                         "mat_lights",
-                         "mat_gear",
-                         "mat_mirror_view",
-                         "mat_brake",
-                         "mat_rim",
-                         "mat_f_tyre",
-                         "mat_b_tyre",
-                         "mat_handguard",
-                         "mat_barpad",
-                         "mat_muffler",
-                         "mat_glass_edge",                     
-                         "mat_exmanifold"]
+    matCorrectNameList = [
+        "mat_livery_0", 
+        "mat_livery_1",
+        "mat_mechanics",  
+        "mat_cockpit", 
+        "mat_chain", 
+        "mat_gauge", 
+        "mat_glass", 
+        "mat_glasstint",                        
+        "mat_glassdecal",
+        "mat_lights",
+        "mat_gear",
+        "mat_mirror_view",
+        "mat_brake",
+        "mat_rim",
+        "mat_f_tyre",
+        "mat_b_tyre",
+        "mat_handguard",
+        "mat_barpad",
+        "mat_muffler",
+        "mat_glass_edge",                     
+        "mat_exmanifold",
+        # Modify for Ride6
+        "mat_preset_enduro"
+    ]
         
     piecesList = getPiecesList()
     
     mandatoryPiecesList = ["MAIN_BODY", "HANDLE", "L_LEVER", "R_LEVER", "L_GRIP", "R_GRIP", "F_TYRE", "B_TYRE", "F_RIM", "B_RIM", "B_RAKE"]
     
     # POLYCOUNT
-    # Using list(dict.items()) works in both Python 2.7 and 3.x
     for lod, maxTris in list(polyCount.items()):
         geoList = pm.ls("*_"+lod, type="transform")
-        if pm.polyEvaluate(geoList, t=True) > maxTris:          
-            pm.textScrollList("resultField", e=True, a=lod+" pieces together exceeds the polycount of "+str(maxTris - pm.polyEvaluate(geoList, t=True))+" tris")
-            
+        try:
+            polyCount = int(pm.polyEvaluate(geoList, t=True))
+            if polyCount > maxTris:          
+                pm.textScrollList("resultField", e=True, a=lod+" pieces together exceeds the polycount of "+str(maxTris - polyCount)+" tris")
+        except ValueError:
+            # Handle case when no polygonal objects are found
+            pm.textScrollList("resultField", e=True, a="No polygonal objects found for "+lod)  
+
     # UNKNOWN MATERIALS
     shadingEngineList = pm.ls(type="shadingEngine")
     unknownMaterialsList = []
@@ -246,35 +270,46 @@ def check(self):
 
 
 def createlod(self):
-    cmds.select(all=True)  
+    cmds.select(all=True)
     sel = cmds.ls(sl=True)
-    lodGroups = {
-        'LODA': [], 'LODB': [], 'LODC': [], 'LODD': [],
-        'LODE': [], 'LODF': [], 'LODG': [], 'LODH': []
-    }
+    
+    # Define LOD groups in a list to maintain correct order
+    lod_order = ['LODA', 'LODB', 'LODC', 'LODD', 'LODE', 'LODF', 'LODG', 'LODH']
+    lodGroups = {lod: [] for lod in lod_order}  # Create ordered dictionary
     
     # Sort objects into LOD groups
     for obj in sel:
-        for lod_key in lodGroups:
-            if lod_key in obj:
+        for lod_key in lod_order:  # Use ordered list instead of dictionary keys
+            if obj.endswith(lod_key):
                 lodGroups[lod_key].append(obj)
                 break
+            else:
+                print("Object {0} didn't match {1}".format(obj, lod_key))
     
-    # Create groups for non-empty LOD lists
+    # Delete existing LOD groups if they exist
+    existing_groups = cmds.ls("LOD_*")
+    if existing_groups:
+        cmds.delete(existing_groups)
+    
+    # Create new groups in correct order
     created_groups = []
-    for i, (lod_key, objects) in enumerate(lodGroups.items()):
+    for i, lod_key in enumerate(lod_order):  # Use ordered list for group creation
+        objects = lodGroups[lod_key]
         if objects:
-            group_name = "LOD_{0}".format(i)  # Changed from f-string to .format()
+            group_name = "LOD_{0}".format(i)
             cmds.group(objects, name=group_name)
             created_groups.append(group_name)
     
-    # Select all created LOD groups
-    cmds.select(clear=True)
-    for group in created_groups:
-        cmds.select(group, add=True)
-    
-    if created_groups:  # Only create LOD group if we have groups to add
+    # Create final LOD group
+    if created_groups:
+        cmds.select(clear=True)
+        for group in created_groups:
+            cmds.select(group, add=True)
         cmds.LevelOfDetailGroup()
+        
+        if cmds.objExists("Bike_LOD_Group"):
+            cmds.delete("Bike_LOD_Group")
+        
         cmds.rename("LOD_Group_1", "Bike_LOD_Group")
         cmds.select("Bike_LOD_Group", deselect=True)
      
