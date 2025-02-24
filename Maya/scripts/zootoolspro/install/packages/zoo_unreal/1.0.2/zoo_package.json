@@ -1,0 +1,38 @@
+{
+    "author": "Create3dCharacters",
+    "authorEmail": "info@create3dcharacters.com",
+    "description": "",
+    "displayName": "Zoo Unreal",
+    "documentation": {
+        "masterDoc": "index.rst",
+        "sourceCodeFolder": "{self}/zoo",
+        "sourceFolder": "{self}/docs/source"
+    },
+    "environment": {
+        "PYTHONPATH": [
+            "{self}"
+        ],
+        "ZOO_ACTIONPLUGIN_MODULES": [
+            "{self}/zoo/apps/unreal_integrate/unrealactions.py"
+        ],
+        "ZOO_ARTIST_PALETTE_PATH": [
+            "{self}/zoo/apps/unreal_integrate/palette.py"
+        ],
+        "ZOO_BASE_PATHS": [
+            "{self}"
+        ],
+        "ZOO_ICON_PATHS": [
+            "{self}/icons"
+        ],
+        "ZOO_MENU_LAYOUTS": [
+            "{self}/zoo/apps/unreal_integrate/zoo_artist_palette_menu.layout"
+        ]
+    },
+    "name": "zoo_unreal",
+    "requirements": [
+        "zoo_core",
+        "zoo_pyside",
+        "zoo_artist_palette"
+    ],
+    "version": "1.0.2"
+}

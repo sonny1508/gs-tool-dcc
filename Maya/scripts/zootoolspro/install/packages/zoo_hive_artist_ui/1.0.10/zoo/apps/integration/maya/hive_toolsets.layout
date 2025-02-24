@@ -1,0 +1,24 @@
+{
+  "toolsetGroups": [
+    {
+      "type": "hiveArtistUiVisible",
+      "name": "Rigging Hive Auto-rigger",
+      "color": [
+        115,
+        187,
+        211
+      ],
+      "hidden": false,
+      "hueShift": 0,
+      "toolsets": [
+        "jointsToHiveGuides",
+        "hiveFbxRigExport",
+        "hiveMayaReferenceExport",
+        "hiveMirrorPasteAnim",
+        "hiveGuideAlignMirror",
+        "addCustomRig",
+        "matchBakeAnim"
+      ]
+    }
+  ]
+}

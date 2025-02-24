@@ -1,0 +1,37 @@
+{
+    "author": "Create3dCharacters",
+    "authorEmail": "info@create3dcharacters.com",
+    "description": "Developer tools and utilities for Zoo Tools Pro",
+    "displayName": "Zoo Dev Utilities",
+    "documentation": {
+        "masterDoc": "index.rst",
+        "sourceCodeFolder": "{self}/zoo",
+        "sourceFolder": "{self}/docs/source"
+    },
+    "environment": {
+        "PYTHONPATH": [
+            "{self}"
+        ],
+        "ZOO_ACTIONPLUGIN_MODULES": [
+            "{self}/zoo/apps/integration/zoo_dev_utilities_actionplugins.py"
+        ],
+        "ZOO_BASE_PATHS": [
+            "{self}"
+        ],
+        "ZOO_ICON_PATHS": [
+            "{self}/icons"
+        ],
+        "ZOO_MENU_LAYOUTS": [
+            "{self}/zoo/apps/integration/zoo_dev_utilities_menu.layout"
+        ],
+        "ZOO_SHELF_LAYOUTS": [
+            "{self}/zoo/apps/integration/zoo_dev_utilities_shelf.layout"
+        ]
+    },
+    "name": "zoo_dev_utilities",
+    "requirements": [
+        "zoocore",
+        "zoo_core_pro"
+    ],
+    "version": "1.0.5"
+}

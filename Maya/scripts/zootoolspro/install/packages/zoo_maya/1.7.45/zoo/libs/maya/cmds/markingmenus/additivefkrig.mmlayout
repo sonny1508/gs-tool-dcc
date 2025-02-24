@@ -1,0 +1,25 @@
+{
+  "items": {
+    "generic": [
+      {
+        "label": "Delete Additive FK Rig",
+        "icon": "trash",
+        "type": "command",
+        "id": "additiveFkRigMarkingMenu",
+        "arguments": {
+          "operation": "delete"
+        }
+      },
+      {
+        "label": "Bake Additive FK Rig",
+        "icon": "trash",
+        "type": "command",
+        "id": "additiveFkRigMarkingMenu",
+        "arguments": {
+          "operation": "bake"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.additiveFkRig"
+}

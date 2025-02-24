@@ -1,0 +1,64 @@
+{
+  "sortOrder": -920,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.shelf.light",
+          "displayLabel": false,
+          "type": "button",
+          "icon": "lightMenu_shlf",
+          "label": "Lighting Tools",
+          "tooltip": "Lighting Tools: \nTools related to lighting for various renderers and the viewport.",
+          "children": [
+            {
+              "type": "toolset",
+              "id": "lightPresets"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "hdriSkydomeLights"
+            },
+            {
+              "type": "toolset",
+              "id": "areaLights"
+            },
+            {
+              "type": "toolset",
+              "id": "directionalLights"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "editLights"
+            },
+            {
+              "type": "toolset",
+              "id": "placeReflection"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "fixViewport",
+              "type": "toolset"
+            },
+             {
+              "type": "separator"
+            },
+            {
+              "id": "zoo.reloadViewport",
+              "type": "action"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

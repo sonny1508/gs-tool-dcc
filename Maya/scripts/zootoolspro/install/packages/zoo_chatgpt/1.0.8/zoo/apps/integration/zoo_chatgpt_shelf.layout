@@ -1,0 +1,27 @@
+{
+    "sortOrder": -6,
+    "shelves": [
+        {
+            "name": "ZooToolsPro",
+            "children": [
+
+                {"id": "zoo.chatgpt.ui",
+                 "type": "action",
+                 "displayLabel": false},
+                {
+                    "id": "zoo.shelf.dev",
+                    "displayLabel": false,
+                    "icon": "devMenu_shlf",
+                    "type": "button",
+                    "children": [
+                        {
+                          "id": "zoo.uninstallChatGpt",
+                          "type":"action",
+                          "sortOrder": 50
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

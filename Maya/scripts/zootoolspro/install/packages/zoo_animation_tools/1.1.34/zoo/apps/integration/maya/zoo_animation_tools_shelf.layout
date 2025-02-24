@@ -1,0 +1,90 @@
+{
+  "sortOrder": -940,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.shelf.animation",
+          "displayLabel": false,
+          "icon": "animationMenu_shlf",
+          "tooltip": "Animation Tools: \nAssorted tools for animation, setting & editing keyframes and the graph editor.",
+          "type": "button",
+          "children": [
+            {
+              "type": "toolset",
+              "id": "generalAnimationTools"
+            },
+            {
+              "id": "graphEditorTools",
+              "type": "toolset"
+            },
+            {
+              "id": "rotationOrder",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "tweenMachine"
+            },
+            {
+              "type": "toolset",
+              "id": "bakeAnimation"
+            },
+            {
+              "id": "matchBakeAnim",
+              "type": "toolset"
+            },
+            {
+              "id": "mocapFeetRetargeter",
+              "type": "toolset"
+            },
+            {
+              "type": "toolset",
+              "id": "numericRetimer"
+            },
+            {
+              "type": "toolset",
+              "id": "keyRandomizer"
+            },
+            {
+              "type": "toolset",
+              "id": "scaleKeysFromCenter"
+            },
+            {
+              "type": "toolset",
+              "id": "cycleAnimationTools"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "createTurntable"
+            },
+            {
+              "type": "toolset",
+              "id": "animationPaths"
+            },
+            {
+              "type": "toolset",
+              "id": "selectionSets"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "studioLibrary",
+              "label": "Studio Library - Kurt Rathjen",
+              "icon": "studioLib"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

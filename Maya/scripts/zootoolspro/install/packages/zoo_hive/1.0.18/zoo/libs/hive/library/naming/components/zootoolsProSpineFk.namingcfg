@@ -1,0 +1,29 @@
+{
+    "name": "zootoolsProGlobalSpineFkComponent",
+    "description": "",
+    "rules": [],
+    "fields": [
+        {
+            "name": "id",
+            "description": "Control, guide, joint, in/out node id names to use",
+            "table": {
+                "fk00": "01",
+                "fk01": "02",
+                "fk02": "03",
+                "fk03": "04",
+                "fk04": "05",
+                "fk05": "06",
+                "fk06": "07",
+                "fk07": "08",
+                "bind00": "01",
+                "bind01": "02",
+                "bind02": "03",
+                "bind03": "04",
+                "bind04": "05",
+                "bind05": "06",
+                "bind06": "07",
+                "bind07": "08"
+            }
+        }
+    ]
+}

@@ -1,0 +1,33 @@
+{
+    "cycStudio":{
+        "shaderName":"cycStudio",
+        "objectFaces":[
+            "|zooPackage_grp|bg_studioCycGrey_package_grp|studioCyc_geo|studioCyc_geoShape",
+            "|studioCyc_geo|studioCyc_geoShape"
+        ],
+        "attributesShaderDict":{
+            "gDiffuseColor_srgb":[
+                0.5000000034286967,
+                0.5000000034286967,
+                0.5000000034286967
+            ],
+            "gDiffuseWeight":1.0,
+            "gSpecWeight":0.0,
+            "gSpecColor_srgb":[
+                0.9999999999999999,
+                0.9999999999999999,
+                0.9999999999999999
+            ],
+            "gSpecRoughness":0.0,
+            "gSpecIor":1.5,
+            "gCoatColor_srgb":[
+                0.9999999999999999,
+                0.9999999999999999,
+                0.9999999999999999
+            ],
+            "gCoatWeight":0.0,
+            "gCoatRoughness":0.0,
+            "gCoatIor":1.5
+        }
+    }
+}

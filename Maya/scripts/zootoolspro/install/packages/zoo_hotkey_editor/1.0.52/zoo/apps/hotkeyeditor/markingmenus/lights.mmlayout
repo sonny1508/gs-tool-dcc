@@ -1,0 +1,295 @@
+{
+  "items": {
+    "N": {
+      "label": "Create Area Light",
+      "icon": "lightarea",
+      "optionBox": true,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "areaLight"
+      }
+    },
+    "NE": {
+      "label": "Create Directional Light",
+      "icon": "lightarrows",
+      "optionBox": true,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "directionalLight"
+      }
+    },
+    "E": {
+      "label": "Create HDRI Skydome",
+      "icon": "sun",
+      "optionBox": true,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "hdriSkydome"
+      }
+    },
+    "SE": {
+      "label": "Maya Light Editor Window",
+      "icon": "categories",
+      "optionBox": false,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "lightEditorWindow"
+      }
+    },
+    "S": {
+      "label": "Zoo Edit Lights Window",
+      "icon": "bulbbright2",
+      "optionBox": false,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "zooEditLights"
+      }
+    },
+    "SW": {
+      "label": "Maya Light Relationship Editor",
+      "icon": "checkList",
+      "optionBox": false,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "mayaLightEditor"
+      }
+    },
+    "W": {
+      "label": "Break Light Links",
+      "icon": "linkBroken",
+      "optionBox": false,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "breakLightLinks"
+      }
+    },
+    "NW": {
+      "label": "Make Light Links",
+      "icon": "linkConnected",
+      "optionBox": false,
+      "type": "command",
+      "id": "lightsMarkingMenu",
+      "arguments": {
+        "operation": "makeLightLinks"
+      }
+    },
+    "generic": [
+      {
+        "label": "Place By Reflection",
+        "icon": "placeReflection",
+        "optionBox": true,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "placeReflection"
+        }
+      },
+        {
+        "label": "Place Lights At Camera",
+        "icon": "",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": { "operation": "createLightsFromCamera"}
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Create Fix Viewport Rig",
+        "icon": "bandAid",
+        "optionBox": true,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "fixViewport"
+        }
+      },
+      {
+        "label": "Switch Cam Viewport Rig",
+        "icon": "camera",
+        "optionBox": true,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchViewportCam"
+        }
+      },
+      {
+        "label": "Delete Fix Viewport Rig",
+        "icon": "trash",
+        "optionBox": true,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "deleteFixViewport"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Open Light Presets",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "lightPresets"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Default Rims",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetDefault"
+        }
+      },
+      {
+        "label": "Three Point",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetThreePoint"
+        }
+      },
+      {
+        "label": "Three Point Dark",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetThreePointDrk"
+        }
+      },
+      {
+        "label": "Soft Top",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetSoftTop"
+        }
+      },
+      {
+        "label": "Red Aqua",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetRedAqua"
+        }
+      },
+      {
+        "label": "Skydome Factory Color",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetFactoryColor"
+        }
+      },
+      {
+        "label": "Skydome Factory Grey",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetFactoryGrey"
+        }
+      },
+      {
+        "label": "Skydome Winter Scene",
+        "icon": "lightstudio",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "presetWinter"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "currentRenderer"
+        }
+      },
+      {
+        "label": "Switch To Arnold",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchToArnold"
+        }
+      },
+      {
+        "label": "Switch To Redshift",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchToRedshift"
+        }
+      },
+      {
+        "label": "Switch To Renderman",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchToRenderman"
+        }
+      },
+      {
+        "label": "Switch To VRay",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchToVray"
+        }
+      },
+      {
+        "label": "Switch To Maya Viewport",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "lightsMarkingMenu",
+        "arguments": {
+          "operation": "switchToMayaViewport"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.lights"
+}

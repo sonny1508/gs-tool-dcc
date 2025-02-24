@@ -1,0 +1,103 @@
+{
+  "sortOrder": -1000,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.shelf.modeling",
+          "displayLabel": false,
+          "icon": "modelingMenu_shlf",
+          "label": "Modeling Tools",
+          "tooltip": "Modeling Tools: \nTools related to polygon modelling.",
+          "children": [
+            {
+              "id": "objectsToolbox",
+              "type": "toolset"
+            },
+            {
+              "id": "modelingToolbox",
+              "type": "toolset"
+            },
+            {
+              "id": "zooMirrorGeo",
+              "type": "toolset"
+            },
+            {
+              "id": "topologyNormalsToolbox",
+              "type": "toolset"
+            },
+            {
+              "id": "sculptingToolbox",
+              "type": "toolset"
+            },
+            {
+              "id": "selector",
+              "type": "toolset"
+            },
+            {
+              "id": "modelingAlign",
+              "type": "toolset"
+            },
+            {
+              "id": "objectCleaner",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "randomizeObjects",
+              "type": "toolset"
+            },
+            {
+              "id": "curveDuplicate",
+              "type": "toolset"
+            },
+            {
+              "id": "tubeFromCurve",
+              "type": "toolset"
+            },
+            {
+              "id": "thickExtrude",
+              "type": "toolset"
+            },
+            {
+              "id": "subDSmoothControl",
+              "type": "toolset"
+            },
+            {
+              "id": "replaceShapes",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "quadPatcher",
+              "label": "Quad Patcher - 3D Artist Dad",
+              "icon": "quadPatcher"
+            },
+            {
+              "id": "createZbrushGrid",
+              "label": "Create ZBrush Grid Ref",
+              "icon": "zbrush"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "zooRenamer"
+            },
+            {
+              "type": "toolset",
+              "id": "selectionSets"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

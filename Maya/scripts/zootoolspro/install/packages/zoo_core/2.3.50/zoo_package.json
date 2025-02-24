@@ -1,0 +1,34 @@
+{
+    "author": "Create3dCharacters",
+    "authorEmail": "info@create3dcharacters.com",
+    "description": "Core code for Zoo Tools Pro",
+    "displayName": "Zoo Core",
+    "documentation": {
+        "masterDoc": "index.rst",
+        "sourceCodeFolder": "{self}/zoo",
+        "sourceFolder": "{self}/docs/source"
+    },
+    "environment": {
+        "PYTHONPATH": [
+            "{self}"
+        ],
+        "ZOO_BASE_PATHS": [
+            "{self}"
+        ],
+        "ZOO_ICON_PATHS": [
+            "{self}/icons"
+        ],
+        "ZOO_SHAPE_LIB": [
+            "{self}/zoo/libs/shapelib"
+        ],
+        "ZOO_SHAPE_SAVE_PATH": [
+            "{self}/zoo/libs/shapelib"
+        ]
+    },
+    "name": "zoo_core",
+    "requirements": [],
+    "tests": [
+        "{self}/tests"
+    ],
+    "version": "2.3.50"
+}

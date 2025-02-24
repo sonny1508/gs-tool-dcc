@@ -1,0 +1,43 @@
+{
+    "author": "Create3dCharacters",
+    "authorEmail": "info@create3dcharacters.com",
+    "commands": [
+        "{self}/scripts/zoo_artist_palette_startup.py"
+    ],
+    "description": "Maya tool, menu and shelf related code for Zoo Tools Pro",
+    "displayName": "Zoo Artist Palette",
+    "documentation": {
+        "masterDoc": "index.rst",
+        "sourceCodeFolder": "{self}/zoo",
+        "sourceFolder": "{self}/docs/source"
+    },
+    "environment": {
+        "PYTHONPATH": [
+            "{self}"
+        ],
+        "ZOO_ACTIONPLUGIN_MODULES": [
+            "{self}/zoo/apps/toolpalette/default_actions.py"
+        ],
+        "ZOO_ARTIST_PALETTE_PATH": [
+            "{self}/zoo/apps/toolpalette/palette.py"
+        ],
+        "ZOO_BASE_PATHS": [
+            "{self}"
+        ],
+        "ZOO_ICON_PATHS": [
+            "{self}/icons"
+        ],
+        "ZOO_SHELF_LAYOUTS": [
+            "{self}/zoo/apps/toolpalette/generic_shelf.layout"
+        ]
+    },
+    "name": "zoo_artist_palette",
+    "requirements": [
+        "zoo_core",
+        "zoo_maya"
+    ],
+    "tests": [
+        "{self}/tests"
+    ],
+    "version": "1.2.28"
+}

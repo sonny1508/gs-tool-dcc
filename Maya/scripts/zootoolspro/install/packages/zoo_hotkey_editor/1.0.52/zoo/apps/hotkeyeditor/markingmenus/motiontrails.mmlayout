@@ -1,0 +1,131 @@
+{
+  "items": {
+    "N": {
+      "label": "Create/Rebuild Motion Trails",
+      "icon": "splineCVs",
+      "optionBox": true,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "createMotionTrails"
+      }
+    },
+    "NE": {
+      "label": "Alternating or Past/Future",
+      "icon": "",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "pastFutureAlternating"
+      }
+    },
+    "S": {
+      "label": "Delete All Motion Paths",
+      "icon": "trash",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "deleteAllMotionTrails"
+      }
+    },
+    "W": {
+      "label": "Every Frame Crosses",
+      "icon": "",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "frameCrosses"
+      }
+    },
+    "E": {
+      "label": "Keyframe Dots",
+      "icon": "",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "keyframeDots"
+      }
+    },
+    "SW": {
+      "label": "Frame Display Small/Large",
+      "icon": "",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "keyframeSize"
+      }
+    },
+    "NW": {
+      "label": "Limit Before After",
+      "icon": "",
+      "optionBox": true,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "limitBeforeAfter"
+      }
+    },
+    "SE": {
+      "label": "Show Frame Numbers",
+      "icon": "",
+      "optionBox": false,
+      "type": "command",
+      "id": "motionTrailsMarkingMenu",
+      "arguments": {
+        "operation": "showFrameNumbers"
+      }
+    },
+    "generic": [
+      {
+        "label": "Visibility",
+        "icon": "",
+        "optionBox": false,
+        "type": "command",
+        "id": "motionTrailsMarkingMenu",
+        "arguments": {
+          "operation": "visibility"
+        }
+      },
+      {
+        "label": "Reset Display Defaults",
+        "icon": "refresh",
+        "optionBox": true,
+        "type": "command",
+        "id": "motionTrailsMarkingMenu",
+        "arguments": {
+          "operation": "resetDisplayDefaults"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Select All Motion Paths",
+        "icon": "cursorSelect",
+        "optionBox": false,
+        "type": "command",
+        "id": "motionTrailsMarkingMenu",
+        "arguments": {
+          "operation": "selectAll"
+        }
+      },
+      {
+        "label": "Open Options Window",
+        "icon": "webpage",
+        "optionBox": false,
+        "type": "command",
+        "id": "motionTrailsMarkingMenu",
+        "arguments": {
+          "operation": "openOptionsWindow"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.motionTrails"
+}
+

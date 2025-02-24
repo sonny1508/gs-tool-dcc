@@ -1,0 +1,22 @@
+{
+  "toolsetGroups":
+  [
+    {
+      "type": "assets",
+      "name": "Assets",
+      "color":
+      [
+          85,
+          127,
+          248
+      ],
+      "hueShift":0,
+      "toolsets":
+      [
+        "mayaScenes",
+        "alembicAssets",
+        "thumbnailScenes"
+      ]
+    }
+  ]
+}

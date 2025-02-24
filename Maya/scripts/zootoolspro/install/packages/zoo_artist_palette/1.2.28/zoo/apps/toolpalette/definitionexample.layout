@@ -1,0 +1,22 @@
+{
+    "menu": [
+        {
+            "name": "Geometry",
+            "children": [
+                "some_tool action id"
+            ]
+        },
+        "separator",
+        {"name": "some group",
+        "type": "groupSeparator"},
+        {   "name": "Rigging",
+            "children": [
+                "some_tool action id",
+                {"name": "nestMenu",
+                "children": ["qactionId"]
+                }
+            ]
+        }
+    ]
+}
+

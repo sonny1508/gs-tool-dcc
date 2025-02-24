@@ -1,0 +1,38 @@
+{
+  "settings": {
+    "lightPresetsFolder": "",
+    "lightPresetsUniformIcons": true,
+    "iblSkydomesFolder": "",
+    "iblSkydomesUniformIcons": true,
+    "imageTIF": true,
+    "imageHDR": true,
+    "imageEXR": true,
+    "imageTX": false,
+    "imageTEX": false,
+    "browserFolders": {
+      "light_suite_ibl_skydomes": [
+        {
+          "id": "ea6b04",
+          "path": "C:\\Users\\gs31\\Documents\\zoo_preferences\\assets\\light_suite_ibl_skydomes",
+          "alias": "light_suite_ibl_skydomes"
+        }
+      ],
+      "light_suite_light_presets": [
+        {
+          "id": "178d54",
+          "path": "C:\\Users\\gs31\\Documents\\zoo_preferences\\assets\\light_suite_light_presets",
+          "alias": "light_suite_light_presets"
+        }
+      ]
+    },
+    "browserCategories": {},
+    "activeFolders": {
+      "light_suite_ibl_skydomes": [
+        "ea6b04"
+      ],
+      "light_suite_light_presets": [
+        "178d54"
+      ]
+    }
+  }
+}

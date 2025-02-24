@@ -1,0 +1,1175 @@
+QWidget {
+    color: #$MAIN_FOREGROUND_COLOR;
+    border: 0px transparent;
+    font-family: 'Tahoma';
+    background-color: transparent;
+}
+
+QWidget::item:hover {
+    background-color: #$HOVER_BACKGROUND_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+
+QWidget:disabled {
+    color: #$DISABLED_COLOR;
+}
+
+QMainWindow{
+    background-color: #$MAIN_BACKGROUND_COLOR;
+}
+QDialog{
+    background-color: #$MAIN_BACKGROUND_COLOR;
+}
+QMenuBar {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+
+QMenuBar::item {
+    background: transparent;
+}
+
+QMenuBar::item:pressed {
+    background-color: #3daee9;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+
+QMenu {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+QMenu::separator {
+    height: $ONE_PIXELpx;
+    background-color: #$TITLE_LARGE_COLOR;
+    margin-left: 10px;
+    margin-right: 5px;
+}
+QMenu::item:selected {
+    background-color: #$TBL_TREE_ACTIVE_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+QCheckBox::indicator {
+    width: $CHECKBOX_SIZEpx;
+    height: $CHECKBOX_SIZEpx;
+}
+
+QCheckBox::indicator:checked
+{
+    background: #$CHECKBOX_BG_COLOR;
+    image: url('$CHECKBOX_CHECKED_ICON');
+}
+
+QCheckBox::indicator:unchecked
+{
+    background: #$CHECKBOX_BG_COLOR;
+    image: url('$CHECKBOX_UNCHECKED_ICON');
+}
+QCheckBox::indicator:disabled:checked
+{
+    image: url('$CHECKBOX_DISABLED_ICON');
+}
+QCheckBox:disabled {
+    color: #$DISABLED_COLOR;
+}
+
+
+QRadioButton {
+    color: #$MAIN_FOREGROUND_COLOR;
+    width: $RADIO_SIZEpx;
+    height: $RADIO_SIZEpx;
+}
+
+QRadioButton::indicator {
+                      width: $RADIO_SIZEpx;
+                      height: $RADIO_SIZEpx;
+}
+
+QRadioButton::indicator:unchecked {
+    background: #$SECONDARY_BACKGROUND_COLOR;
+    width: $RADIO_UNCHECKED_SIZEpx;
+    height: $RADIO_UNCHECKED_SIZEpx;
+    border-radius: $RADIO_UNCHECKED_RADIUSpx;
+    border: $TWO_PIXELSpx solid #$MAIN_BACKGROUND_COLOR;
+}
+
+QRadioButton:disabled {
+    color: #$DISABLED_COLOR;
+}
+
+QAbstractItemView::item {
+    font-family: 'Roboto';
+
+    selection-background-color: #$TBL_TREE_ACTIVE_COLOR;
+    alternate-background-color: #$TBL_TREE_ALT_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+QAbstractItemView::item:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+}
+QAbstractItemView::item:hover {
+    background-color: #$PRIMARY_COLOR;
+}
+QAbstractItemView::item:selected {
+    background-color: #$TBL_TREE_ACTIVE_COLOR;
+}
+QAbstractItemView::item:hover {
+    background-color: #$TBL_TREE_HOVER_COLOR;
+}
+
+QTreeView {
+    show-decoration-selected: 1;
+}
+QTreeView::item{
+    padding-top: $TWO_PIXELSpx;
+    padding-bottom: $TWO_PIXELSpx;
+
+}
+QTreeView::item:hover{
+    background-color: #$TBL_TREE_HOVER_COLOR;
+}
+QTreeView::branch::selected {
+    background-color: #$TBL_TREE_ACTIVE_COLOR;
+}
+QTreeView::branch:has-siblings:!adjoins-item {
+    border-image: url('$ITEM_VIEW_BRANCH_VLINE_ICON') 0;
+}
+
+QTreeView::branch:has-siblings:adjoins-item{
+    border-image: url('$ITEM_VIEW_BRANCH_MORE_ICON') 0;
+}
+
+QTreeView::branch:!has-children:!has-siblings:adjoins-item {
+    border-image: url('$ITEM_VIEW_BRANCH_END_ICON') 0;
+}
+
+QTreeView::branch:has-children:!has-siblings:closed,
+QTreeView::branch:closed:has-children:has-siblings {
+        border-image: none;
+        image: url('$ITEM_VIEW_BRANCH_CLOSED_ICON');
+}
+
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings  {
+        border-image: none;
+        image: url('$ITEM_VIEW_BRANCH_OPEN_ICON');
+}
+
+QDoubleSpinBox {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    border: $THREE_PIXELSpx solid #$SECONDARY_BACKGROUND_COLOR;
+    border-radius: 0px;
+}
+
+QAbstractScrollArea {
+    background-color: transparent;
+}
+
+QScrollArea {
+    background-color: transparent;
+}
+
+/* Scroll bar handle color */
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+    background-color: #$SCROLL_BAR_COLOR;
+}
+
+/* Scroll bar bg-color */
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+        background-color: #$SCROLL_BAR_BG;
+}
+
+/* Remove Arrows so it doesn't get pressed*/
+QScrollBar::add-line:vertical,
+QScrollBar::up-arrow:vertical,
+QScrollBar::down-arrow:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical,
+QScrollBar::add-line:horizontal,
+QScrollBar::right-arrow:horizontal,
+QScrollBar::left-arrow:horizontal,
+QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal{
+    height: 0px;
+    width: 0px;
+}
+
+QLineEdit,
+QPlainTextEdit,
+QTextBrowser,
+QTextEdit {
+    background-color: #$TEXT_BOX_BG_COLOR;
+    color: #$TEXT_BOX_FG_COLOR;
+    padding: $TWO_PIXELSpx;
+}
+QLabel:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+}
+QRadioButton:disabled,
+QTextEdit:disabled,
+QPlainTextEdit:disabled,
+QTextBrowser:disabled,
+QLineEdit:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+    background-color: #$TEXT_BOX_BG_COLOR;
+}
+
+QPushButton {
+    color: #$BUTTON_TEXT_COLOR;
+    background-color: #$BTN_BACKGROUND_COLOR;
+    padding: $BTN_PADDINGpx;
+    border-radius: $BUTTON_BORDER_RADIUSpx;
+}
+
+QPushButton:disabled {
+}
+
+QPushButton:hover {
+    background-color: #$BTN_HOVER_COLOR;
+}
+
+QPushButton:pressed {
+    background-color: #$BTN_PRESS_COLOR;
+}
+
+QPushButton:checked {
+    background-color: #$DISABLED_COLOR;
+}
+
+ImageButton {
+    background-color: #$BTN_BACKGROUND_COLOR;
+    padding-bottom: 3px;
+    border: $ONE_PIXELpx solid #$BTN_HOVER_COLOR;
+    border-radius: $BUTTON_BORDER_RADIUSpx;
+}
+
+ImageButton:hover {
+    background-color: #$BTN_HOVER_COLOR;
+}
+
+ImageButton:pressed {
+    background-color: #$BTN_PRESS_COLOR;
+}
+
+QToolTip {
+    background-color: #$TOOLTIP_BG;
+    color: #$TOOLTIP_FONT_COLOR;
+    border: #$TOOLTIP_BORDER_COLOR solid $TOOLTIP_BORDER_SIZEpx
+}
+
+QTableView {
+    selection-background-color: #$TBL_TREE_ACTIVE_COLOR;
+    background-color: #$TBL_TREE_BG_COLOR;
+    alternate-background-color: #$TBL_TREE_ALT_COLOR;
+    gridline-color: #$TBL_TREE_GRID_COLOR;
+    outline: 0;
+}
+QTableView::item {
+    border: $ONE_PIXELpx solid #$TBL_TREE_GRID_COLOR;
+    padding: 0px;
+    margin: 0px;
+}
+
+QTableView QTableCornerButton::section {
+    background: #$TBL_TREE_HEADER_COLOR;
+    border: $ONE_PIXELpx solid #$TBL_TREE_GRID_COLOR;
+}
+
+/* Padding of cells is annoyingly set at 0 to account for ugliness with lineEdits in cells */
+QTableWidget::item{
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+
+QTableWidget::item:hover{
+    background-color: #$TBL_TREE_HOVER_COLOR;
+}
+
+/* This line works on the focus of each sel, could also be :selected instead of :focus */
+QTableWidget::item:focus{
+    background-color: #$TBL_TREE_ACTIVE_COLOR;
+    color: #$TBL_TREE_ACT_TEXT_COLOR;
+}
+
+/* Head of tables/treeviews, all headers */
+QHeaderView::section {
+    background-color: #$TBL_TREE_HEADER_COLOR;
+    padding: $FOUR_PIXELSpx;
+    border: $ONE_PIXELpx solid #$TBL_TREE_GRID_COLOR;
+}
+QHeaderView::down-arrow {
+    image: url('$SORT_DOWN_ICON');
+}
+QHeaderView::up-arrow {
+    image: url('$SORT_UP_ICON');
+}
+QHeaderView::down-arrow:disabled {
+    image: url('none');
+}
+QHeaderView::up-arrow:disabled {
+    image: url('none');
+}
+
+ColorBtn *{
+    border-radius: $COLOR_BTN_RADIUSpx;
+}
+
+QComboBox {
+    background-color: #$COMBO_COLOR;
+    border-radius: $WIDGET_ROUNDED_CORNERSpx;
+    font-size: $DEFAULT_FONTSIZEpx;
+    padding: $TWO_PIXELSpx $THREE_PIXELSpx $TWO_PIXELSpx $FIVE_PIXELSpx;
+    border: 0;
+}
+QComboBox:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+    background-color: #$TEXT_BOX_BG_COLOR;
+}
+
+QComboBox::separator {
+    /*background-color: #$MAIN_BACKGROUND_COLOR;*/
+    spacing: 2px;
+    margin-bottom: 1px;
+    background-color: #666666;
+
+
+}
+/* The top section while activated */
+QComboBox:!editable:on, QComboBox::drop-down:editable:on {
+background-color: #$COMBO_HOVER_COLOR;
+}
+
+/* The arrow box */
+QComboBox::drop-down {
+    width: $COMBO_SIZEpx;
+    border: 0;
+    border-left: $COMBO_LEFTBORDERpx solid #$MAIN_BACKGROUND_COLOR;
+}
+
+QComboBox:hover {
+    background-color: #$COMBO_HOVER_COLOR;
+}
+
+QComboBox::down-arrow {
+    image: url('$COMBO_ICON');
+    color: #$MAIN_FOREGROUND_COLOR;
+    width: $COMBO_ICON_SIZEpx;
+    height: $COMBO_ICON_SIZEpx;
+}
+QComboBox::down-arrow:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+    background: #$TEXT_BOX_BG_COLOR;
+    image: url('none');
+
+}
+
+QComboBox QAbstractItemView {
+    background-color: #$COMBO_HOVER_COLOR;
+    selection-background-color: #$TBL_TREE_ACTIVE_COLOR;
+}
+
+
+QAbstractSpinBox {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+
+QSplitter::handle {background-color: transparent;}
+QSplitter::handle:hover{
+    background-color: #88222222;
+}
+
+QProgressBar {
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #05B8CC;
+}
+
+QScrollArea {
+    background-color: transparent;
+}
+
+QSlider::groove:horizontal {
+    height: $SLIDER_SIZEpx; /* the groove expands to the size of the slider by default. by giving it a height, it has a fixed size */
+    margin: $ONE_PIXELpx 0;
+    border-radius: $SLIDER_GROOVE_BORDER_RADIUSpx;
+}
+
+QSlider::groove:vertical {
+    width: $SLIDER_SIZEpx; /* the groove expands to the size of the slider by default. by giving it a height, it has a fixed size */
+    margin: 0px $ONE_PIXELpx;
+    border-radius: $SLIDER_GROOVE_BORDER_RADIUSpx;
+}
+
+
+QSlider::handle {
+    background-color: transparent;
+}
+
+QSlider::handle:horizontal {
+    width: 0px; /* This is done in #SliderActive instead*/
+    margin: $SLIDER_HANDLE_MARGINpx 0; /* handle is placed by default on the contents rect of the groove. Expand outside the groove */
+    border-radius: $SLIDER_HANDLE_BORDER_RADIUSpx;
+}
+
+QSlider::handle:vertical {
+    height: 0px; /* This is done in #SliderActive instead*/
+    margin: 0 $SLIDER_HANDLE_MARGINpx; /* expand outside the groove */
+    border-radius: $SLIDER_HANDLE_BORDER_RADIUSpx;
+}
+
+QSlider::handle:disabled {
+    background-color: transparent;
+}
+
+QSlider::add-page:vertical, QSlider::add-page:horizontal {
+    background-color: #$SLIDER_BG_COLOR;
+    border-radius: $SLIDER_BORDER_RADIUSpx;
+}
+
+QSlider::sub-page:vertical, QSlider::sub-page:horizontal {
+    background-color: #$SLIDER_INACTIVE;
+    border-radius: $SLIDER_BORDER_RADIUSpx;
+}
+
+QSlider::sub-page:horizontal {
+    margin-right: $ONE_PIXELpx;
+}
+
+QSlider::sub-page:vertical {
+    margin-bottom: $ONE_PIXELpx;
+}
+
+QSlider::add-page:horizontal {
+    margin-left: $NEG_ONE_PIXELpx;
+}
+
+QSlider::add-page:vertical {
+    margin-top: $NEG_ONE_PIXELpx;
+}
+
+QSlider::sub-page:disabled{
+    background-color: #$SLIDER_DISABLED;
+}
+
+QSlider::add-page:disabled{
+    background-color: #$SLIDER_BG_COLOR_DISABLED;
+}
+
+QSlider::handle:horizontal#SliderActive {
+    width: $SLIDER_HANDLE_SIZEpx;
+}
+QSlider::handle:vertical#SliderActive {
+    height: $SLIDER_HANDLE_SIZEpx;
+}
+QSlider::sub-page:vertical#SliderActive, QSlider::sub-page:horizontal#SliderActive {
+    background-color: #$HIGHLIGHT_ACTIVE_COLOR;
+}
+QSlider::handle#SliderActive {
+    background-color: #$MAIN_FOREGROUND_COLOR;
+}
+
+QSlider::sub-page:vertical#SliderMin, QSlider::sub-page:horizontal#SliderMin {
+
+    background-color: transparent;
+}
+
+QAbstractItemView,
+QGraphicsView,
+QToolBox {
+    background-color: #$VIEW_BACKGROUND_COLOR
+}
+
+QToolBox:tab
+{
+    background-color: #$SECONDARY_BACKGROUND_COLOR
+}
+/* Custom widgets */
+
+QHLine{
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    margin-left: $THREE_PIXELSpx;
+    margin-right: $THREE_PIXELSpx;
+}
+QTabBar, QDockWidget QTabBar {
+    qproperty-drawBase: 0;
+}
+
+QTabWidget::pane { /* The tab widget frame */
+    border-top: 2px solid;
+}
+
+QTabWidget::tab-bar {
+    left: 5px; /* move to the right by 5px */
+}
+
+/* Style the tab using the tab sub-control. Note that
+    it reads QTabBar _not_ QTabWidget */
+QTabBar::tab {
+    background: #$MAIN_BACKGROUND_COLOR;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    min-width: 24ex;
+    padding: 2px;
+}
+
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: #$SECONDARY_BACKGROUND_COLOR;
+}
+
+QTabBar::tab:selected {
+}
+
+QTabBar::tab:!selected {
+    margin-top: 2px; /* make non-selected tabs look smaller */
+}
+
+/* make use of negative margins for overlapping tabs */
+QTabBar::tab:selected {
+    /* expand/overlap to the left and right by 4px */
+    margin-left: -2px;
+    margin-right: -2px;
+}
+
+QTabBar::tab:first:selected {
+    margin-left: 0; /* the first selected tab has nothing to overlap with on the left */
+}
+
+QTabBar::tab:last:selected {
+    margin-right: 0; /* the last selected tab has nothing to overlap with on the right */
+}
+
+QTabBar::tab:only-one {
+    margin: 0; /* if there is only one tab, we don't want overlapping margins */
+}
+
+VerticalToolBar {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+}
+
+VerticalToolBarPad {
+    background-color: #$HIVE_VERTICAL_TOOLBAR_PAD;
+}
+
+SettingsTweakBar {
+    background-color: #$SETTINGS_TWEAK_BAR;
+}
+
+ToolsetTreeWidget::item {
+    background-color: #$TLSET_BORDER_DESELECT;
+    padding: 0px;
+    margin: 0px;
+}
+
+ToolsetTreeWidget::item:!selected:hover {
+    background-color: #$TLSET_BORDER_HOVER;
+    padding: 0px;
+    margin: 0px;
+}
+
+ToolsetTreeWidget {
+    padding: 0px;
+    margin: 0px;
+}
+
+ToolsetTreeWidget::item:selected {
+    padding: 0px;
+    margin: 0px;
+}
+
+ToolsetWidgetBase #active {
+    color: #$TOOLSET_TITLE_COLOR_ACTIVE;
+}
+
+ToolsetWidgetBase #disabled {
+    color: ;
+}
+
+
+ToolsetIconPopup {
+    background-color: #$TLSET_ICON_POPUP_BG;
+}
+
+ExtendedButton {
+    background-color: transparent;
+    border: 0px solid transparent;
+}
+
+ExtendedButton:hover {
+    background-color: transparent;
+}
+
+ShadowedButton {
+    background-color: #$SHADOWEDBTN_BGCOLOR;
+}
+
+ShadowedButton:hover {
+    background-color: #$SHADOWEDBTN_BGCOLOR_HOVER;
+}
+
+ShadowedButton:pressed {
+    background-color: #$SHADOWEDBTN_BGCOLOR_PRESSED;
+}
+
+ShadowedButton .QLabel {
+    background-color: transparent;
+}
+
+ShadowedButton .QLabel:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+}
+
+ShadowedButtonImage {
+    background-color: #$SHADOWEDBTN_IMAGEBG;
+}
+
+ShadowedButtonShadow {
+    background-color: #$SHADOWEDBTN_SHADOWBG;
+}
+
+#shadowedButtonDefault {
+    background-color: #$SHADOWEDBTN_BGCOLOR;
+}
+
+#shadowedButtonHover {
+    background-color: #$SHADOWEDBTN_BGCOLOR_HOVER;
+}
+
+#shadowedButtonPressed {
+    background-color: #$SHADOWEDBTN_BGCOLOR_PRESSED;
+}
+
+#buttonShadowHover {
+    background-color: #$SHADOWEDBTN_HOVER_SHADOWBG;
+}
+
+#shadowedImageHover {
+    background-color: #$SHADOWEDBTN_HOVER_IMAGEBG;
+}
+
+#shadowedLabelHover {
+    color: #$SHADOWEDBTN_TEXT_HOVER;
+}
+
+#buttonShadowPressed {
+    background-color: #$SHADOWEDBTN_PRESSED_SHADOWBG;
+}
+
+#shadowedImagePressed {
+    background-color: #$SHADOWEDBTN_PRESSED_IMAGEBG;
+}
+
+#shadowedLabelPressed {
+    color: #$SHADOWEDBTN_TEXT_PRESSED;
+}
+
+/* Aligned Button */
+
+
+AlignedButton {
+    background-color: #$SHADOWEDBTN_BGCOLOR;
+}
+
+AlignedButton:hover {
+    background-color: #$SHADOWEDBTN_BGCOLOR_HOVER;
+}
+
+AlignedButton:pressed {
+    background-color: #$SHADOWEDBTN_BGCOLOR_PRESSED;
+}
+
+AlignedButton .QLabel {
+    background-color: transparent;
+}
+
+AlignedButton .QLabel:disabled {
+    color: #$TEXT_INACTIVE_COLOR;
+}
+
+
+
+
+ClippedLabel {
+    color: #$MAIN_FOREGROUND_COLOR;
+    font-weight: bold;
+    font-size: $HEADER_FONTSIZEpx;
+}
+
+/* Zoo Toolsets */
+TitleBar{
+    border-top-right-radius: $FRAMELESS_ROUNDED_CORNERSpx;
+    border-top-left-radius: $FRAMELESS_ROUNDED_CORNERSpx;
+    background-color: #$FRAMELESS_TITLEBAR_COLOR;
+}
+
+TitleLabel {
+    color: #$FRAMELESS_TITLELABEL_COLOR;
+    font-weight: bold;
+    font-size: $TITLE_FONTSIZEpx;
+    font-family: 'Roboto';
+}
+
+TitleLabel#Minimized {
+    font-size: $TITLE_MINIMIZED_FONTSIZEpx;
+}
+
+ToolsetWidgetBase StackTitleFrame LineClickEdit {
+    font-weight: bold;
+    color: #$TOOLSET_TITLE_COLOR;
+    font-family: 'Roboto'
+}
+ToolsetToolBar{
+    background-color: transparent;
+}
+
+TitleSplitter::handle {
+    background-color: transparent;
+}
+
+ThumbnailView::item {
+    background-color: red;
+}
+
+WindowContents {
+    background-color: #$FRAMELESS_WINDOW_CONTENTS;
+    border-bottom-left-radius: $FRAMELESS_ROUNDED_CORNERSpx;
+    border-bottom-right-radius: $FRAMELESS_ROUNDED_CORNERSpx;
+}
+
+SearchLineEdit {
+    border-radius: $WIDGET_ROUNDED_CORNERSpx;
+}
+
+SearchLineEdit .ClearToolButton {
+    border: none; padding: $ONE_PIXELpx;
+}
+
+SearchLineEdit SearchToolButton {
+    border: none; padding: 0px;
+}
+
+
+RoundButton {
+    background-color: #$ROUNDBUTTON_BGCOLOR;
+}
+
+RoundButton:hover {
+    background-color: #$ROUNDBUTTON_BGCOLOR_HOVER;
+}
+
+/* Stack Items */
+StackItem #title
+{
+    background-color: #$STACKITEM_BACKGROUND_COLOR;
+}
+
+StackItem #title:hover
+{
+    border: 0px solid transparent;
+    background-color: #$HOVER_BACKGROUND_COLOR;
+}
+
+StackTitleFrame::lineEdit
+{
+    background-color: transparent;
+}
+
+StackItem .QToolButton{
+    background-color: transparent;
+    border-color: transparent;
+}
+
+StackTitleFrame::lineEdit#disabled {
+    color: #$STACK_TITLE_DISABLED;
+}
+
+ResizerButton QWidget{
+    /*background-color: #$RESIZER_BTN_BGCOLOR;*/
+    background-color: #$ROUNDBUTTON_BGCOLOR;
+}
+
+ResizerButton QWidget:hover {
+    /*background-color: #$RESIZER_BTN_BGCOLOR_HOVER;*/
+    background-color: #$ROUNDBUTTON_BGCOLOR_HOVER;
+}
+
+ToolsetTreeWidget
+{
+    border: 0px solid transparent;
+    background-color: transparent;
+}
+
+ToolsetTreeWidget::Item {
+    border: 0px solid transparent;
+}
+
+ToolsetResizerHandle {
+    background-color: #$TOOLSET_RESIZER_HANDLE_COLOR;
+}
+
+FlowToolBar QPushButton,
+ToolsetWidgetItem QPushButton,
+DisplayModeButton
+{
+    padding: $THREE_PIXELSpx;
+    border: 0px solid transparent;
+    background-color: transparent;
+    border-radius: $ONE_PIXELpx;
+}
+
+
+ToolsetIconPopup {
+    border-top-right-radius: $WIDGET_ROUNDED_CORNERSpx;
+    border-top-left-radius: $WIDGET_ROUNDED_CORNERSpx;
+}
+
+ComponentItemWidget {
+    font-size: $COMPONENT_ITEM_FONTpx;
+}
+
+/* Custom Combo */
+
+
+ComboCustomListView {
+    background-color: transparent;
+
+}
+
+ComboLabel {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    border-radius: $TWO_PIXELSpx;
+    padding-left: $TWO_PIXELSpx;
+}
+
+ComboEditWidget .ComboEdit {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    border-radius: $TWO_PIXELSpx;
+}
+
+#comboMenuReadOnly {
+    color: #$MAIN_FOREGROUND_COLOR;
+}
+
+/* Loading Widget */
+LoadingFrame {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+    border-radius: $WIDGET_ROUNDED_CORNERSpx;
+}
+
+LoadingWidget QFrame#border {
+    border: $ONE_PIXELpx solid #$SECONDARY_FOREGROUND_COLOR;
+}
+
+/* Hive UI */
+
+ComponentTreeWidget {
+    selection-background-color: transparent;
+    selection-color: #$COMPONENT_TREE_SEL_COL;
+    background-color: #$COMPONENT_TREE_BG;
+}
+
+ComponentTreeWidget::item {
+    padding: 0 0 0 $ONE_PIXEL;
+    color: transparent; selection-color: transparent;
+}
+
+ComponentTreeWidget::item:!selected:hover {
+    color: transparent;
+}
+
+
+ComponentTreeWidget::branch {
+    border-image: url(none.png); /* Hide Arrow with nonexistant png */
+}
+
+ComponentWidget {
+    padding: 0px;
+    border: 0;
+}
+
+ItemWidgetLabel {
+    padding: $TWO_PIXELSpx 0px;
+
+    font-size: $DEFAULT_FONTSIZEpx;
+}
+
+StackItem .QToolButton{
+    background-color: transparent;
+    border-color:  transparent;
+}
+
+TreeWidgetFrame ClippedLabel {
+    font-size: $SUBHEADER_FONTSIZEpx;
+    font-family: 'Roboto';
+}
+LineClickEdit {background-color: transparent;}
+
+StackTitleFrame
+{
+    background-color: #$STACKITEM_BACKGROUND_COLOR;
+    border-radius: $ONE_PIXELpx;
+}
+
+
+
+StackTitleFrame#selected
+{
+    background-color: #$PRIMARY_COLOR;
+    border-radius: $ONE_PIXELpx;
+}
+
+StackHiderWidget
+{
+    background-color: #$MAIN_BACKGROUND_COLOR;
+    border-radius: $ONE_PIXELpx;
+}
+
+StackHiderWidget#selected
+{
+    border-color: transparent $PRIMARY_COLOR transparent tranparent;
+
+
+}
+
+GroupWidget .QFrame {
+    background-color: #$STACKITEM_BACKGROUND_COLOR;
+    border-radius: $WIDGET_ROUNDED_CORNERSpx;
+    border: $ONE_PIXELpx solid #$STACKITEM_BACKGROUND_COLOR;
+}
+
+GroupWidget .QFrame#selected {
+    background-color: #$PRIMARY_COLOR;
+    border: 0px solid #$PRIMARY_COLOR;
+}
+
+ComponentGroupWidget QLineEdit {
+    background-color: #$TEXT_BOX_BG_COLOR;
+}
+
+
+ComponentLibrary {
+    background-color: #$TBL_TREE_BG_COLOR;
+}
+
+ComponentLibrary GroupedTreeWidget {
+    background-color: #$TBL_TREE_BG_COLOR;
+}
+
+TemplateLibrary {
+    background-color: #$TBL_TREE_BG_COLOR;
+}
+
+TemplateLibrary GroupedTreeWidget {
+    background-color: #$TBL_TREE_BG_COLOR;
+}
+
+ExpandedTooltipPopup .QFrame {
+    border-width: $ONE_PIXELpx;
+    border-style: solid;
+    border-radius: $THREE_PIXELSpx;
+    border-color: #$EXP_TOOLTIP_BG;
+    background-color: #$EXP_TOOLTIP_BG;
+}
+
+ExpandedTooltipPopup QLabel {
+    border-width: 0px; background: transparent;
+    font-size: $EXP_TOOLTIP_FONT_SIZEpt;
+}
+
+ExpandedTooltipPopup QLabel#title {
+    padding: $FIVE_PIXELSpx 0px 0px 0px;
+    font-size: $EXP_TOOLTIP_TITLE_SIZEpt;
+}
+
+ExpandedTooltipPopup GifWidget {
+    border-width: 0px; background: transparent;
+}
+
+HiveToolBar {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+}
+
+CommandTextEdit {
+    font-family: "courier new"
+}
+
+HiveRigMode {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    border-radius: $FOUR_PIXELSpx;
+}
+
+
+/* Tear Off Widget, Toolset tear off menus, doesn't affect Maya */
+
+TearOffWidget {
+    color: #$TEAROFF_LINES; /* Tear off pattern dotted lines*/
+    font-size: $TEAROFF_FONT_SIZEpx;
+    background-color: #$TEAROFF_BG;
+}
+
+TearOffWidget:hover {
+    background-color: #$TEAROFF_HOVER;
+}
+
+SnapshotFrame {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+}
+
+
+
+/* Object Names */
+#DefaultButton {
+    color: #$BUTTON_TEXT_COLOR;
+    background-color: #$BTN_BACKGROUND_COLOR;
+    padding: $BTN_PADDINGpx;
+    font-size: $DEFAULT_FONTSIZEpx;
+    border: 0;
+    border-radius: $BUTTON_BORDER_RADIUSpx;
+}
+
+#DefaultButton:disabled {
+}
+
+#DefaultButton:hover {
+    background-color: #$BTN_HOVER_COLOR;
+}
+
+#DefaultButton:pressed {
+    background-color: #$BTN_PRESS_COLOR;
+}
+
+
+#ToolsetTabSelected {
+    background-color: #$SECONDARY_BACKGROUND_COLOR;
+    border-radius: $ONE_PIXELpx;
+}
+
+
+
+#HeaderLabel {
+    color: #$FRAMELESS_TITLELABEL_COLOR;
+    font-weight: bold;
+    font-size: $HEADER_FONTSIZEpx;
+}
+
+#markingMenuButtonSelected {
+    background-color: #$PRIMARY_COLOR;
+}
+
+#disableAlternatingColor {
+    alternate-background-color: transparent;
+}
+
+QFrame#embededWindowBG {
+    border: $ONE_PIXELpx solid #$EMBED_WINDOW_BORDER_COL;
+    background-color: #$EMBED_WINDOW_BG;}
+
+
+QWidget#colorButtonProtect {
+background-color: white;
+}
+
+
+
+CollapsableFrame QFrame#collapse {
+    background-color: #$STACKITEM_BACKGROUND_COLOR;
+    border-radius: $ONE_PIXELpx;
+    border: $ONE_PIXELpx solid #$STACKITEM_BACKGROUND_COLOR;
+    padding: 0px;
+    margin: 0px;
+}
+
+CollapsableFrameThin QFrame#collapse{
+    background-color: transparent;
+    border: 0;
+}
+
+#debug {
+    background-color: #$DEBUG_1;
+}
+
+#debug2 {
+    background-color: #$DEBUG_2;
+}
+
+#diagonalBG {
+    background-image: url('$DIAGONALBG_ICON');
+    background-color: #$STACKITEM_BACKGROUND_COLOR;
+}
+
+#transparent {
+    background-color: transparent;
+}
+
+#italic {
+    font-style: italic;
+}
+
+#roboto {
+    font-family: Roboto;
+}
+
+/* Directory Popup */
+
+DirectoryTitleBar TitleLabel {
+    font-size: $TITLE_MINIMIZED_FONTSIZEpx;
+    color: #$DIRECTORY_POPUP_TITLE_COLOR;
+}
+
+/* Joined Radio Button */
+JoinedRadioButton QPushButton {
+    border: 1px solid #202020;
+}
+
+JoinedRadioButton QPushButton::checked {
+    border: 1px solid #202020;
+    background-color: #$PRIMARY_COLOR;
+}
+
+JoinedRadioButton {
+    background-color: transparent
+}
+
+JoinedRadioButton #left {
+    border-top-left-radius: $TWO_PIXELSpx;
+    border-bottom-left-radius: $TWO_PIXELSpx;
+}
+
+JoinedRadioButton QPushButton::checked:disabled {
+    background-color: #$PRIMARY_COLOR_DISABLED;
+    color: #$JOINED_RADIO_DISABLED_COLOR;
+}
+
+JoinedRadioButton QPushButton:disabled {
+    color: #$JOINED_RADIO_DISABLED_COLOR;
+}
+
+JoinedRadioButton #right {
+    border-left: none;
+    border-top-right-radius: $TWO_PIXELSpx;
+    border-bottom-right-radius: $TWO_PIXELSpx;
+}
+
+JoinedRadioButton #center {
+    border-left: none;
+}
+
+Divider {
+    background-color: #3e3e3e;
+    padding: 0;
+    margin: 0;
+    border-bottom: 1 solid #666;
+    border-top: 1 solid #2a2a2a;
+}
+
+NumberBar {
+    background-color: #$MAIN_BACKGROUND_COLOR;
+}

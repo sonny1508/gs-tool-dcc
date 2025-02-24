@@ -1,0 +1,27 @@
+{
+    "name": "zootoolsProGlobalFingerComponent",
+    "description": "",
+    "rules": [],
+    "fields": [
+        {
+            "name": "id",
+            "description": "",
+            "table": {
+                "fk00": "00",
+                "fk01": "01",
+                "fk02": "02",
+                "fk03": "03",
+                "fk04": "04",
+                "fk05": "05",
+                "fk06": "06",
+                "bind00": "00",
+                "bind01": "01",
+                "bind02": "02",
+                "bind03": "03",
+                "bind04": "04",
+                "bind05": "05",
+                "bind06": "06"
+            }
+        }
+    ]
+}

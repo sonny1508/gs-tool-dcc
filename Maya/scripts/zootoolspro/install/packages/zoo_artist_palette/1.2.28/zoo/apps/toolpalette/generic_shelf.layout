@@ -1,0 +1,114 @@
+{
+    "sortOrder": -1,
+    "shelves": [
+        {
+            "name": "ZooToolsPro",
+            "children": [
+                {
+                    "id": "zoo.shelf.help",
+                    "icon": "helpMenu_shlf",
+                    "tooltip": "Help Menu: \nOpen Zoo Tools & Create3dCharacters.com online help, training and documentation. ",
+                    "displayLabel": false,
+                    "children": [
+                        {
+                            "id": "create3dcharacters",
+                            "label": "Create3dCharacters.com",
+                            "icon": "webpage"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "latestNews",
+                            "label": "Check For Updates",
+                            "icon": "webpage"
+                        },
+                        {
+                            "id": "zooToolsGettingStarted",
+                            "label": "Zoo Tools Getting Started",
+                            "icon": "play"
+                        },
+                        {
+                            "id": "zooToolsHelpContents",
+                            "label": "Zoo Tools Help Contents",
+                            "icon": "help"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "zooToolsInstallUpdate",
+                            "label": "Zoo Tools Install/Upgrade",
+                            "icon": "downloadCircle"
+                        },
+                        {
+                            "id": "zooToolsAssetsPresets",
+                            "label": "Zoo Tools Assets/Presets",
+                            "icon": "downloadCircle"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "zooChangelog",
+                            "label": "Zoo Tools Changelog",
+                            "icon": "toolsets"
+                        },
+                        {
+                            "id": "zooIssuesFixes",
+                            "label": "Zoo Tools Issues/Fixes",
+                            "icon": "toolsets"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "coursesByOrder",
+                            "label": "Courses By Order",
+                            "icon": "tutorials"
+                        },
+                        {
+                            "id": "coursesByPopularity",
+                            "label": "Courses By Popularity",
+                            "icon": "tutorials"
+                        },
+                        {
+                            "id": "coursesByDateAdded",
+                            "label": "Courses By Date Added",
+                            "icon": "tutorials"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "intermediateCourse",
+                            "label": "Intermediate Course",
+                            "icon": "tutorials"
+                        },
+                        {
+                            "id": "advancedCourse",
+                            "label": "Advanced Course",
+                            "icon": "tutorials"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "mayaHotkeyList",
+                            "label": "Maya Hotkey List",
+                            "icon": "keyboard"
+                        },
+                        {
+                            "type": "separator"
+                        },
+                        {
+                            "id": "developerDocumentation",
+                            "label": "Zoo Developer Documentation",
+                            "icon": "code"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

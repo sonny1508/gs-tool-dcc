@@ -1,0 +1,59 @@
+{
+  "sortOrder": -970,
+  "menu": [
+    {
+      "label": "Utility",
+      "type": "menu",
+      "children": [
+        {
+          "id": "zooRenamer",
+          "type": "toolset"
+        },
+        {
+          "id": "selectionSets",
+          "type": "toolset"
+        },
+        {
+          "id": "makeConnections",
+          "type": "toolset"
+        },
+        {
+          "id": "setMultipleAttributes",
+          "type": "toolset"
+        },
+        {
+          "id": "channelBoxManager",
+          "type": "toolset"
+        },
+        {
+          "id": "matrixTool",
+          "type": "toolset"
+        },
+        {
+          "type": "toolset",
+          "id": "manageNodes"
+        },
+        {
+          "id": "nodeEditorAlign",
+          "type": "toolset"
+        },
+        {
+          "id": "multiImportReference",
+          "type": "toolset"
+        },
+        {
+          "id": "aimAligner",
+          "type": "toolset"
+        },
+        {
+          "type": "action",
+          "id": "zoo.shelf.resetAllWindows"
+        },
+        {
+          "type": "action",
+          "id": "zoo.shelf.zooFloatingShelf"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "sortOrder": -990,
+  "menu": [
+    {
+      "label": "Rigging",
+      "type": "menu",
+      "children": [
+        {
+          "type": "toolset",
+          "id": "controlCreator"
+        },
+        {
+          "type": "toolset",
+          "id": "editControls"
+        },
+        {
+          "type": "toolset",
+          "id": "colorOverrides"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "jointTool"
+        },
+        {
+          "type": "toolset",
+          "id": "planeOrient"
+        },
+        {
+          "type": "toolset",
+          "id": "jointsOnCurve"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "constraintToolbox"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "splineRig"
+        },
+        {
+          "type": "toolset",
+          "id": "controlsOnCurve"
+        },
+        {
+          "type": "toolset",
+          "id": "motionPathRig"
+        },
+        {
+          "type": "toolset",
+          "id": "twistextractor"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "skinningUtilities"
+        },
+        {
+          "type": "toolset",
+          "id": "smoothSkin"
+        },
+        {
+          "type": "toolset",
+          "id": "replacejointweights"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "riggingMisc"
+        },
+        {
+          "type": "toolset",
+          "id": "reparentGroupToggle"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "zooRenamer"
+        },
+        {
+          "type": "toolset",
+          "id": "matchBakeAnim"
+        }
+      ]
+    }
+  ]
+}
+
+

@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "imagePlaneFolder": "",
+    "imagePlaneUniformIcons": true,
+    "browserFolders": {
+      "image_planes": [
+        {
+          "id": "f46c38",
+          "path": "C:\\Users\\gs31\\Documents\\zoo_preferences\\assets\\image_planes",
+          "alias": "image_planes"
+        }
+      ]
+    },
+    "browserCategories": {},
+    "activeFolders": {
+      "image_planes": [
+        "f46c38"
+      ]
+    }
+  }
+}

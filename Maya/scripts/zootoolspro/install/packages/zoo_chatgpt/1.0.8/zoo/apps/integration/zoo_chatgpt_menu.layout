@@ -1,0 +1,22 @@
+{
+  "sortOrder": 10000,
+  "menu": [
+    {
+      "label": "Developer",
+      "type": "menu",
+      "children": [
+        {
+          "type": "action",
+          "id": "zoo.chatgpt.ui",
+          "sortOrder": 3
+        },
+        {
+          "id": "zoo.uninstallChatGpt",
+          "type":"action"
+        }
+      ]
+    }
+  ]
+}
+
+

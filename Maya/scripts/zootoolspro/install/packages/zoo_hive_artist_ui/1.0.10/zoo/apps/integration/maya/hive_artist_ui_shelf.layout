@@ -1,0 +1,82 @@
+{
+  "sortOrder": -880,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "type": "separator"
+        },
+        {
+          "id": "hiveArtistUI",
+          "icon": "hiveWindow_shlf",
+          "tooltip": "Hive Autorigger: \nOpen the Hive Auto-rigger and its related tools.",
+          "displayLabel": false,
+          "type": "button",
+          "children": [
+            {
+              "id": "zoo.hive.artistui",
+              "label": "Hive Auto-Rigger",
+              "type": "action"
+            },
+            {
+              "id": "jointsToHiveGuides",
+              "type": "toolset"
+            },
+            {
+              "type": "action",
+              "id": "hive.namingConfig"
+            },
+            {
+              "id": "hiveFbxRigExport",
+              "type": "toolset"
+            },
+            {
+              "id": "hiveMayaReferenceExport",
+              "type": "toolset"
+            },
+            {
+              "id": "hiveGuideAlignMirror",
+              "type": "toolset"
+            },
+            {
+              "id": "addCustomRig",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "hiveMirrorPasteAnim",
+              "type": "toolset"
+            },
+            {
+              "id": "matchBakeAnim",
+              "type": "toolset"
+            },
+            {
+              "id": "mocapFeetRetargeter",
+              "type": "toolset"
+            }
+          ]
+        },
+        {
+          "id": "zoo.shelf.animation",
+          "displayLabel": false,
+          "icon": "animationMenu_shlf",
+          "type": "button",
+          "children": [
+            {
+              "type": "separator"
+            },
+            {
+              "id": "hiveMirrorPasteAnim",
+              "type": "toolset"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,54 @@
+{
+  "sortOrder": -890,
+  "menu": [
+    {
+      "label": "Rigging",
+      "type": "menu",
+      "children": [
+        {
+          "id": "zoo.hive.artistui"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toolset",
+          "id": "jointsToHiveGuides"
+        },
+        {
+          "type": "action",
+          "id": "hive.namingConfig"
+        },
+        {
+          "type": "toolset",
+          "id": "hiveFbxRigExport"
+        },
+        {
+          "type": "toolset",
+          "id": "hiveMayaReferenceExport"
+        },
+        {
+          "id": "hiveGuideAlignMirror",
+          "type": "toolset"
+        },
+        {
+          "id": "addCustomRig",
+          "type": "toolset"
+        },
+        {
+          "type": "toolset",
+          "id": "hiveMirrorPasteAnim"
+        },
+        {
+          "type": "toolset",
+          "id": "matchBakeAnim"
+        },
+        {
+          "id": "mocapFeetRetargeter",
+          "type": "toolset"
+        }
+      ]
+    }
+  ]
+}
+

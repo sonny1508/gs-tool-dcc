@@ -1,0 +1,1 @@
+{"name": "godnodecomponent_sr24p0no", "description": "", "rules": [{"name": "skinJointName", "creator": "ZooToolsPro", "description": "Deformation joint chain name.", "expression": "{id}", "exampleFields": {"componentName": "arm", "side": "L", "id": "upr", "type": "joint"}}], "fields": []}

@@ -1,0 +1,31 @@
+{
+    "sortOrder": -2,
+    "shelves": [
+        {
+            "name": "ZooToolsPro",
+            "children": [
+                {
+                    "id": "zoo.shelf.dev",
+                    "displayLabel": false,
+                    "icon": "devMenu_shlf",
+                    "tooltip": "Developer Utility Tools: \n - Utility tools related to code and developers. \n - Uninstall ZooToolsPro & Chat GPT. \n - Disable/enable right-click trigger menus.",
+                    "type": "button",
+                    "children": [
+                        {
+                            "id": "zoo.sourceCodeEditor",
+                            "type": "action"
+                        },
+                        {
+                            "id": "zoo.unittest.ui",
+                            "type": "action"
+                        },
+                        {
+                            "id": "pycharm.debug",
+                            "type": "action"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

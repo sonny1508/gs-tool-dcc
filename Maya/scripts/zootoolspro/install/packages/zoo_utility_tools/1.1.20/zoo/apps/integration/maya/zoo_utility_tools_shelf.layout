@@ -1,0 +1,71 @@
+{
+  "sortOrder": -970,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.shelf.utility",
+          "displayLabel": false,
+          "type": "button",
+          "icon": "utilsMenu_shlf",
+          "tooltip": "Utility Tools: \nGeneral Maya uitlity tools.",
+          "children": [
+            {
+              "type": "toolset",
+              "id": "zooRenamer"
+            },
+            {
+              "type": "toolset",
+              "id": "selectionSets"
+            },
+            {
+              "type": "toolset",
+              "id": "makeConnections"
+            },
+            {
+              "type": "toolset",
+              "id": "setMultipleAttributes"
+            },
+            {
+              "id": "channelBoxManager",
+              "type": "toolset"
+            },
+            {
+              "type": "toolset",
+              "id": "matrixTool"
+            },
+            {
+              "type": "toolset",
+              "id": "manageNodes"
+            },
+            {
+              "type": "toolset",
+              "id": "nodeEditorAlign"
+            },
+            {
+              "type": "toolset",
+              "id": "multiImportReference"
+            },
+            {
+              "type": "toolset",
+              "id": "aimAligner"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "action",
+              "id": "zoo.shelf.resetAllWindows"
+            },
+            {
+              "type": "action",
+              "id": "zoo.shelf.zooFloatingShelf"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

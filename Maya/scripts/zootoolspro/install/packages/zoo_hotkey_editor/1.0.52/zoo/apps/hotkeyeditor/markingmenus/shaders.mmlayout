@@ -1,0 +1,277 @@
+{
+  "items": {
+    "N": {
+      "label": "Create Shader",
+      "icon": "shaderBall",
+      "optionBox": true,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "createShader"
+      }
+    },
+    "W": {
+      "label": "Copy Shader",
+      "icon": "copy2",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "copyShader"
+      }
+    },
+    "E": {
+      "label": "Paste Shader",
+      "icon": "pasteAssign",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "pasteShader"
+      }
+    },
+    "NE": {
+      "label": "Paste Shader Attributes",
+      "icon": "pasteAttributes",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "pasteShaderAttributes"
+      }
+    },
+    "S": {
+      "label": "Shader Manager",
+      "icon": "settingSliders",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "shaderManager"
+      }
+    },
+    "SW": {
+      "label": "Select Shader Node",
+      "icon": "selectShader",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "selectShaderNode"
+      }
+    },
+    "SE": {
+      "label": "Sel Objs From Shader",
+      "icon": "selectObject",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "selectObjectShader"
+      }
+    },
+    "NW": {
+      "label": "Transfer Shader",
+      "icon": "transferShader",
+      "optionBox": false,
+      "type": "command",
+      "id": "shadersMarkingMenu",
+      "arguments": {
+        "operation": "transferShader"
+      }
+    },
+    "generic": [
+      {
+        "label": "Hypershade",
+        "icon": "windowBrowser",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "hypershade"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Shader Presets (.MA/.MB)",
+        "icon": "mayaShaders",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "shaderPresetsMa"
+        }
+      },
+      {
+        "label": "Shader Presets (Multi-Renderer)",
+        "icon": "shaderPresets",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "shaderPresetsMultiRenderer"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Diffuse Color HSV",
+        "icon": "categories",
+        "optionBox": true,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "diffuseHsv"
+        }
+      },
+      {
+        "label": "Plain No Specular",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetPlain"
+        }
+      },
+      {
+        "label": "Cloth",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetCloth"
+        }
+      },
+      {
+        "label": "Plastic Shine",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetPlasticShine"
+        }
+      },
+      {
+        "label": "Plastic Rough",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetPlasticRough"
+        }
+      },
+      {
+        "label": "Metal Shine",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetMetalShine"
+        }
+      },
+      {
+        "label": "Metal Rough",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetMetalRough"
+        }
+      },
+      {
+        "label": "Car Paint",
+        "icon": "shaderBallWire",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "presetCarPaint"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "currentRenderer"
+        }
+      },
+      {
+        "label": "Switch To Arnold",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "switchToArnold"
+        }
+      },
+      {
+        "label": "Switch To Redshift",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "switchToRedshift"
+        }
+      },
+      {
+        "label": "Switch To Renderman",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "switchToRenderman"
+        }
+      },
+      {
+        "label": "Switch To VRay",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "switchToVray"
+        }
+      },
+      {
+        "label": "Switch To Maya Viewport",
+        "icon": "arrowRight",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "switchToMayaViewport"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Convert Shaders",
+        "icon": "shaderSwap",
+        "optionBox": false,
+        "type": "command",
+        "id": "shadersMarkingMenu",
+        "arguments": {
+          "operation": "convertShaders"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.shaders"
+}

@@ -1,0 +1,23 @@
+{
+  "sortOrder": -1,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "type": "separator"
+        },
+
+        {
+          "id": "zoo.shelf.rigging",
+          "type": "button",
+          "icon": "riggingMenu_shlf",
+          "displayLabel": false,
+          "children": [
+
+          ]
+        }
+      ]
+    }
+  ]
+}

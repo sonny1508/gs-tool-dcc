@@ -1,0 +1,47 @@
+{"settings":{
+            "required_maya_plugins": [
+              "matrixNodes",
+              "lookdevKit",
+              "quatNodes"
+            ],
+            "defaultContainerType": "asset",
+            "useProxyAttributes":true,
+            "useContainers":false,
+            "blackBox":true,
+            "selectionChildHighlighting": false,
+            "buildScriptPaths": [],
+            "templatePaths": [],
+            "componentPaths": [],
+            "templateSavePath": "",
+            "buildScripts": ["default"],
+            "containerOutlinerDisplayUnderParent": true,
+            "containerAttrsShowAtTop": true,
+            "includeDefaultAssets": true,
+            "namingPresetSavePath": "",
+            "namingPresetPaths": [],
+            "defaultNamingPreset": "ZooToolsPro",
+             "namingPresetHierarchy": {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "name": "defaultUserPreset",
+          "children": [
+          ]
+        },
+        {
+          "name": "UE5Preset",
+          "children": [
+            {
+              "name": "UE5ClaviclePreset",
+              "children": []
+            },
+            {
+              "name": "UE5ThumbPreset",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+          }
+}

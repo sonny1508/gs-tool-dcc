@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0"
+	ProductType="Application"
+	AutodeskProduct="Maya"
+	Name="Security Tools for Autodesk Maya"
+	Description="Autodesk Maya Software Security Tools"
+	AppVersion="1.0.3"
+	Author="Autodesk, Inc."
+	AppNameSpace="com.autodesk.exchange.maya.scanner"
+	HelpFile="./Contents/docs/MayaScanner.pdf"
+	OnlineDocumentation="http://www.autodesk.com/maya"
+	ProductCode="*"
+	UpgradeCode="{e411af7b-8a1d-4665-a30b-e103859f4191}" >
+	
+	<CompanyDetails Name="Autodesk, Inc."
+		Phone=" "
+		Url="http://www.autodesk.com"
+		Email="me.support@autodesk.com" />
+
+	<!-- Prevent to load in older version than Maya 2008 -->
+	<RuntimeRequirements SupportPath="./Contents/docs" OS="win64|macOS|linux" Platform="Maya" SeriesMin="2008" />
+
+	<!-- Components -->
+	<Components>
+		<RuntimeRequirements SupportPath="./Contents/docs" OS="win64|macOS|linux" Platform="Maya" SeriesMin="2008" />
+		<MayaEnv expr="MAYA_SCRIPT_PATH+:=scripts" />
+		<MayaEnv expr="PATH+:=bin" />
+		<ComponentEntry ModuleName="./Contents/plug-ins/MayaScanner.py" />
+		<ComponentEntry ModuleName="./Contents/plug-ins/MayaScannerCB.py" />
+		<ComponentEntry ModuleName="./Contents/scripts/ScanMenu.mel" />
+		<ComponentEntry ModuleName="./Contents/scripts/MayaScannerCleaner.py" />
+		<ComponentEntry ModuleName="./Contents/scripts/MayaScannerUtils.py" />
+		<ComponentEntry ModuleName="./Contents/bin/cleanSceneFile" />
+		<ComponentEntry ModuleName="./Contents/bin/cleanUserSetup" />
+		<ComponentEntry ModuleName="./Contents/bin/cleanSceneNode" />
+		<ComponentEntry ModuleName="./Contents/bin/scanMalware" />
+		<ComponentEntry ModuleName="./Contents/bin/detect-dato.cmd" />
+		<ComponentEntry ModuleName="./Contents/bin/detect-mal2.cmd" />
+		<ComponentEntry ModuleName="./Contents/docs/MayaScanner.pdf" />
+		<ComponentEntry ModuleName="./Contents/docs/MayaSecurityToolsAdminScriptsGuide.pdf" />
+	</Components>
+	
+</ApplicationPackage>

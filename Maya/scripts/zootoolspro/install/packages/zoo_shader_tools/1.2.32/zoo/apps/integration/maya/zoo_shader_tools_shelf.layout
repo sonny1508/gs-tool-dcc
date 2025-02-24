@@ -1,0 +1,66 @@
+{
+  "sortOrder": -890,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.shelf.shader",
+          "icon": "shaderMenu_shlf",
+          "tooltip": "Shader Tools: \nShader tools for managing Maya's materials. ",
+          "displayLabel": false,
+          "type": "button",
+          "children": [
+            {
+              "id": "mayaShaders",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "shaderPresets",
+              "type": "toolset"
+            },
+            {
+              "id": "shaderManager",
+              "type": "toolset"
+            },
+            {
+              "id": "convertShaders",
+              "type": "toolset"
+            },
+            {
+              "id": "randomizeShaders",
+              "type": "toolset"
+            },
+            {
+              "id": "shaderSwapSuffix",
+              "type": "toolset"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "id": "hsvOffset",
+              "type": "toolset"
+            },
+            {
+              "id": "displacementCreator",
+              "type": "toolset"
+            },
+            {
+              "id": "createMattesAovs",
+              "type": "toolset"
+            },
+            {
+              "id": "matchSwatchSpace",
+              "type": "toolset"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

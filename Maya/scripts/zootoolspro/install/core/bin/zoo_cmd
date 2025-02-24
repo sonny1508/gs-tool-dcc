@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+DIR="$( cd "$( dirname "$0" )" && pwd )"
+
+if [ "$ZOOTOOLS_PRO_ROOT" == "" ];then
+    export ZOOTOOLS_PRO_ROOT="$DIR/../"
+else
+    echo "Custom Zootools root specified ZOOTOOLS_PRO_ROOT"
+fi
+if [ "$ZOO_PYTHON_INTERPRETER" == "" ];then
+    echo "Using default python"
+    export ZOO_PYTHON_INTERPRETER="python"
+else
+    echo "Custom python interpreter specified $ZOO_PYTHON_INTERPRETER"
+fi
+echo $ZOO_PYTHON_INTERPRETER
+
+"$ZOO_PYTHON_INTERPRETER" "$ZOOTOOLS_PRO_ROOT/scripts/zoo_cmd.py" "$@"

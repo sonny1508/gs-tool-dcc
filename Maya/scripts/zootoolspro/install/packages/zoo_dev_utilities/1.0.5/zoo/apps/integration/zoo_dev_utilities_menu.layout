@@ -1,0 +1,31 @@
+{
+    "sortOrder": 10000,
+    "menus": [
+        {
+            "type": "menu",
+            "label": "{zooToolsPro}",
+            "children": [
+                {
+                    "label": "Developer",
+                    "type": "menu",
+                    "children": [
+                        {
+                            "id": "zoo.sourceCodeEditor",
+                            "type": "action"
+                        },
+                        {
+                            "id": "zoo.unittest.ui",
+                            "label": "Unit Test UI",
+                            "icon": "menu_reload"
+                        },
+                        {
+                            "id": "pycharm.debug"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+
+

@@ -1,0 +1,81 @@
+{
+  "items": {
+    "N": {
+      "label": "Delete History (Default)",
+      "icon": "DeleteHistory",
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteHistory"
+      }
+    },
+    "NE": {
+      "label": "Delete Non Deformer History",
+      "icon": "DeleteHistory",
+      "optionBox": true,
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteNonDeformerHistory"
+      }
+    },
+    "NW": {
+      "label": "Delete Motion Paths",
+      "icon": "motionTrail",
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteMotionPaths"
+      }
+    },
+    "E": {
+      "label": "Delete Edge",
+      "icon": "hardenEdge",
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteEdge"
+      }
+    },
+    "S": {
+      "label": "Delete Key Current Frame",
+      "icon": "key",
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteKeyCurrentFrame"
+      }
+    },
+    "SW": {
+      "label": "Delete Animated Static Channels",
+      "icon": "key",
+      "optionBox": true,
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteStaticChannels"
+      }
+    },
+    "SE": {
+      "label": "Delete Animation All",
+      "icon": "key",
+      "optionBox": true,
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteAnimationAll"
+      }
+    },
+    "W": {
+      "label": "Delete Related Constraints",
+      "icon": "parentConstraint",
+      "type": "command",
+      "id": "deleteHistoryMarkingMenu",
+      "arguments": {
+        "operation": "deleteRelatedConstraints"
+      }
+    },
+    "generic": []
+  },
+  "id": "markingMenu.deletehistory"
+}

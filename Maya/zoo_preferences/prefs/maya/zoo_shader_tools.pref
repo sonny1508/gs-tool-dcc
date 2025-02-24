@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "shaderPresetsFolder": "",
+    "shaderPresetsUniformIcons": true,
+    "mayaShadersFolder": "",
+    "mayaShadersUniformIcons": true,
+    "browserFolders": {
+      "shaders": [
+        {
+          "id": "20c6c8",
+          "path": "C:\\Users\\gs31\\Documents\\zoo_preferences\\assets\\shaders\\defaults",
+          "alias": "defaults"
+        }
+      ],
+      "maya_shaders": [
+        {
+          "id": "a83157",
+          "path": "C:\\Users\\gs31\\Documents\\zoo_preferences\\assets\\maya_shaders",
+          "alias": "maya_shaders"
+        }
+      ]
+    },
+    "browserCategories": {},
+    "activeFolders": {
+      "shaders": [
+        "20c6c8"
+      ],
+      "maya_shaders": [
+        "a83157"
+      ]
+    }
+  }
+}

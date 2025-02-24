@@ -1,0 +1,26 @@
+{
+  "toolsetGroups": [
+    {
+      "type": "utilities",
+      "name": "Utilities",
+      "color": [
+        161,
+        97,
+        255
+      ],
+      "hueShift": 0,
+      "toolsets": [
+        "zooRenamer",
+        "selectionSets",
+        "makeConnections",
+        "setMultipleAttributes",
+        "channelBoxManager",
+        "matrixTool",
+        "manageNodes",
+        "nodeEditorAlign",
+        "multiImportReference",
+        "aimAligner"
+      ]
+    }
+  ]
+}

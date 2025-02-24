@@ -1,0 +1,29 @@
+{
+  "toolsetGroups": [
+    {
+      "type": "hiveArtistUi",
+      "name": "Hive Artist UI",
+      "color": [
+        115,
+        187,
+        211
+      ],
+      "hidden": true,
+      "hueShift": 0,
+      "toolsets": [
+        "hiveArtistSettings",
+        "colorOverrides",
+        "controlCreator",
+        "editControls",
+        "jointTool",
+        "jointsToHiveGuides",
+        "riggingMisc",
+        "skinningUtilities",
+        "hiveFbxRigExport",
+        "hiveMayaReferenceExport",
+        "hiveGuideAlignMirror",
+        "addCustomRig"
+      ]
+    }
+  ]
+}

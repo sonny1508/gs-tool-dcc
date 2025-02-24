@@ -1,0 +1,46 @@
+{
+    "rules": [
+        {
+            "name": "object",
+            "creator": "davidsp",
+            "description": "Should be override by config.json",
+            "expression": "{area}_{section}_{system}_{side}_{type}_{tokenA}"
+        },
+        {
+            "name": "parentRule",
+            "creator": "davidsp",
+            "description": "Test rule for testing whether the rule is queried within the hierarchy",
+            "expression": "{area}_{side}_{type}_{tokenA}"
+        }
+    ],
+    "fields": [
+        {
+            "name": "area",
+            "description": "",
+            "permissions": [],
+            "table": {
+                "arm": "arm",
+                "null": "null",
+                "leg": "leg",
+                "head": "head",
+                "spine": "spine",
+                "neck": "neck",
+                "jaw": "jaw",
+                "eye": "eye",
+                "brow": "brow",
+                "toe": "toe",
+                "foot": "foot",
+                "root": "root"
+            }
+        },
+        {
+            "name": "tokenA",
+            "permissions": [],
+            "description": "",
+            "table": {
+                "parent": "parentA",
+                "parentB": "parentB"
+            }
+        }
+    ]
+}

@@ -1,0 +1,80 @@
+{
+    "name": "zootoolsProGlobalArmComponent",
+    "description": "Hive Arm Component Naming convention, use the Id Field to Change the control, joint names.",
+    "rules": [
+        {
+            "name": "controlName",
+            "creator": "ZooToolsPro",
+            "description": "The expression for Animation Control node names. Includes The ik/fk/poleVector system",
+            "expression": "{componentName}_{side}_{id}_{system}_{type}",
+            "exampleFields": {"componentName":  "arm", "side": "L", "id":  "world", "system": "ik", "type": "control"}
+        },
+        {
+            "name": "twistControlName",
+            "creator": "ZooToolsPro",
+            "description": "Control Name for the twist controls",
+            "expression": "{componentName}_{side}_{id}_{type}",
+            "exampleFields": {"componentName":  "arm", "side": "L", "id":  "world", "type": "control"}
+        },
+        {
+            "name": "jointName",
+            "creator": "ZooToolsPro",
+            "description": "Same as the control Name which contains the system field ie. ik/fk",
+            "expression": "{componentName}_{side}_{id}_{system}_{type}",
+            "exampleFields": {"componentName":  "arm", "side": "L","id": "upr", "system": "ik", "type": "joint"}
+        }
+    ],
+    "fields": [
+        {
+            "name": "id",
+            "description": "Control, guide, joint, in/out node id names to use",
+            "permissions": [{"name": "upr"},
+                {"name": "uprik"},
+                {"name": "uprfk"},
+                {"name": "mid"},
+                {"name": "midfk"},
+                {"name": "midik"},
+                {"name": "end"},
+                {"name": "endik"},
+                {"name": "endfk"},
+                {"name": "upVec"},
+                {"name": "uprTwistOffset"},
+                {"name": "lwrTwistOffset"},
+                {"name": "baseik"},
+                {"name": "worldUpVec"},
+                {"name": "worldUpVecRef"},
+                {"name":  "tangent00Out"},
+                {"name":  "tangent01Out"},
+                {"name":  "tangent01In"},
+                {"name":  "tangent02In"},
+                {"name":  "bendyMid00"},
+                {"name":  "bendyMid01"},
+                {"name":  "bendy01"}
+            ],
+            "table": {
+                "upr": "shldr",
+                "uprik": "shldr",
+                "uprfk": "shldr",
+                "mid": "elbow",
+                "midfk": "elbow",
+                "midik": "elbow",
+                "end": "wrist",
+                "endik": "wrist",
+                "endfk": "wrist",
+                "upVec": "elbowPv",
+                "uprTwistOffset": "uprTwistOffset",
+                "lwrTwistOffset": "lwrTwistOffset",
+                "baseik": "shldr",
+                "worldUpVec":  "worldUpVec",
+                "worldUpVecRef":  "worldUpVecRef",
+                "tangent00Out":"tangent00Out",
+                "tangent01Out":"tangent01Out",
+                "tangent01In":"tangent01In",
+                "tangent02In": "tangent02In",
+                "bendyMid00":"bendyMid00",
+                "bendyMid01":"bendyMid01",
+                "bendy01":"bendy01"
+            }
+        }
+    ]
+}

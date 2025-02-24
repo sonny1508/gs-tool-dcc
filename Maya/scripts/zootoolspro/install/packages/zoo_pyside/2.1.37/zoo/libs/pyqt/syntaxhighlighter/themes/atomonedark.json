@@ -1,0 +1,155 @@
+{"colors": {
+    "normal": {
+        "textColor": [
+           228, 237, 255
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "variable": {
+        "textColor": [
+            228, 237, 255
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "attribute": {
+        "textColor": [
+          224,108,117
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "keyword": {
+        "textColor": [
+            196,
+            119,
+            217
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "controlFlow": {
+        "textColor": [
+            196,
+            119,
+            217
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "operator": {
+        "textColor": [
+             86,182,194
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "function": {
+        "textColor": [
+            97,
+            175,
+            239
+
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "class": {
+        "textColor": [
+           230,
+            153,
+            99
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "builtin": {
+        "textColor": [
+             97,
+            175,
+            239
+        ],
+        "bold": false,
+        "italic": true
+    },
+    "dataType": {
+        "textColor": [
+            97,
+            175,
+            239
+        ],
+        "bold": false,
+        "italic": true
+    },
+    "number": {
+        "textColor": [
+            209,
+            154,
+            102
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "string": {
+        "textColor": [
+          152,195,121
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "import": {
+        "textColor": [
+            196,
+            119,
+            217
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "comment": {
+        "textColor": [
+            127,
+            132,
+            142
+        ],
+        "bold": false,
+        "italic": true
+    },
+    "documentation": {
+        "textColor": [
+            127,
+            132,
+            142
+        ],
+        "bold": false,
+        "italic": false
+    },
+    "annotation": {
+        "textColor": [97,174,239],
+        "bold": false,
+        "italic": false
+    },
+    "information": {
+        "textColor": [
+            209,
+            154,
+            102
+        ],
+        "bold": false,
+        "italic": true
+    },
+    "alert": {
+        "textColor": [
+            178, 93, 102
+        ],
+        "bold": false,
+        "italic": true
+    },
+    "self": {
+        "textColor"  : [
+            224, 108, 117],
+        "bold": false,
+        "italic": true
+    }
+}}

@@ -1,0 +1,89 @@
+{
+  "items": {
+    "N": {
+      "label": "Freeze Transformations",
+      "icon": "FreezeTransform",
+      "optionBox": true,
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeTransformations"
+      }
+    },
+    "NE": {
+      "label": "Freeze Scale",
+      "icon": "FreezeTransform",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeScale"
+      }
+    },
+    "NW": {
+      "label": "Unfreeze Translate",
+      "icon": "FreezeTransform",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "unfreeze"
+      }
+    },
+    "E": {
+      "label": "Freeze Rotate",
+      "icon": "FreezeTransform",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeRotate"
+      }
+    },
+    "S": {
+      "label": "Freeze Matrix Modeller",
+      "icon": "DeleteHistory",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeMatrixModeller"
+      }
+    },
+    "SW": {
+      "label": "Freeze Matrix All",
+      "icon": "DeleteHistory",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeMatrixAll"
+      }
+    },
+    "SE": {
+      "label": "Unfreeze Matrix",
+      "icon": "DeleteHistory",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "unfreezeMatrix"
+      }
+    },
+    "W": {
+      "label": "Freeze Translate",
+      "icon": "FreezeTransform",
+      "type": "command",
+      "id": "freezeTransformMarkingMenu",
+      "arguments": {
+        "operation": "freezeTranslate"
+      }
+    },
+    "generic": [
+      {
+        "label": "Freeze Joint Orient",
+        "icon": "joint",
+        "type": "command",
+        "id": "freezeTransformMarkingMenu",
+        "arguments": {
+          "operation": "freezeJointOrient"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.freezetransform"
+}

@@ -1,0 +1,24 @@
+{
+  "sortOrder": -980,
+  "menu": [
+    {
+      "label": "Assets",
+      "type": "menu",
+      "children": [
+        {
+          "type": "toolset",
+          "id": "mayaScenes"
+        },
+        {
+          "type": "toolset",
+          "id": "alembicAssets"
+        },
+        {
+          "type": "toolset",
+          "id": "thumbnailScenes"
+        }
+      ]
+    }
+  ]
+}
+

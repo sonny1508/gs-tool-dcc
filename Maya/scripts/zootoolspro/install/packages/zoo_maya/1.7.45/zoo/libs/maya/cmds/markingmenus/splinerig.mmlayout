@@ -1,0 +1,175 @@
+{
+  "items": {
+    "generic": [
+      {
+        "label": "Switch to Spine",
+        "icon": "arrowLeftRight",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "switchToSpine"
+        }
+      },
+      {
+        "label": "Switch to FK Controls",
+        "icon": "arrowLeftRight",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "switchToFk"
+        }
+      },
+      {
+        "label": "Switch to Float Controls",
+        "icon": "arrowLeftRight",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "switchToFloat"
+        }
+      },
+      {
+        "label": "Switch to Reverse FK",
+        "icon": "arrowLeftRight",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "switchToRevFk"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Select Skin Joints",
+        "icon": "cursorSelect",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "selectJoints"
+        }
+      },
+      {
+        "label": "Spline Controls Vis",
+        "icon": "visible",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "toggleControls"
+        }
+      },
+      {
+        "label": "Additive FK Controls Vis",
+        "icon": "visible",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "toggleControlsAdditiveFk"
+        }
+      },
+      {
+        "id": "splineRigMarkingMenu",
+        "type": "separator",
+        "arguments": {
+          "operation": "publish"
+        }
+      },
+      {
+        "label": "Duplicate Rig And Skin",
+        "icon": "duplicate",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "duplicate"
+        }
+      },
+      {
+        "label": "Bake Remove Rig",
+        "icon": "bake",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "bake"
+        }
+      },
+      {
+        "label": "Rebuild At Rig Zero",
+        "icon": "reload",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "rebuild"
+        }
+      },
+      {
+        "label": "Rebuild Current Pos",
+        "icon": "reload",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "rebuildBaked"
+        }
+      },
+      {
+        "id": "splineRigMarkingMenu",
+        "type": "separator",
+        "arguments": {
+          "operation": "publish"
+        }
+      },
+      {
+        "label": "Delete Spline Rig",
+        "icon": "trash",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "delete"
+        }
+      },
+      {
+        "label": "Delete Additive FK Rig",
+        "icon": "trash",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "deleteAdditiveFk"
+        }
+      },
+      {
+        "label": "Bake Additive FK Rig",
+        "icon": "bake",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "bakeAdditiveFk"
+        }
+      },
+      {
+        "label": "Delete Mesh And Rigs",
+        "icon": "trash",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "deleteAll"
+        }
+      },
+      {
+        "id": "splineRigMarkingMenu",
+        "type": "separator",
+        "arguments": {
+          "operation": "publish"
+        }
+      },
+      {
+        "label": "Open Toolset",
+        "icon": "splineRig",
+        "type": "command",
+        "id": "splineRigMarkingMenu",
+        "arguments": {
+          "operation": "openToolset"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.splinerig"
+}

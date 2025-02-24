@@ -1,0 +1,66 @@
+{
+    "name": "ZooToolsPro",
+    "configs": [
+        {
+            "name": "zootoolsProGlobalConfig",
+            "hiveType": "global"
+        },
+        {
+            "name": "zootoolsProRigConfig",
+            "hiveType": "rig"
+        },
+        {
+            "name": "zootoolsProGlobalVChainComponent",
+            "hiveType": "vchaincomponent"
+        },
+        {
+            "name": "zootoolsProGlobalAimComponent",
+            "hiveType": "aimcomponent"
+        },
+        {
+            "name": "zootoolsProGlobalFkComponent",
+            "hiveType": "fkchain"
+        },
+        {
+            "name": "zootoolsProGlobalGodNodeComponent",
+            "hiveType": "godnodecomponent"
+        },
+        {
+            "name": "zootoolsProGlobalFingerComponent",
+            "hiveType": "finger"
+        },
+        {
+            "name": "zootoolsProGlobalHeadComponent",
+            "hiveType": "headcomponent"
+        },
+        {
+            "name": "zootoolsProGlobalJawComponent",
+            "hiveType": "jaw"
+        },
+        {
+            "name": "zootoolsProGlobalLegComponent",
+            "hiveType": "legcomponent"
+        },
+        {
+            "name": "zootoolsProGlobalSpineFkComponent",
+            "hiveType": "spineFk"
+        },
+        {
+            "name": "zootoolsProGlobalArmComponent",
+            "hiveType": "armcomponent"
+        },
+        {
+            "name": "zootoolsProGlobalSpineIkComponent",
+            "hiveType": "spineIk"
+        },
+        {
+            "name": "zootoolsProGlobalQuadrupedLegComponent",
+            "hiveType": "quadLeg"
+        },
+        {
+            "name": "zootoolsProGlobalEyeComponent",
+            "hiveType": "eyecomponent"
+        }
+
+    ]
+}

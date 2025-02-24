@@ -1,0 +1,43 @@
+{
+  "toolsetGroups":
+  [
+    {
+      "type": "modelingToolbox",
+      "name": "Modeling Toolbox",
+      "color": [
+        56,
+        227,
+        181
+      ],
+      "hueShift": 0,
+      "toolsets": [
+        "objectsToolbox",
+        "modelingToolbox",
+        "zooMirrorGeo",
+        "topologyNormalsToolbox",
+        "sculptingToolbox",
+        "selector",
+        "objectCleaner",
+        "modelingAlign"
+      ]
+    },
+    {
+      "type": "modelingMisc",
+      "name": "Modeling Misc",
+      "color": [
+        56,
+        227,
+        181
+      ],
+      "hueShift": 0,
+      "toolsets": [
+        "randomizeObjects",
+        "curveDuplicate",
+        "tubeFromCurve",
+        "thickExtrude",
+        "subDSmoothControl",
+        "replaceShapes"
+      ]
+    }
+  ]
+}

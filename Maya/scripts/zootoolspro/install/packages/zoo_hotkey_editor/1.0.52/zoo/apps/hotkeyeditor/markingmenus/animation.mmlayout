@@ -1,0 +1,201 @@
+{
+  "items": {
+    "N": {
+      "label": "Create/Rebuild Motion Trails",
+      "icon": "splineCVs",
+      "optionBox": true,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "createMotionTrails"
+      }
+    },
+    "NW": {
+      "label": "Locator Bake",
+      "icon": "ikhandle",
+      "optionBox": true,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "locatorBake"
+      }
+    },
+    "S": {
+      "label": "Tween Machine",
+      "icon": "blender",
+      "optionBox": true,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "tweenMachine"
+      }
+    },
+    "W": {
+      "label": "Bake Animation",
+      "icon": "bake",
+      "optionBox": true,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "bakeAnimation"
+      }
+    },
+    "NE": {
+      "icon": "snapTogether",
+      "optionBox": false,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "locatorParentConstraint"
+      }
+    },
+    "SW": {
+      "label": "Match And Bake Anim Window",
+      "icon": "checkList",
+      "optionBox": false,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "matchBakeAnim"
+      }
+    },
+    "SE": {
+      "label": "Randomize Keyframes",
+      "icon": "noise",
+      "optionBox": false,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "randomizeKeyframes"
+      }
+    },
+    "E": {
+      "label": "Numeric Retimer",
+      "icon": "retimer",
+      "optionBox": false,
+      "type": "command",
+      "id": "animationMarkingMenu",
+      "arguments": {
+        "operation": "numericRetimer"
+      }
+    },
+    "generic": [
+      {
+        "label": "Open Animation Toolbox",
+        "icon": "key",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "openAnimationToolbox"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Open Change Rotation Order",
+        "icon": "loopAbc",
+        "optionBox": false,
+        "type": "command",
+        "id": "graphEditorMarkingMenu",
+        "arguments": {
+          "operation": "changeRotationOrder"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Select Animated Nodes (All)",
+        "icon": "menuTripleFull",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "selectAnimatedNodesAll"
+        }
+      },
+      {
+        "label": "Select Animated Nodes (Under Selected Hierachy)",
+        "icon": "menuTripleTwo",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "selectAnimatedNodesHierachy"
+        }
+      },
+      {
+        "label": "Select Animate Nodes (Within Selected)",
+        "icon": "menuTripleOne",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "selectAnimatedNodesSelected"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Open Ghost Editor   (HK: shift alt })",
+        "icon": "ghosting",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "openGhostEditor"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Anim Hold   (HK: alt a)",
+        "icon": "animHold",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "animHold"
+      }
+    },
+      {
+        "label": "Del Key Current Time   (HK: ctrl shift v)",
+        "icon": "delKey",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "delKeyCurrentTime"
+        }
+      },
+      {
+        "label": "Reset Attributes   (HK: ctrl shift alt s)",
+        "icon": "arrowBack",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "resetAttributes"
+        }
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Delete All Motion Paths",
+        "icon": "trash",
+        "optionBox": false,
+        "type": "command",
+        "id": "animationMarkingMenu",
+        "arguments": {
+          "operation": "deleteAllMotionTrails"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.animation"
+}

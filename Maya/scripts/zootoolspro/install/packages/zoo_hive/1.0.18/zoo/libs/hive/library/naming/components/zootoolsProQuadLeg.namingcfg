@@ -1,0 +1,73 @@
+{
+    "name": "zootoolsProGlobalQuadrupedLegComponent",
+    "hiveType": "quadLeg",
+    "description": "Hive Quad Leg Component Naming convention, use the Id Field to Change the control, joint names.",
+    "rules": [
+        {
+            "name": "twistControlName",
+            "creator": "ZooToolsPro",
+            "description": "Control Name for the twist controls",
+            "expression": "{componentName}_{side}_{id}_{type}",
+            "exampleFields": {"componentName":  "leg", "side": "L", "id":  "world", "type": "control"}
+        }
+    ],
+    "fields": [
+        {
+            "name": "id",
+            "description": "Control, guide, joint, in/out node id names to use",
+            "permissions": [{"name": "toe"},
+              {"name": "ballroll_piv"},
+              {"name": "outer_piv"},
+              {"name": "uprik"},
+              {"name": "lwrTwistOffset"},
+              {"name": "endfk"},
+              {"name": "midfk"},
+              {"name": "uprTwistOffset"},
+              {"name": "heel_piv"},
+              {"name": "world"},
+              {"name": "uprfk"},
+              {"name": "upVec"},
+              {"name": "baseik"},
+              {"name": "midik"},
+              {"name": "upr"},
+              {"name": "ankle"},
+              {"name": "end"},
+              {"name": "mid"},
+              {"name": "toeTip_piv"},
+              {"name": "ball"},
+              {"name": "hock"},
+              {"name": "endik"},
+              {"name": "inner_piv"},
+              {"name": "worldUpVec"},
+              {"name": "worldUpVecRef"}
+            ],
+            "table": {
+                "toe": "toe",
+                "ballroll_piv": "ball",
+                "outer_piv": "outer",
+                "uprik": "upr",
+                "lwrTwistOffset": "lwrTwistOffset",
+                "endfk": "foot",
+                "midfk": "knee",
+                "uprTwistOffset": "uprTwistOffset",
+                "heel_piv": "heel",
+                "world": "world",
+                "uprfk": "upr",
+                "upVec": "kneePv",
+                "baseik": "hip",
+                "midik": "knee",
+                "upr": "upr",
+                "end": "foot",
+                "ankle": "ankle",
+                "hock":  "hock",
+                "mid": "knee",
+                "toeTip_piv": "toeTip",
+                "ball": "ball",
+                "endik": "foot",
+                "inner_piv": "inner",
+                "worldUpVec":  "worldUpVec",
+                "worldUpVecRef":  "worldUpVecRef"
+            }
+        }
+    ]
+}

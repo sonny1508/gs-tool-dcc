@@ -1,0 +1,87 @@
+{
+  "sortOrder": 0,
+  "shelves": [
+    {
+      "name": "ZooToolsPro",
+      "children": [
+        {
+          "id": "zoo.rigging.shelf",
+          "displayLabel": false,
+          "type": "button",
+          "icon": "zoo_rigging_shelf",
+          "tooltip": "Zoo Rigging Shelf: \nGeneral Zoo Rigging & Skinning Tools.",
+          "children": [
+            {
+              "type": "toolset",
+              "id": "controlCreator"
+            },
+            {
+              "type": "toolset",
+              "id": "editControls"
+            },
+            {
+              "type": "toolset",
+              "id": "colorOverrides"
+            },
+            {
+              "type": "action",
+              "id": "zoo.utilityActions",
+              "tooltip": "FreezeMatrix (Right-Click)",
+              "icon": "matrix",
+              "iconColor": "lightBlue",
+              "arguments": {
+                "operation": "freezeMatrix"
+              }
+            },
+            {
+              "type": "action",
+              "id": "zoo.modellingActions",
+              "tooltip": "Select Menu (Left-Click)",
+              "icon": "cursorSelect",
+              "iconColor": "lightBlue",
+              "arguments": {
+                "operation": "selectHierarchy"
+              }
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toolset",
+              "id": "jointTool"
+            },
+            {
+              "type": "toolset",
+              "id": "constraintToolbox"
+            },
+            {
+              "type": "toolset",
+              "id": "zooRenamer"
+            },
+            {
+              "type": "action",
+              "id": "zoo.riggingActions",
+              "tooltip": "Skin Selected (Right-Click)",
+              "icon": "skinYoga",
+              "iconColor": "lightBlue",
+              "arguments": {
+                "operation": "skinSelected"
+              }
+            },
+            {
+              "type": "action",
+              "id": "zoo.riggingActions",
+              "tooltip": "Transfer Skin Weights (Right-Click)",
+              "icon": "transfer",
+              "iconColor": "lightBlue",
+              "arguments": {
+                "operation": "transferSkinWeights"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

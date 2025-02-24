@@ -1,0 +1,135 @@
+{
+  "items": {
+    "N": {
+      "label": "Create Bevel (default)",
+      "icon": "polyBevel",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "createBevel"
+      }
+    },
+    "NW": {
+      "label": "Select Last Bevel Node",
+      "icon": "aselect",
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "selectLastBevelNode"
+      }
+    },
+    "NE": {
+      "label": "Select All Bevel Nodes",
+      "icon": "aselect",
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "selectAllBevelNodes"
+      }
+    },
+    "E": {
+      "label": "Bevel (Rounded Edge)",
+      "icon": "polyBevel",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "bevelRoundedEdges"
+      }
+    },
+    "S": {
+      "label": "Bool - Union",
+      "icon": "polyBooleansUnion",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "union"
+      }
+    },
+    "SW": {
+      "label": "Bool - Difference (A-B)",
+      "icon": "polyBooleansDifference",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "differenceAB"
+      }
+    },
+    "SE": {
+      "label": "Bool - Difference (B-A)",
+      "icon": "Bool_BMinusA",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "differenceBA"
+      }
+    },
+    "W": {
+      "label": "Bevel (No Chamfer)",
+      "icon": "polyBevel",
+      "optionBox": true,
+      "type": "command",
+      "id": "bevelBoolMarkingMenu",
+      "arguments": {
+        "operation": "bevelNoChamfer"
+      }
+    },
+    "generic": [
+      {
+        "label": "Bool - Intersection",
+        "icon": "polyBooleansIntersection",
+        "optionBox": true,
+        "type": "command",
+        "id": "bevelBoolMarkingMenu",
+        "arguments": {
+          "operation": "intersection"
+        }
+      },
+      {
+        "label": "Bool - Slice",
+        "icon": "Bool_Slice",
+        "optionBox": true,
+        "type": "command",
+        "id": "bevelBoolMarkingMenu",
+        "arguments": {
+          "operation": "slice"
+        }
+      },
+      {
+        "label": "Bool - Hole Punch",
+        "icon": "Bool_HolePunch",
+        "optionBox": true,
+        "type": "command",
+        "id": "bevelBoolMarkingMenu",
+        "arguments": {
+          "operation": "holePunch"
+        }
+      },
+      {
+        "label": "Bool - Cut Out",
+        "icon": "Bool_CutOut",
+        "optionBox": true,
+        "type": "command",
+        "id": "bevelBoolMarkingMenu",
+        "arguments": {
+          "operation": "cutOut"
+        }
+      },
+      {
+        "label": "Bool - Split Edges",
+        "icon": "Bool_SplitEdges",
+        "optionBox": true,
+        "type": "command",
+        "id": "bevelBoolMarkingMenu",
+        "arguments": {
+          "operation": "splitEdges"
+        }
+      }
+    ]
+  },
+  "id": "markingMenu.bevelbool"
+}

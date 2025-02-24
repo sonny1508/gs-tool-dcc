@@ -1,0 +1,63 @@
+{
+    "name": "zootoolsProRigConfig",
+    "description": "Hive Rig Naming convention, use the Id Field to Change the control, joint names.",
+    "rules": [
+        {
+            "name": "rigHrc",
+            "creator": "ZooToolsPro",
+            "description": "Convention for the top node for the Rig",
+            "expression": "{rigName}_{type}",
+            "exampleFields": {"rigName":  "Robot", "type": "hrc"}
+        },
+        {
+            "name": "rigMeta",
+            "creator": "ZooToolsPro",
+            "description": "Convention for the top node for the Rig",
+            "expression": "{rigName}_{type}",
+            "exampleFields": {"rigName":  "Robot", "type": "meta"}
+        },
+        {
+            "name": "controlDisplayLayerSuffix",
+            "creator": "ZooToolsPro",
+            "description": "Convention for the rigs control displayLayer",
+            "expression": "{rigName}_{type}",
+             "exampleFields": {"rigName":  "Robot", "type": "displayLayer"}
+        },
+        {
+            "name":"rootSelectionSet",
+            "creator": "ZooToolsPro",
+            "description": "Root Rig selection set name",
+            "expression": "{rigName}_{type}",
+            "exampleFields": {"rigName":  "Robot", "selectionSet": "root", "type": "objectSet"}
+        },
+        {
+            "name": "selectionSet",
+            "creator": "ZooToolsPro",
+            "description": "Root selection set names",
+            "expression": "{rigName}_{selectionSet}_{type}",
+            "exampleFields": {"rigName":  "Robot", "selectionSet": "ctrls", "type": "objectSet"}
+        },
+        {
+            "name": "layerHrc",
+            "creator": "ZooToolsPro",
+            "description": "Hive rig Layer Hrc node",
+            "expression": "{rigName}_{layerType}_{type}",
+            "exampleFields": {"rigName":  "Robot",  "layerType": "rigLayer", "type": "hrc"}
+        },
+        {
+            "name": "layerMeta",
+            "creator": "ZooToolsPro",
+            "description": "Hive rig Layer Hrc node",
+            "expression": "{rigName}_{layerType}_{type}",
+            "exampleFields": {"rigName":  "Robot",  "layerType": "componentLayer", "type": "meta"}
+        },
+        {
+            "name": "object",
+            "creator": "ZooToolsPro",
+            "description": "Standard Maya node type convention, used for utility nodes or any node which doesn't have an explicit Rule",
+            "expression": "{rigName}_{section}_{type}",
+            "exampleFields": {"rigName":  "Robot","section":  "world", "system": "ik", "type": "transform"}
+        }
+    ],
+    "fields": []
+}

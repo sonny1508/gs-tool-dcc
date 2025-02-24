@@ -1,0 +1,18 @@
+{
+  "toolsetGroups":
+  [
+    {
+      "type": "developer",
+      "name": "Developer",
+      "color": [
+        161,
+        97,
+        255
+      ],
+      "hueShift": 0,
+      "toolsets": [
+        "zooIcons"
+      ]
+    }
+  ]
+}

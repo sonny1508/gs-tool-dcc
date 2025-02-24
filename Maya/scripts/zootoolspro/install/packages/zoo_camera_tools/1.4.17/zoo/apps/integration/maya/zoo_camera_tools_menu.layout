@@ -1,0 +1,28 @@
+{
+  "sortOrder": -950,
+  "menu": [
+    {
+      "label": "Camera",
+      "type": "menu",
+      "children": [
+        {
+          "id": "cameraManager",
+          "type": "toolset"
+        },
+        {
+          "id": "imagePlaneTool",
+          "type": "toolset"
+        },
+        {
+          "id": "imagePlaneAnim",
+          "type": "toolset"
+        },
+        {
+          "id": "focusPuller",
+          "type": "toolset"
+        }
+      ]
+    }
+  ]
+}
+
