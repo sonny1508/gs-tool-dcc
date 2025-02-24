@@ -1,1 +1,0 @@
-{"name": "zootoolsProGlobalAimComponent", "description": "", "rules": [], "fields": [{"name": "id", "description": "Control, guide, joint, in/out node id names to use", "permissions": [{"name": "upVec"}, {"name": "aim"}, {"name": "eye"}], "table": {"upVec": "upVec", "eye": "eye", "aim": "aim"}}]}
