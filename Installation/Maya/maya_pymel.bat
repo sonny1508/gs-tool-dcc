@@ -1,8 +1,14 @@
 @echo off
 setlocal
 
+:: Get the current batch file directory
+set "BAT_DIR=%~dp0"
+
+:: Move up two levels to get to GSTools root
+for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
+
 :: Define source and destination paths
-set "source_path=\\192.168.1.10\Softwares\GSTools\Library\Maya\pymel"
+set "source_path=%GSTOOLS_ROOT%\Library\Maya\pymel"
 set "destination_path=%USERPROFILE%\Documents\maya\pymel"
 
 :: Check if source directory exists

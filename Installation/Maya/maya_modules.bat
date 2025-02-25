@@ -1,8 +1,16 @@
 @echo off
 setlocal
 
+:: Get the current batch file directory
+set "BAT_DIR=%~dp0"
+
+:: Move up two levels to get to GSTools root
+for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
+
+:: Construct the path to modules
+set "source_path=%GSTOOLS_ROOT%\Softwares\Maya\modules"
+
 :: Define source and destination paths
-set "source_path=\\192.168.1.10\Softwares\GSTools\Softwares\Maya\modules"
 set "destination_path=%USERPROFILE%\Documents\maya\modules"
 
 :: Check if source directory exists

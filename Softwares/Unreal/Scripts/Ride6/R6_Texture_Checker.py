@@ -22,6 +22,39 @@ class TextureCheckerGUI(QMainWindow):
         super().__init__(parent)
         self.setup_ui()
         self.load_style()
+        # Define texture type rules based on suffix
+        self.texture_rules = {
+            "_d": {
+                "type": "diffuse", 
+                "compression_settings": "TC_DEFAULT", 
+                "srgb": True
+            },
+            "_l": {
+                "type": "colormask", 
+                "compression_settings": "TC_MASKS", 
+                "srgb": False
+            },
+            "_n": {
+                "type": "normal", 
+                "compression_settings": "TC_NORMALMAP", 
+                "srgb": False
+            },
+            "_m": {
+                "type": "mask", 
+                "compression_settings": "TC_ALPHA", 
+                "srgb": False
+            },
+            "_mask": {
+                "type": "mask", 
+                "compression_settings": "TC_MASKS", 
+                "srgb": False
+            },
+            "inc": {
+                "type": "mask", 
+                "compression_settings": "TC_MASKS", 
+                "srgb": False
+            }
+        }
         
     def setup_ui(self):
         """Initialize the main UI components"""
@@ -80,15 +113,15 @@ class TextureCheckerGUI(QMainWindow):
         
     def setup_tree_widget(self):
         """Configure the tree widget settings"""
-        self.texture_tree.setColumnCount(3)
-        self.texture_tree.setHeaderLabels(["0/1", "name", "type"])
+        self.texture_tree.setColumnCount(7)
+        self.texture_tree.setHeaderLabels(["0/1", "name", "type", "size", "compression_settings", "texture_group", "srgb"])
         self.texture_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.texture_tree.setIndentation(5)
         self.texture_tree.setAlternatingRowColors(True)
         
         # Set column behaviors
         header = self.texture_tree.header()
-        for i in range(3):
+        for i in range(7):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
             
         self.texture_tree.itemDoubleClicked.connect(self.open_asset)
@@ -110,17 +143,60 @@ class TextureCheckerGUI(QMainWindow):
     def get_texture_property(self):
         """Load and parse texture properties from CSV"""
         csv_path = os.path.join(PARENT_DIR, "R6_TextureProperty.csv")
-        with open(csv_path) as f:
-            reader = csv.DictReader(f)
-            properties = [row for row in reader]
-            
-        # Convert TRUE/FALSE strings to Python booleans
-        for prop in properties:
-            for key in prop:
-                if prop[key] in ["TRUE", "FALSE"]:
-                    prop[key] = str(prop[key] == "TRUE")
+        properties = []
+        
+        if os.path.exists(csv_path):
+            try:
+                with open(csv_path) as f:
+                    reader = csv.DictReader(f)
+                    properties = [row for row in reader]
+                    
+                # Convert TRUE/FALSE strings to Python booleans
+                # But keep texture_group and prefix_check as strings for exact matching
+                for prop in properties:
+                    for key in prop:
+                        if key not in ["texture_group", "prefix_check"] and prop[key] in ["TRUE", "FALSE"]:
+                            prop[key] = prop[key] == "TRUE"
+            except Exception as e:
+                print(f"Warning: Could not load properties: {e}")
+                self.status_label.setText(f"Error loading CSV: {e}")
+        else:
+            print(f"Warning: CSV file not found at {csv_path}")
+            self.status_label.setText(f"CSV file not found at {csv_path}")
                     
         return properties
+
+    def get_rule_from_name(self, texture_name, csv_prefixes=None):
+        """Determine texture properties based on file name suffix and prefix check"""
+        texture_name_lower = texture_name.lower()
+        
+        # Check prefix first - extract prefix (text part before any numbers)
+        prefix_match = re.match(r'^([a-zA-Z_]+)', texture_name_lower)
+        prefix = prefix_match.group(1) if prefix_match else ""
+        
+        # If we have CSV prefixes, check if our prefix is allowed
+        if csv_prefixes and prefix:
+            prefix_allowed = False
+            for allowed_prefix in csv_prefixes:
+                if allowed_prefix and allowed_prefix.lower() in prefix:
+                    prefix_allowed = True
+                    break
+            
+            # If prefix not in allowed list, return None (zero match)
+            if not prefix_allowed:
+                return None
+        
+        # Check for inc* pattern (ending with inc followed by numbers)
+        if re.search(r'inc\d+$', texture_name_lower):
+            return self.texture_rules["inc"]
+        
+        # Check for each suffix pattern in order of specificity
+        for suffix in ["_mask", "_d", "_l", "_n", "_m"]:
+            if texture_name_lower.endswith(suffix):
+                return self.texture_rules[suffix]
+        
+        # If no known suffix found, return None to mark as zero match
+        return None
 
     def get_column_from_header(self, widget, match_text):
         """Get column index from header text"""
@@ -146,13 +222,15 @@ class TextureCheckerGUI(QMainWindow):
             if column is not None:
                 item.setForeground(column, QBrush(QColor(color_value)))
         
-        # Set special properties
-        if value_dict["type"] == "zero match":
-            item.setForeground(2, QBrush(QColor("red")))
-        elif value_dict["type"] == "multiple matches":
-            item.setForeground(2, QBrush(QColor("yellow")))
+        # Set special properties based on type
+        if "type_match" in value_dict:
+            if value_dict["type_match"] == "zero match":
+                item.setForeground(2, QBrush(QColor("red")))
+            elif value_dict["type_match"] == "multiple matches":
+                item.setForeground(2, QBrush(QColor("yellow")))
+        
         # Set checkbox state
-        item.setCheckState(0, Qt.Checked if value_dict["0/1"] == "1" else Qt.Unchecked)
+        item.setCheckState(0, Qt.Checked if value_dict.get("0/1") == "1" else Qt.Unchecked)
         item.setText(0, "")
         
         # Set metadata and color
@@ -169,7 +247,10 @@ class TextureCheckerGUI(QMainWindow):
             texture_paths = self.get_texture_paths_from_selected_actors()
             if not texture_paths:
                 self.texture_tree.clear()
+                self.status_label.setText("No textures found in selected actors")
                 return
+            
+            self.status_label.setText(f"Checking textures in {len(texture_paths)} paths...")
             
             unique_assets = {}
             for path in texture_paths:
@@ -185,133 +266,292 @@ class TextureCheckerGUI(QMainWindow):
                 texture_dict[path] = tex
             
             texture_list = list(texture_dict.values())
-            check_dict = self.get_texture_property()
-            key_list = list(check_dict[0].keys())
             
             # Update tree widget headers
             self.texture_tree.clear()
-            header_labels = ["0/1"] + key_list
-            self.texture_tree.setHeaderLabels(header_labels)
             
-            # First pass: Do normal matching and store results
-            initial_matches = []
+            # Extract all allowed prefixes from CSV
+            csv_properties = self.get_texture_property()
+            allowed_prefixes = []
+            for prop in csv_properties:
+                if "prefix_check" in prop and prop["prefix_check"]:
+                    prefixes = [p.strip() for p in str(prop["prefix_check"]).split("|")]
+                    allowed_prefixes.extend(prefixes)
+            
+            # Track textures by similar naming patterns
+            textures_by_pattern = {}
+            
+            # First pass: Check all textures and determine their rules
             for tex in texture_list:
-                value_dict = {}
-                color_dict = {}
-                
-                # Get basic texture info
                 tex_name = tex.get_name()
-                value_dict["name"] = tex_name
                 
-                # Get tag values
-                tag_list = unreal.EditorAssetLibrary.get_tag_values(tex.get_path_name())
-                value_dict["size"] = tag_list["Dimensions"]
+                # Default color is white, but will be changed below if needed
+                color = "white"
+                
+                # Get the rule that should be applied based on the texture name and allowed prefixes
+                rule = self.get_rule_from_name(tex_name, allowed_prefixes)
+                
+                # Initialize value dictionary
+                value_dict = {
+                    "name": tex_name,
+                    "0/1": "0"
+                }
+                
+                if rule is None:
+                    # No matching rule - mark as zero match
+                    value_dict["type"] = "zero match"
+                    value_dict["type_match"] = "zero match"
+                    value_dict["0/1"] = "0"  # Don't mark for fixing
+                    color = "red"
+                else:
+                    value_dict["type"] = rule["type"]
+                
+                # Get tag values if available
+                try:
+                    tag_list = unreal.EditorAssetLibrary.get_tag_values(tex.get_path_name())
+                    if "Dimensions" in tag_list:
+                        value_dict["size"] = tag_list["Dimensions"]
+                except:
+                    # Fallback method to get texture dimensions
+                    try:
+                        width = tex.get_editor_property("blueprint_get_size_x")
+                        height = tex.get_editor_property("blueprint_get_size_y")
+                        value_dict["size"] = f"{width}x{height}"
+                    except:
+                        value_dict["size"] = "Unknown"
                 
                 # Get current properties
-                value_dict["compression_settings"] = str(tex.get_editor_property("compression_settings")).split(".",1)[1].split(":",1)[0]
+                current_compression = str(tex.get_editor_property("compression_settings")).split(".",1)[1].split(":",1)[0]
+                value_dict["compression_settings"] = current_compression
+                
                 lod_group = tex.get_editor_property("lod_group")
                 value_dict["texture_group"] = lod_group.get_display_name()
-                value_dict["mip_gen_settings"] = str(tex.get_editor_property("mip_gen_settings")).split(".",1)[1].split(":",1)[0]
-                value_dict["srgb"] = tex.get_editor_property("srgb")
                 
-                # Find matching rule
-                matched_rule = None
-                matched_index = -1
+                current_mip = str(tex.get_editor_property("mip_gen_settings")).split(".",1)[1].split(":",1)[0]
+                value_dict["mip_gen_settings"] = current_mip
                 
-                for idx, rule in enumerate(check_dict):
-                    patterns = [p.strip().lower() for p in rule["name"].split("|")]
+                current_srgb = tex.get_editor_property("srgb")
+                value_dict["srgb"] = current_srgb
+                
+                # Create metadata for fixing
+                meta_data = {
+                    "path": tex.get_path_name(),
+                    "lod_group_enum": str(lod_group),
+                    "mip_gen_settings": value_dict["mip_gen_settings"]  # Keep existing mip settings
+                }
+                
+                # Add type, compression settings and sRGB if we have a valid rule
+                if rule is not None:
+                    meta_data["type"] = rule["type"]
+                    meta_data["compression_settings"] = rule["compression_settings"]
+                    meta_data["srgb"] = rule["srgb"]
+                
+                # Color dictionary for highlighting
+                color_dict = {}
+                
+                # Check size - should be 4096x4096, but we only highlight it as it can't be fixed in Unreal
+                if "size" in value_dict:
+                    if value_dict["size"] != "4096x4096":
+                        color_dict["size"] = "yellow"
+                
+                # Check if properties need to be updated (only if we have a rule)
+                if rule is not None:
+                    # Check compression settings
+                    if current_compression != rule["compression_settings"]:
+                        color_dict["compression_settings"] = "red"
+                        value_dict["0/1"] = "1"
+                    
+                    # Check sRGB
+                    if current_srgb != rule["srgb"]:
+                        color_dict["srgb"] = "red"
+                        value_dict["0/1"] = "1"
+                
+                # Find texture group from CSV
+                texture_group_from_csv = None
+                
+                # Try to find matching entry in CSV
+                for prop in csv_properties:
+                    csv_name_patterns = [p.strip().lower() for p in prop.get("name", "").split("|")]
                     tex_name_lower = tex_name.lower()
                     
-                    if any(tex_name_lower == pattern for pattern in patterns):
-                        matched_rule = rule
-                        matched_index = idx
+                    # Try exact match first
+                    if any(tex_name_lower == pattern for pattern in csv_name_patterns):
+                        texture_group_from_csv = prop.get("texture_group")
                         break
                     
-                    if not matched_rule:
-                        for pattern in patterns:
-                            if "*" in pattern:
-                                pattern = pattern.replace("*", ".*")
-                                if re.match(f"^{pattern}$", tex_name_lower):
-                                    matched_rule = rule
-                                    matched_index = idx
-                                    break
-                
-                if matched_rule:
-                    meta_data = dict(matched_rule)
-                    meta_data["lod_group_enum"] = str(lod_group)
-                    color = "white"
-                    value_dict["0/1"] = "0"
-                    value_dict["type"] = matched_rule["type"]
+                    # Try wildcard pattern match
+                    for pattern in csv_name_patterns:
+                        if "*" in pattern:
+                            pattern_regex = pattern.replace("*", ".*")
+                            if re.match(f"^{pattern_regex}$", tex_name_lower):
+                                texture_group_from_csv = prop.get("texture_group")
+                                break
                     
-                    # Check properties against rule
-                    self.check_texture_properties(value_dict, matched_rule, color_dict)
+                    if texture_group_from_csv:
+                        break
+                
+                # Only check texture group if we found one in the CSV
+                if texture_group_from_csv:
+                    current_texture_group = lod_group.get_display_name()
+                    if str(current_texture_group) != str(texture_group_from_csv):
+                        color_dict["texture_group"] = "red"
+                        value_dict["0/1"] = "1"
+                        meta_data["texture_group"] = texture_group_from_csv
+                
+                # Group by pattern for similar naming convention
+                prefix = re.match(r'([a-zA-Z]+)', tex_name.lower())
+                prefix = prefix.group(1) if prefix else ""
+                
+                # Find the suffix used for categorization
+                found_suffix = None
+                if re.search(r'inc\d+$', tex_name.lower()):
+                    found_suffix = "inc"
                 else:
-                    color = "red"
-                    value_dict["0/1"] = "0"
-                    value_dict["type"] = "zero match"
-                    meta_data = {"path": tex.get_path_name(), "lod_group_enum": str(lod_group)}
+                    for suffix in ["_mask", "_d", "_l", "_n", "_m"]:
+                        if tex_name.lower().endswith(suffix):
+                            found_suffix = suffix
+                            break
                 
-                meta_data["path"] = tex.get_path_name()
-                initial_matches.append((matched_index, color, value_dict, color_dict, meta_data, tex_name))
-
-            # Second pass: Check for similar prefix/suffix patterns
-            similar_groups = {}  # Dictionary to store groups of similar items
+                # Create pattern key for grouping
+                if rule is None:
+                    pattern_key = f"{prefix}_zero_match"
+                else:
+                    pattern_key = f"{prefix}_{found_suffix if found_suffix else 'other'}"
+                
+                if pattern_key not in textures_by_pattern:
+                    textures_by_pattern[pattern_key] = []
+                
+                textures_by_pattern[pattern_key].append((rule, color_dict, value_dict, meta_data, tex_name))
             
-            for i, (idx1, _, value_dict1, _, _, name1) in enumerate(initial_matches):
-                # Get prefix and suffix
-                prefix1 = re.match(r'([a-zA-Z]+)', name1.lower()).group(1)
-                suffix1 = name1[name1.rindex('_'):] if '_' in name1 else ''
-                
-                # Create a key for this pattern
-                pattern_key = f"{prefix1}{suffix1}"
-                
-                # Add to similar groups
-                if pattern_key not in similar_groups:
-                    similar_groups[pattern_key] = []
-                similar_groups[pattern_key].append(i)
-
-            # Create final items list
+            # Second pass: Create items and check for multiple matches
             items_to_add = []
-            for pattern_key, indices in similar_groups.items():
-                if len(indices) > 1:  # If there are multiple items with same pattern
-                    # Add all items from the group as multiple matches
-                    for idx in indices:
-                        matched_index, _, value_dict, color_dict, meta_data, _ = initial_matches[idx]
-                        value_dict["type"] = "multiple matches"
-                        item = self.create_custom_widget_item("yellow", value_dict, color_dict, meta_data)
-                        items_to_add.append((matched_index, item))
-                else:  # Single item with this pattern
-                    idx = indices[0]
-                    matched_index, color, value_dict, color_dict, meta_data, _ = initial_matches[idx]
-                    item = self.create_custom_widget_item(color, value_dict, color_dict, meta_data)
-                    items_to_add.append((matched_index, item))
             
-            # Sort and add items
-            items_to_add.sort(key=lambda x: (x[0] if x[0] >= 0 else float('inf')))
+            for pattern_key, textures in textures_by_pattern.items():
+                # Filter out textures with "custom" or "rain" in their name for special handling
+                special_textures = []
+                regular_textures = []
+                
+                for tex_info in textures:
+                    rule, color_dict, value_dict, meta_data, tex_name = tex_info
+                    if "custom" in tex_name.lower() or "rain" in tex_name.lower():
+                        special_textures.append(tex_info)
+                    else:
+                        regular_textures.append(tex_info)
+                
+                # Process special textures individually
+                for rule, color_dict, value_dict, meta_data, tex_name in special_textures:
+                    # For zero match, color should be red
+                    if rule is None:
+                        item_color = "red"
+                    else:
+                        item_color = "white"
+                    
+                    item = self.create_custom_widget_item(item_color, value_dict, color_dict, meta_data)
+                    
+                    # Use CSV-like ordering for sorting (preserve original sorting)
+                    suffix_priority = {"_d": 1, "_l": 2, "_n": 3, "_m": 4, "_mask": 5, "inc": 6}
+                    
+                    # Determine suffix
+                    suffix_found = None
+                    if re.search(r'inc\d+$', tex_name.lower()):
+                        suffix_found = "inc"
+                    else:
+                        for suffix in suffix_priority:
+                            if tex_name.lower().endswith(suffix):
+                                suffix_found = suffix
+                                break
+                    
+                    # Determine priority - zero match gets highest priority to appear at top
+                    if rule is None:
+                        priority = 0  # Zero match
+                    else:
+                        priority = suffix_priority.get(suffix_found, 7)  # Default priority if no match
+                    
+                    items_to_add.append((priority, item))
+                
+                # Process remaining textures
+                if len(regular_textures) > 1:  # Multiple textures with same pattern
+                    # Check if they should all have the same properties
+                    for rule, color_dict, value_dict, meta_data, tex_name in regular_textures:
+                        # For zero match textures, don't add multiple matches flag, just mark them individually
+                        if rule is None:
+                            item_color = "red"
+                        else:
+                            value_dict["type_match"] = "multiple matches"
+                            item_color = "yellow"
+                        
+                        item = self.create_custom_widget_item(item_color, value_dict, color_dict, meta_data)
+                        
+                        # Use CSV-like ordering for sorting
+                        suffix_priority = {"_d": 1, "_l": 2, "_n": 3, "_m": 4, "_mask": 5, "inc": 6}
+                        
+                        # Determine suffix
+                        suffix_found = None
+                        if re.search(r'inc\d+$', tex_name.lower()):
+                            suffix_found = "inc"
+                        else:
+                            for suffix in suffix_priority:
+                                if tex_name.lower().endswith(suffix):
+                                    suffix_found = suffix
+                                    break
+                        
+                        # Determine priority - zero match gets highest priority
+                        if rule is None:
+                            priority = 0  # Zero match
+                        else:
+                            priority = suffix_priority.get(suffix_found, 7)  # Default priority if no match
+                        
+                        items_to_add.append((priority, item))
+                        
+                elif len(regular_textures) == 1:  # Single texture with this pattern
+                    rule, color_dict, value_dict, meta_data, tex_name = regular_textures[0]
+                    
+                    # For zero match, color should be red
+                    if rule is None:
+                        item_color = "red"
+                    else:
+                        item_color = "white"
+                        
+                    item = self.create_custom_widget_item(item_color, value_dict, color_dict, meta_data)
+                    
+                    # Use CSV-like ordering for sorting
+                    suffix_priority = {"_d": 1, "_l": 2, "_n": 3, "_m": 4, "_mask": 5, "inc": 6}
+                    
+                    # Determine suffix
+                    suffix_found = None
+                    if re.search(r'inc\d+$', tex_name.lower()):
+                        suffix_found = "inc"
+                    else:
+                        for suffix in suffix_priority:
+                            if tex_name.lower().endswith(suffix):
+                                suffix_found = suffix
+                                break
+                    
+                    # Determine priority - zero match gets highest priority
+                    if rule is None:
+                        priority = 0  # Zero match
+                    else:
+                        priority = suffix_priority.get(suffix_found, 7)  # Default priority if no match
+                    
+                    items_to_add.append((priority, item))
+            
+            # Sort items by the assigned priority (CSV-like order)
+            items_to_add.sort(key=lambda x: x[0])
             for _, item in items_to_add:
                 self.texture_tree.addTopLevelItem(item)
             
             # Resize columns
             for i in range(self.texture_tree.columnCount()):
                 self.texture_tree.resizeColumnToContents(i)
+            
+            # Update status label with count of textures needing fixing and zero matches
+            needs_fixing = sum(1 for _, item in items_to_add if item.checkState(0) == Qt.Checked)
+            zero_matches = sum(1 for _, item in items_to_add if "zero match" in item.text(2))
+            self.status_label.setText(f"Found {len(texture_list)} textures. {needs_fixing} need fixing. {zero_matches} have no matching suffix/prefix.")
                 
         except ImportError:
+            self.status_label.setText("Unreal Engine module not available")
             print("Unreal Engine module not available")
-            
-    def check_texture_properties(self, value_dict, rule, color_dict):
-        """Check texture properties against rules"""
-
-        # Check size if both values exist
-        if "size" in rule and "size" in value_dict:
-            if str(value_dict["size"]) != str(rule["size"]):
-                color_dict["size"] = "yellow"
-            
-        # Check main properties
-        for prop in ["compression_settings", "texture_group", "mip_gen_settings", "srgb"]:
-            if prop in rule and prop in value_dict:
-                if str(value_dict[prop]) != str(rule[prop]):
-                    color_dict[prop] = "red"
-                    value_dict["0/1"] = "1"           
             
     def get_texture_paths_from_selected_actors(self):
         """Get texture paths from selected actors in Unreal Engine"""
@@ -362,44 +602,92 @@ class TextureCheckerGUI(QMainWindow):
                 fix_items.append(eval(item.text(20)))
             iterator += 1
             
+        if not fix_items:
+            self.status_label.setText("No textures selected for fixing")
+            return
+            
         # Cache for texture group mappings
         display_to_enum = {}
+        fixed_count = 0
         
         # Process each item
         for fix_item in fix_items:
             tex = unreal.load_asset(fix_item["path"])
+            modified = False
             
             # Update sRGB
-            if fix_item["srgb"] != str(tex.get_editor_property("srgb")):
-                tex.set_editor_property("srgb", fix_item["srgb"] == "True")
+            if "srgb" in fix_item and fix_item["srgb"] != tex.get_editor_property("srgb"):
+                tex.set_editor_property("srgb", fix_item["srgb"])
+                modified = True
+                print(f"Updated sRGB for {fix_item['path']} to {fix_item['srgb']}")
             
             # Update compression settings
-            if fix_item["compression_settings"] != str(tex.get_editor_property("compression_settings")).split(".",1)[1].split(":",1)[0]:
-                new_compression = eval(f"unreal.TextureCompressionSettings.{fix_item['compression_settings']}")
-                tex.set_editor_property("compression_settings", new_compression)
+            if "compression_settings" in fix_item:
+                current_compression = str(tex.get_editor_property("compression_settings")).split(".",1)[1].split(":",1)[0]
+                if fix_item["compression_settings"] != current_compression:
+                    try:
+                        new_compression = eval(f"unreal.TextureCompressionSettings.{fix_item['compression_settings']}")
+                        tex.set_editor_property("compression_settings", new_compression)
+                        modified = True
+                        print(f"Updated compression for {fix_item['path']} to {fix_item['compression_settings']}")
+                    except Exception as e:
+                        print(f"Error setting compression: {e}")
             
-            # Update texture group
-            current_group = tex.get_editor_property("lod_group")
-            target_group = fix_item["texture_group"]
-            
-            if current_group.get_display_name() != target_group:
-                if target_group not in display_to_enum:
-                    for attr in dir(unreal.TextureGroup):
-                        if attr.startswith("TEXTUREGROUP_"):
-                            enum_value = getattr(unreal.TextureGroup, attr)
-                            if enum_value.get_display_name() == target_group:
-                                display_to_enum[target_group] = enum_value
-                                break
+            # Update texture group (if needed)
+            if "texture_group" in fix_item:
+                current_group = tex.get_editor_property("lod_group")
+                target_group = fix_item.get("texture_group")
                 
-                if target_group in display_to_enum:
-                    tex.set_editor_property("lod_group", display_to_enum[target_group])
+                if target_group and current_group.get_display_name() != target_group:
+                    if target_group not in display_to_enum:
+                        # Try direct mapping first
+                        enum_found = False
+                        for attr in dir(unreal.TextureGroup):
+                            if attr.startswith("TEXTUREGROUP_"):
+                                enum_value = getattr(unreal.TextureGroup, attr)
+                                if enum_value.get_display_name() == target_group:
+                                    display_to_enum[target_group] = enum_value
+                                    enum_found = True
+                                    break
+                        
+                        # If not found, try case-insensitive matching
+                        if not enum_found:
+                            target_lower = target_group.lower()
+                            for attr in dir(unreal.TextureGroup):
+                                if attr.startswith("TEXTUREGROUP_"):
+                                    enum_value = getattr(unreal.TextureGroup, attr)
+                                    if enum_value.get_display_name().lower() == target_lower:
+                                        display_to_enum[target_group] = enum_value
+                                        enum_found = True
+                                        print(f"Found texture group match: {target_group} -> {enum_value}")
+                                        break
+                    
+                    if target_group in display_to_enum:
+                        tex.set_editor_property("lod_group", display_to_enum[target_group])
+                        modified = True
+                        print(f"Updated texture group for {fix_item['path']} to {target_group}")
+                    else:
+                        print(f"Warning: Could not find texture group enum for {target_group}")
             
-            # Update mip gen settings
-            if fix_item["mip_gen_settings"] != str(tex.get_editor_property("mip_gen_settings")).split(".",1)[1].split(":",1)[0]:
-                new_mip = eval(f"unreal.TextureMipGenSettings.{fix_item['mip_gen_settings']}")
-                tex.set_editor_property("mip_gen_settings", new_mip)
+            # Update mip gen settings (if needed)
+            if "mip_gen_settings" in fix_item:
+                current_mip = str(tex.get_editor_property("mip_gen_settings")).split(".",1)[1].split(":",1)[0]
+                target_mip = fix_item.get("mip_gen_settings")
+                
+                if target_mip and current_mip != target_mip:
+                    try:
+                        new_mip = eval(f"unreal.TextureMipGenSettings.{target_mip}")
+                        tex.set_editor_property("mip_gen_settings", new_mip)
+                        modified = True
+                        print(f"Updated mip settings for {fix_item['path']} to {target_mip}")
+                    except Exception as e:
+                        print(f"Error setting mip settings: {e}")
+                
+            if modified:
+                fixed_count += 1
         
         # Refresh the UI
+        self.status_label.setText(f"Fixed {fixed_count} textures")
         self.check_texture()
 
 try:

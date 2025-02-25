@@ -1,1 +1,3 @@
 Library/
+*.pyc
+__pycache_/

@@ -7,8 +7,8 @@ import maya.utils
 def createMenu():
     try:
         # Get the directory where this script is located
-        tools_path = r"S:/Fr_Sonny/GSTools/Internal/Maya/scripts"
-        ride6_path = os.path.join(tools_path, "Ride6")
+        SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+        ride6_path = os.path.join(SCRIPT_DIR, "Ride6")
         
         # Check if Ride6 path exists
         if not os.path.exists(ride6_path):

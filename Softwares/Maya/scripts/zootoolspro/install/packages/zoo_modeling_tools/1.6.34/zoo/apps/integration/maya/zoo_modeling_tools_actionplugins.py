@@ -4,7 +4,7 @@ from zoo.libs.maya.cmds.hotkeys import definedhotkeys
 
 class ModelingIconShelf(palette.ActionPlugin):
     id = "zoo.shelf.modeling"
-    creator = "Andrew Silke"
+    creator = ""
     tags = ["shelf", "icon"]
     uiData = {"icon": "modelingMenu_shlf",
               "label": "Modeling Tools: \nTools related to polygon modelling.",
