@@ -8,7 +8,7 @@ import os.path
 # Import subfolders
 sys.path.append(__file__.rsplit("/",1)[0])
 
-python_lib = "Z:/Pipeline/GSTools/Library/Python/Python39/Lib/site-packages"
+python_lib = "//192.168.1.10/Softwares/Pipeline/GSTools/Library/Python/Python39/Lib/site-packages"
 if os.path.exists(python_lib):
     sys.path.append(python_lib)
 else:

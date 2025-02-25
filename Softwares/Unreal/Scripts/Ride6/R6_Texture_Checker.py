@@ -7,7 +7,7 @@ import re
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 #sys.path.extend([SCRIPT_DIR, PARENT_DIR, os.path.join(PARENT_DIR, "ThirdParty")])
-python_lib = "Z:/Pipeline/GSTools/Library/Python/Python39/Lib/site-packages"
+python_lib = "//192.168.1.10/Softwares/Pipeline/GSTools/Library/Python/Python39/Lib/site-packages"
 if os.path.exists(python_lib):
     sys.path.append(python_lib)
 else:
