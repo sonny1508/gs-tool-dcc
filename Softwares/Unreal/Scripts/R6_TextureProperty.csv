@@ -2,7 +2,7 @@ name,type,size,compression_settings,texture_group,mip_gen_settings,srgb,prefix_c
 livery*_d,,,,LiveryDetail,TMGS_FROM_TEXTURE_GROUP,,livery
 livery*_l,,,,Livery,TMGS_FROM_TEXTURE_GROUP,,cockpit
 livery*_n,,,,Livery,TMGS_FROM_TEXTURE_GROUP,,mechanics
-livery*_custom_mask,,,,VehicleMask,TMGS_FROM_TEXTURE_GROUP,,gauge
+livery*_custom_mask,,,TC_ALPHA,VehicleMask,TMGS_FROM_TEXTURE_GROUP,,gauge
 livery*_*_clearcoat_mask,,,,VehicleMask,TMGS_FROM_TEXTURE_GROUP,,glass
 cockpit*_d,,,,Vehicle,TMGS_FROM_TEXTURE_GROUP,,glassdecal
 cockpit*_l,,,,VehicleSpecular,TMGS_FROM_TEXTURE_GROUP,,lights

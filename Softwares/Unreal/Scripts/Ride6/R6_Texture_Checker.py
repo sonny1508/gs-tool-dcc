@@ -238,7 +238,7 @@ class TextureCheckerGUI(QMainWindow):
         item.setForeground(1, QBrush(QColor(color)))
         
         return item
-        
+
     def check_texture(self):
         """Check textures and update UI"""
         try:
@@ -339,13 +339,6 @@ class TextureCheckerGUI(QMainWindow):
                     "lod_group_enum": str(lod_group),
                     "mip_gen_settings": value_dict["mip_gen_settings"]  # Keep existing mip settings
                 }
-                
-                # Add type, compression settings and sRGB if we have a valid rule
-                if rule is not None:
-                    meta_data["type"] = rule["type"]
-                    meta_data["compression_settings"] = rule["compression_settings"]
-                    meta_data["srgb"] = rule["srgb"]
-                
                 # Color dictionary for highlighting
                 color_dict = {}
                 
@@ -356,17 +349,97 @@ class TextureCheckerGUI(QMainWindow):
                 
                 # Check if properties need to be updated (only if we have a rule)
                 if rule is not None:
-                    # Check compression settings
-                    if current_compression != rule["compression_settings"]:
-                        color_dict["compression_settings"] = "red"
-                        value_dict["0/1"] = "1"
+                    # Check compression settings - MODIFIED TO ADD CSV OVERRIDE
+                    use_compression_from_csv = False
+                    compression_from_csv = None
                     
-                    # Check sRGB
+                    # Try to find matching entry in CSV for compression
+                    for prop in csv_properties:
+                        if not prop.get("name") or not prop.get("compression_settings"):
+                            continue
+                            
+                        csv_name_patterns = [p.strip().lower() for p in prop.get("name", "").split("|")]
+                        tex_name_lower = tex_name.lower()
+                        
+                        # Try exact match first
+                        if any(tex_name_lower == pattern for pattern in csv_name_patterns):
+                            compression_from_csv = prop.get("compression_settings")
+                            use_compression_from_csv = True
+                            break
+                        
+                        # Try wildcard pattern match
+                        for pattern in csv_name_patterns:
+                            if "*" in pattern:
+                                pattern_regex = pattern.replace("*", ".*")
+                                try:
+                                    if re.match(f"^{pattern_regex}$", tex_name_lower):
+                                        compression_from_csv = prop.get("compression_settings")
+                                        use_compression_from_csv = True
+                                        break
+                                except re.error:
+                                    continue
+                        
+                        if use_compression_from_csv:
+                            break
+                    
+                    # If we found a compression setting in the CSV, use that, otherwise use the rule
+                    if use_compression_from_csv and compression_from_csv:
+                        meta_data["compression_settings"] = compression_from_csv
+                        if current_compression != compression_from_csv:
+                            color_dict["compression_settings"] = "red"
+                            value_dict["0/1"] = "1"
+                    else:
+                        # Original code for rule-based compression
+                        if current_compression != rule["compression_settings"]:
+                            color_dict["compression_settings"] = "red"
+                            value_dict["0/1"] = "1"
+                    
+                    # Check sRGB - UNTOUCHED FROM ORIGINAL
                     if current_srgb != rule["srgb"]:
                         color_dict["srgb"] = "red"
                         value_dict["0/1"] = "1"
                 
-                # Find texture group from CSV
+                # Find matching entry in CSV for overrides
+                csv_override = None
+                for prop in csv_properties:
+                    if not prop.get("name"):
+                        continue
+                        
+                    csv_name_patterns = [p.strip().lower() for p in prop.get("name", "").split("|")]
+                    tex_name_lower = tex_name.lower()
+                    
+                    # Try exact match first
+                    if any(tex_name_lower == pattern for pattern in csv_name_patterns):
+                        csv_override = prop
+                        break
+                    
+                    # Try wildcard pattern match
+                    for pattern in csv_name_patterns:
+                        if "*" in pattern:
+                            pattern_regex = pattern.replace("*", ".*")
+                            try:
+                                if re.match(f"^{pattern_regex}$", tex_name_lower):
+                                    csv_override = prop
+                                    break
+                            except re.error:
+                                continue
+                    
+                    if csv_override:
+                        break
+                
+                # Apply CSV overrides if found (this is the new part)
+                if csv_override:
+                    # Override compression settings if specified in CSV
+                    if "compression_settings" in csv_override and csv_override["compression_settings"]:
+                        compression_from_csv = csv_override["compression_settings"]
+                        meta_data["compression_settings"] = compression_from_csv
+                        
+                        # Highlight if different from current
+                        if current_compression != compression_from_csv:
+                            color_dict["compression_settings"] = "red"
+                            value_dict["0/1"] = "1"
+                
+                # Find texture group from CSV (keep original logic)
                 texture_group_from_csv = None
                 
                 # Try to find matching entry in CSV
@@ -383,9 +456,12 @@ class TextureCheckerGUI(QMainWindow):
                     for pattern in csv_name_patterns:
                         if "*" in pattern:
                             pattern_regex = pattern.replace("*", ".*")
-                            if re.match(f"^{pattern_regex}$", tex_name_lower):
-                                texture_group_from_csv = prop.get("texture_group")
-                                break
+                            try:
+                                if re.match(f"^{pattern_regex}$", tex_name_lower):
+                                    texture_group_from_csv = prop.get("texture_group")
+                                    break
+                            except re.error:
+                                continue
                     
                     if texture_group_from_csv:
                         break
@@ -552,7 +628,7 @@ class TextureCheckerGUI(QMainWindow):
         except ImportError:
             self.status_label.setText("Unreal Engine module not available")
             print("Unreal Engine module not available")
-            
+
     def get_texture_paths_from_selected_actors(self):
         """Get texture paths from selected actors in Unreal Engine"""
         import unreal
