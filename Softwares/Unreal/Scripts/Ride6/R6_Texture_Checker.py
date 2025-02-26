@@ -341,19 +341,21 @@ class TextureCheckerGUI(QMainWindow):
                 }
                 # Color dictionary for highlighting
                 color_dict = {}
-                
+            
                 # Check size - should be 4096x4096, but we only highlight it as it can't be fixed in Unreal
                 if "size" in value_dict:
                     if value_dict["size"] != "4096x4096":
                         color_dict["size"] = "yellow"
                 
+                # Add type, compression settings and sRGB if we have a valid rule
+                if rule is not None:
+                    meta_data["type"] = rule["type"]
+                    meta_data["compression_settings"] = rule["compression_settings"]
+                    meta_data["srgb"] = rule["srgb"]
+                
                 # Check if properties need to be updated (only if we have a rule)
                 if rule is not None:
-                    # Check compression settings - MODIFIED TO ADD CSV OVERRIDE
-                    use_compression_from_csv = False
-                    compression_from_csv = None
-                    
-                    # Try to find matching entry in CSV for compression
+                    # Check for CSV override for compression settings
                     for prop in csv_properties:
                         if not prop.get("name") or not prop.get("compression_settings"):
                             continue
@@ -363,8 +365,7 @@ class TextureCheckerGUI(QMainWindow):
                         
                         # Try exact match first
                         if any(tex_name_lower == pattern for pattern in csv_name_patterns):
-                            compression_from_csv = prop.get("compression_settings")
-                            use_compression_from_csv = True
+                            meta_data["compression_settings"] = prop.get("compression_settings")
                             break
                         
                         # Try wildcard pattern match
@@ -373,26 +374,15 @@ class TextureCheckerGUI(QMainWindow):
                                 pattern_regex = pattern.replace("*", ".*")
                                 try:
                                     if re.match(f"^{pattern_regex}$", tex_name_lower):
-                                        compression_from_csv = prop.get("compression_settings")
-                                        use_compression_from_csv = True
+                                        meta_data["compression_settings"] = prop.get("compression_settings")
                                         break
                                 except re.error:
                                     continue
-                        
-                        if use_compression_from_csv:
-                            break
                     
-                    # If we found a compression setting in the CSV, use that, otherwise use the rule
-                    if use_compression_from_csv and compression_from_csv:
-                        meta_data["compression_settings"] = compression_from_csv
-                        if current_compression != compression_from_csv:
-                            color_dict["compression_settings"] = "red"
-                            value_dict["0/1"] = "1"
-                    else:
-                        # Original code for rule-based compression
-                        if current_compression != rule["compression_settings"]:
-                            color_dict["compression_settings"] = "red"
-                            value_dict["0/1"] = "1"
+                    # Check if compression settings need to be updated
+                    if current_compression != meta_data["compression_settings"]:
+                        color_dict["compression_settings"] = "red"
+                        value_dict["0/1"] = "1"
                     
                     # Check sRGB - UNTOUCHED FROM ORIGINAL
                     if current_srgb != rule["srgb"]:
