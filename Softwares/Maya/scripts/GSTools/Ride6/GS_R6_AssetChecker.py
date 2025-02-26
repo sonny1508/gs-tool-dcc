@@ -85,15 +85,14 @@ def getPiecesList():
                 pieceInfo("FAIRING_BAR_ENDURO_LOD", ["mat_preset_enduro"]),
                 pieceInfo("HEADLIGHT_GRILLE_LOD", ["mat_mechanics"]),
                 pieceInfo("HEADLIGHT_GRILLE_ENDURO_LOD", ["mat_preset_enduro"]),
-                pieceInfo("R_HANDGUARDS_LOD", ["mat_livery_0", "mat_livery_1"]),
-                pieceInfo("L_HANDGUARDS_LOD", ["mat_livery_0", "mat_livery_1"]),
-                pieceInfo("R_HANDGUARDS_ENDURO_LOD", ["mat_preset_enduro"]),
-                pieceInfo("L_HANDGUARDS_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("R_HANDGUARD_LOD", ["mat_livery_0", "mat_livery_1"]),
+                pieceInfo("L_HANDGUARD_LOD", ["mat_livery_0", "mat_livery_1"]),
+                pieceInfo("R_HANDGUARD_ENDURO_LOD", ["mat_preset_enduro"]),
+                pieceInfo("L_HANDGUARD_ENDURO_LOD", ["mat_preset_enduro"]),
                 pieceInfo("SUMP_GUARD_LOD", ["mat_mechanics"]),
                 pieceInfo("SUMP_GUARD_ENDURO_LOD", ["mat_preset_enduro"]),
                 pieceInfo("RADIATOR_GRILLE_LOD", ["mat_mechanics"]),
                 pieceInfo("RADIATOR_GRILLE_ENDURO_LOD", ["mat_preset_enduro"])
-                #pieceInfo("MUFFLER_00*_LOD", ["mat_muffler"])
     ]
 
     
