@@ -9,7 +9,7 @@ for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
 :: Define source and destination paths
 set "source_path=%GSTOOLS_ROOT%\Library\Maya\pymel"
-set "destination_path=%USERPROFILE%\Documents\maya\pymel"
+set "destination_path=D\pymel"
 
 :: Check if source directory exists
 if not exist "%source_path%" exit /b 1

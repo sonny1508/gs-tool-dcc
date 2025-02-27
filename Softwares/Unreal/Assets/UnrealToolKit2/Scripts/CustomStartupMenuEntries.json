@@ -253,9 +253,9 @@
     },
 	{
       "owner": "GlendaStudio",
-      "section_name": "GSToolkit",
-      "name": "GSToolkit",
-      "label": "GSToolkit",
+      "section_name": "GSTools",
+      "name": "GSTools",
+      "label": "GSTools",
       "sub_menus": [
         {
           "section_name": "Ride6",
