@@ -118,6 +118,11 @@ mcCommandsList = {
         'category': 'Actions',
         'isAction': True,
     },
+    "fixLaminaFaces": {
+        'label': 'Fix Lamina Faces',
+        'category': 'Actions',
+        'isAction': True,
+    },
     "deleteHistory": {
         'label': 'History',
         'category': 'Delete',

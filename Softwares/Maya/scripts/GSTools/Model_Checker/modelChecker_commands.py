@@ -437,6 +437,33 @@ def centerPivots(nodes, _):
                 cmds.warning("Failed to center pivots on {}".format(nodeName))
     return "nodes", affected_nodes
 
+def fixLaminaFaces(nodes, _):
+    """Delete lamina faces on the specified nodes."""
+    affected_nodes = []
+    original_selection = cmds.ls(selection=True) or []
+    
+    try:
+        for node in nodes:
+            nodeName = _getNodeName(node)
+            if nodeName:
+                # Use Maya's built-in polyInfo command to find lamina faces
+                lamina_faces = cmds.polyInfo(nodeName, laminaFaces=True) or []
+                
+                # If lamina faces were found, delete them
+                if lamina_faces:
+                    try:
+                        cmds.delete(lamina_faces)
+                        affected_nodes.append(node)
+                    except Exception as e:
+                        cmds.warning(f"Failed to delete lamina faces on {nodeName}: {str(e)}")
+    finally:
+        # Restore original selection
+        if original_selection:
+            cmds.select(original_selection, replace=True)
+        else:
+            cmds.select(clear=True)
+            
+    return "nodes", affected_nodes
 
 def deleteHistory(nodes, _):
     """Delete history on the specified nodes."""
