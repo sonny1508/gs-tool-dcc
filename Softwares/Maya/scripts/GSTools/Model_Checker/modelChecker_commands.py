@@ -455,7 +455,7 @@ def fixLaminaFaces(nodes, _):
                         cmds.delete(lamina_faces)
                         affected_nodes.append(node)
                     except Exception as e:
-                        cmds.warning(f"Failed to delete lamina faces on {nodeName}: {str(e)}")
+                        cmds.warning("Failed to delete lamina faces on {}: {}".format(nodeName, str(e)))
     finally:
         # Restore original selection
         if original_selection:
@@ -464,6 +464,33 @@ def fixLaminaFaces(nodes, _):
             cmds.select(clear=True)
             
     return "nodes", affected_nodes
+
+def reverseNormals(nodes, _):
+    """Reverse normals on the specified nodes."""
+    affected_nodes = []
+    original_selection = cmds.ls(selection=True) or []
+    
+    try:
+        for node in nodes:
+            nodeName = _getNodeName(node)
+            if nodeName:
+                try:
+                    # Select the node and perform normal reversal
+                    cmds.select(nodeName, replace=True)
+                    mel.eval('performPolyNormal 0 -1 0')
+                    affected_nodes.append(node)
+                    cmds.warning("Reversed normals on {}".format(nodeName))
+                except Exception as e:
+                    cmds.warning("Failed to reverse normals on {}: {}".format(nodeName, str(e)))
+    finally:
+        # Restore original selection
+        if original_selection:
+            cmds.select(original_selection, replace=True)
+        else:
+            cmds.select(clear=True)
+            
+    return "nodes", affected_nodes
+
 
 def deleteHistory(nodes, _):
     """Delete history on the specified nodes."""

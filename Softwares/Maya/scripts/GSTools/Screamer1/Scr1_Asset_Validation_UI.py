@@ -327,13 +327,13 @@ def exportSelectionAsFBX(*args):
         # Include geometry settings
         mel.eval('FBXExportSmoothingGroups -v true')      # Smoothing Groups
         mel.eval('FBXExportSmoothMesh -v true')           # Smooth Mesh
-        mel.eval('FBXExportReferencedAssetsContent -v true')  # Referenced Assets Content
+        mel.eval('FBXExportTriangulate -v true')         # Triangulate
         
         # Disable other geometry settings
         mel.eval('FBXExportTangents -v false')            # Tangents and Binormals
         mel.eval('FBXExportInstances -v false')           # Preserve Instances
         mel.eval('FBXExportHardEdges -v false')           # Hard Edges
-        mel.eval('FBXExportTriangulate -v false')         # Triangulate
+        mel.eval('FBXExportReferencedAssetsContent -v false')  # Referenced Assets Content
         
         # Disable animation, cameras, lights, etc.
         mel.eval('FBXExportBakeComplexAnimation -v false')  # Animation
@@ -369,7 +369,7 @@ def exportSelectionAsFBX(*args):
     pm.textScrollList("resultField", e=True, a="- FBX Version: 2020")
     pm.textScrollList("resultField", e=True, a="- Up Axis: Z")
     pm.textScrollList("resultField", e=True, a="- Units: Centimeters")
-    pm.textScrollList("resultField", e=True, a="- Included: Smoothing Groups, Smooth Mesh, Referenced Assets")
+    pm.textScrollList("resultField", e=True, a="- Included: Smoothing Groups, Smooth Mesh, Triangulate")
     pm.textScrollList("resultField", e=True, a="- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
 
 def UI():

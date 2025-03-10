@@ -123,6 +123,11 @@ mcCommandsList = {
         'category': 'Actions',
         'isAction': True,
     },
+    "reverseNormals": {
+        'label': 'Reverse Normals',
+        'category': 'Actions',
+        'isAction': True,
+    },
     "deleteHistory": {
         'label': 'History',
         'category': 'Delete',

@@ -251,28 +251,33 @@
         }
       ]
     },
-	{
+	  {
       "owner": "GlendaStudio",
-      "section_name": "GSTools",
-      "name": "GSTools",
-      "label": "GSTools",
-      "sub_menus": [
+      "section_name": "GS Pipeline",
+      "name": "GS Pipeline",
+      "label": "GS Pipeline",
+      "sub_menus":
+      [
         {
-          "section_name": "Ride6",
-          "name": "Ride6",
-          "label": "Ride6",
-          "tool_tip": "Glenda Ride6 Toolkit",
-          "commands": [
-					{
-						"name": "Vehicle",
-						"label": "Vehicle",
-						"path": "/ignitiongameplay/assets/GSTools/GSTools.GSTools"
-					}
-				]
-			}
-		]
-			
-	}
- 
+          "section_name": "GSTools",
+          "name": "GSTools",
+          "label": "GSTools",
+          "tool_tip": "GS Toolkit",
+          "commands":
+          [
+            {
+						  "name": "Ride6",
+						  "label": "RIde6",
+						  "path": "/ignitiongameplay/assets/GSTools/GS_Ride6.GS_Ride6"
+            },
+            {
+						  "name": "Screamer1",
+						  "label": "Screamer1",
+						  "path": "/ignitiongameplay/assets/GSTools/GS_Screamer1.GS_Screamer1"
+            }
+          ]
+			  }
+		  ]
+	  }
 	]
 }
