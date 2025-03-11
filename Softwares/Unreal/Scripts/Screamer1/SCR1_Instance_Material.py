@@ -2,6 +2,7 @@ from __future__ import unicode_literals, print_function
 import sys
 import os
 import re
+import csv
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -21,8 +22,26 @@ class MaterialInstanceCreator(QWidget):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.material_slot_widgets = []
         self.static_mesh = None
+        self.material_library = []
+        self.load_material_library()
         self.load_style()
         self.setup_ui()
+    
+    def load_material_library(self):
+        """Load material data from CSV file"""
+        csv_path = os.path.join(SCRIPT_DIR, "SCR1_Material_Library.csv")
+        if not os.path.exists(csv_path):
+            csv_path = os.path.join(PARENT_DIR, "SCR1_Material_Library.csv")
+        
+        if os.path.exists(csv_path):
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    self.material_library = list(reader)
+            except Exception as e:
+                QMessageBox.warning(self, "Warning", f"Failed to load material library: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Warning", "Material library CSV file not found")
     
     def load_style(self):
         """Load QSS style file"""
@@ -338,74 +357,145 @@ class MaterialInstanceCreator(QWidget):
                 'material_name': "None"
             }]
 
-    def select_material_for_slot(self, material_display):
-        """Select a material or material instance from the content browser"""
-        # Get selected assets from content browser
+    def on_material_selected(self, combo_box, index):
+        """Handle material selection from the dropdown"""
+        if index <= 0:  # Skip the "Select Material" item
+            # Reset to default style
+            combo_box.setStyleSheet("""
+                QComboBox {
+                    background-color: #333333;
+                    color: #DDDDDD;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                    padding: 2px 8px;
+                }
+                QComboBox:focus {
+                    border: 1px solid #666666;
+                    outline: none;
+                }
+                QComboBox::drop-down {
+                    subcontrol-origin: padding;
+                    subcontrol-position: right;
+                    width: 20px;
+                    border-left: 1px solid #555555;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #333333;
+                    color: #DDDDDD;
+                    selection-background-color: #444444;
+                    selection-color: #FFFFFF;
+                }
+            """)
+            return
+            
         try:
-            selected_assets = unreal.EditorUtilityLibrary.get_selected_assets()
+            # Get the parent widget
+            parent_widget = combo_box.parent()
             
-            for asset in selected_assets:
-                # Try different ways to check if it's a material or material instance
-                is_valid_material = False
-                material_name = "Unknown"
-                final_material = None
-                
-                # Method 1: Check if it's a base material or material instance
-                try:
-                    if hasattr(asset, 'is_a'):
-                        # Material or MaterialInstance
-                        is_base_material = asset.is_a(unreal.Material)
-                        is_material_instance = asset.is_a(unreal.MaterialInstanceConstant)
-                        
-                        # Accept both base materials and material instances
-                        is_valid_material = is_base_material or is_material_instance
-                        
-                        # If it's a material instance, try to get the parent base material
-                        if is_material_instance:
-                            try:
-                                # Attempt to get parent material of instance
-                                if hasattr(asset, 'get_editor_property'):
-                                    parent = asset.get_editor_property('parent')
-                                    
-                                    # If parent exists, but use the instance itself if needed
-                                    final_material = parent if parent else asset
-                                    final_material = final_material if final_material.is_a(unreal.Material) else asset
-                            except:
-                                final_material = asset  # Fallback to the instance itself
-                        else:
-                            final_material = asset
-                except:
-                    pass
-                
-                # Method 2: class name (fallback)
-                if not is_valid_material:
-                    try:
-                        class_name = asset.get_class().get_name()
-                        is_valid_material = class_name in ['Material', 'MaterialInstanceConstant']
-                        final_material = asset
-                    except:
-                        pass
-                
-                if is_valid_material and final_material:
-                    # Store the material and update display
-                    material_name = final_material.get_name()
-                    
-                    # Store the material reference in the parent widget
-                    parent_widget = material_display.parent()
-                    setattr(parent_widget, "material", final_material)
-                    
-                    # Update the display
-                    material_display.setText(material_name)
-                    material_display.setStyleSheet("background-color: #c8f7c5;")  # Light green
-                    return True
+            # Get the material info from the library
+            material_info = self.material_library[index - 1]  # -1 because index 0 is "Select Material"
+            material_name = material_info.get('name', '')
+            material_path = material_info.get('directory', '')
             
-            # If we get here, no valid material was found
-            material_display.setText("No material selected")
-            material_display.setStyleSheet("background-color: #ffcccc;")  # Light red
+            # Ensure the path has the proper UE format
+            if not material_path.startswith('/Game/'):
+                material_path = f"/Game/{material_path}"
             
-            return False
-        except:
-            return False
+            # Create the full asset path
+            full_path = f"{material_path}/{material_name}"
+            if not full_path.endswith('.{0}'.format(material_name)):
+                full_path = f"{full_path}.{material_name}"
+            
+            # Load the material asset
+            material = unreal.EditorAssetLibrary.load_asset(full_path)
+            
+            if material:
+                # Store the material reference in the parent widget
+                setattr(parent_widget, "material", material)
+                
+                # Update the display with success style while preserving dropdown styling
+                combo_box.setStyleSheet("""
+                    QComboBox {
+                        background-color: #386e36;
+                        color: #FFFFFF;
+                        border: 1px solid #555555;
+                        border-radius: 3px;
+                        padding: 2px 8px;
+                    }
+                    QComboBox:focus {
+                        border: 1px solid #666666;
+                        outline: none;
+                    }
+                    QComboBox::drop-down {
+                        subcontrol-origin: padding;
+                        subcontrol-position: right;
+                        width: 20px;
+                        border-left: 1px solid #555555;
+                    }
+                    QComboBox QAbstractItemView {
+                        background-color: #333333;
+                        color: #DDDDDD;
+                        selection-background-color: #444444;
+                        selection-color: #FFFFFF;
+                    }
+                """)
+            else:
+                # Update with error style while preserving dropdown styling
+                combo_box.setStyleSheet("""
+                    QComboBox {
+                        background-color: #8e3636;
+                        color: #FFFFFF;
+                        border: 1px solid #555555;
+                        border-radius: 3px;
+                        padding: 2px 8px;
+                    }
+                    QComboBox:focus {
+                        border: 1px solid #666666;
+                        outline: none;
+                    }
+                    QComboBox::drop-down {
+                        subcontrol-origin: padding;
+                        subcontrol-position: right;
+                        width: 20px;
+                        border-left: 1px solid #555555;
+                    }
+                    QComboBox QAbstractItemView {
+                        background-color: #333333;
+                        color: #DDDDDD;
+                        selection-background-color: #444444;
+                        selection-color: #FFFFFF;
+                    }
+                """)
+                setattr(parent_widget, "material", None)
+        except Exception as e:
+            # Update with error style while preserving dropdown styling
+            combo_box.setStyleSheet("""
+                QComboBox {
+                    background-color: #8e3636;
+                    color: #FFFFFF;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                    padding: 2px 8px;
+                }
+                QComboBox:focus {
+                    border: 1px solid #666666;
+                    outline: none;
+                }
+                QComboBox::drop-down {
+                    subcontrol-origin: padding;
+                    subcontrol-position: right;
+                    width: 20px;
+                    border-left: 1px solid #555555;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: #333333;
+                    color: #DDDDDD;
+                    selection-background-color: #444444;
+                    selection-color: #FFFFFF;
+                }
+            """)
+            setattr(parent_widget, "material", None)
+            QMessageBox.warning(self, "Warning", f"Error loading material: {str(e)}")
 
     def create_material_slot_widget(self, index, material_slot):
         widget = QWidget()
@@ -438,21 +528,54 @@ class MaterialInstanceCreator(QWidget):
         layout.addWidget(mi_name_input)
         setattr(widget, "mi_name_input", mi_name_input)
         
-        # Material selection
-        select_button = QPushButton("Select Material")
-        select_button.setFixedWidth(100)  # Make it compact
-        layout.addWidget(select_button)
+        # Material dropdown
+        material_combo = QComboBox()
+        material_combo.addItem("Select Material")
         
-        # Material display textbox
-        material_display = QLineEdit("No material selected")
-        material_display.setReadOnly(True)
-        layout.addWidget(material_display)
+        # Add materials from the library
+        for material_info in self.material_library:
+            material_name = material_info.get('name', '')
+            material_combo.addItem(material_name)
         
-        # Connect the button to material selection
-        select_button.clicked.connect(lambda: self.select_material_for_slot(material_display))
+        # Set minimum width for dropdown
+        material_combo.setMinimumWidth(200)
+        
+        # Improve dropdown styling - remove orange focus box
+        material_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #333333;
+                color: #DDDDDD;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 2px 8px;
+            }
+            QComboBox:focus {
+                border: 1px solid #666666;
+                outline: none;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: right;
+                width: 20px;
+                border-left: 1px solid #555555;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #333333;
+                color: #DDDDDD;
+                selection-background-color: #444444;
+                selection-color: #FFFFFF;
+            }
+        """)
+        
+        # Connect dropdown selection change
+        material_combo.currentIndexChanged.connect(
+            lambda index: self.on_material_selected(material_combo, index)
+        )
+        
+        layout.addWidget(material_combo)
         
         # Store important data
-        setattr(widget, "material_display", material_display)
+        setattr(widget, "material_combo", material_combo)
         setattr(widget, "slot_name", slot_name)
         setattr(widget, "slot_index", material_slot['index'])
         setattr(widget, "material", None)  # Store material reference here

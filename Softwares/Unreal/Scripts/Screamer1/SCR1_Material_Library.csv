@@ -1,0 +1,5 @@
+name,directory
+BASE_Generic,/Game/assets/graphics/env/EnvShared/Materials/BaseMaterials
+BASE_Generic_Building_3Overlay_1Layer,/Game/assets/graphics/env/EnvShared/Materials/BaseMaterials
+BASE_Generic_InstanceColor,/Game/assets/graphics/env/EnvShared/Materials/BaseMaterials
+BASE_InteriorMapping,/Game/assets/graphics/env/EnvShared/Materials/BaseMaterials
