@@ -258,101 +258,126 @@ class MaterialInstanceCreator(QWidget):
         material_slots = []
         
         try:
-            # First try to find an actor in the scene using this static mesh
-            editor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-            selected_actors = editor_subsystem.get_selected_level_actors()
+            # First try to get material slots directly from the static mesh
+            material_slot_names = []
+            original_slot_names = []
             
-            static_mesh_component = None
-            component_found = False
+            # Method 1: Try to get material slot names directly
+            if hasattr(static_mesh, "get_material_slot_names"):
+                try:
+                    original_slot_names = static_mesh.get_material_slot_names()
+                    material_slot_names = list(original_slot_names)  # Make a copy to preserve originals
+                except:
+                    pass
+                    
+            # Method 2: Try to get them from static_materials
+            if not material_slot_names and hasattr(static_mesh, "static_materials"):
+                try:
+                    static_materials = static_mesh.static_materials
+                    if static_materials:
+                        for mat in static_materials:
+                            if hasattr(mat, 'material_slot_name'):
+                                material_slot_names.append(mat.material_slot_name)
+                            else:
+                                material_slot_names.append("")
+                        original_slot_names = list(material_slot_names)
+                except:
+                    pass
             
-            if selected_actors:
+            # Method 3: Get from the static mesh component in a selected actor
+            if not material_slot_names:
+                editor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+                selected_actors = editor_subsystem.get_selected_level_actors()
+                
                 for actor in selected_actors:
                     # Try to get the static mesh component
                     if hasattr(actor, "static_mesh_component"):
-                        static_mesh_component = actor.static_mesh_component
-                        
-                        # Check if this component uses our static mesh
-                        if static_mesh_component and hasattr(static_mesh_component, "static_mesh"):
-                            component_static_mesh = static_mesh_component.static_mesh
+                        component = actor.static_mesh_component
+                        if component and hasattr(component, "static_mesh"):
+                            component_static_mesh = component.static_mesh
                             if component_static_mesh == static_mesh:
-                                component_found = True
+                                # Try to get material slot names from the component
+                                if hasattr(component, "get_material_slot_names"):
+                                    try:
+                                        original_slot_names = component.get_material_slot_names()
+                                        material_slot_names = list(original_slot_names)
+                                    except:
+                                        pass
                                 break
             
-            if component_found and static_mesh_component:
-                # Get material info
-                num_materials = 0
-                if hasattr(static_mesh_component, "get_num_materials"):
-                    num_materials = static_mesh_component.get_num_materials()
-                elif hasattr(static_mesh_component, "get_materials_num"):
-                    num_materials = static_mesh_component.get_materials_num()
-                else:
-                    # Try to get it directly from component
-                    materials = getattr(static_mesh_component, "materials", [])
-                    num_materials = len(materials)
-                
-                # Try different methods to get material slot names
-                material_slot_names = []
+            # Get number of materials directly from static mesh
+            num_materials = 0
+            if hasattr(static_mesh, "get_num_materials"):
+                num_materials = static_mesh.get_num_materials()
+            elif hasattr(static_mesh, "get_materials_num"):
+                num_materials = static_mesh.get_materials_num()
+            elif hasattr(static_mesh, "static_materials"):
+                num_materials = len(static_mesh.static_materials)
+            else:
+                # Last resort - try to get number of sections
+                if hasattr(static_mesh, "get_num_sections"):
+                    try:
+                        num_materials = static_mesh.get_num_sections(0)  # LOD 0
+                    except:
+                        pass
+            
+            # Make sure we have enough slot names for all materials
+            while len(material_slot_names) < num_materials:
+                material_slot_names.append(f"Material_{len(material_slot_names)}")
+            
+            # Process each material slot
+            for i in range(num_materials):
+                # Get material at this slot
+                material = None
                 try:
-                    if hasattr(static_mesh, "get_material_slot_names"):
-                        material_slot_names = static_mesh.get_material_slot_names()
-                    elif hasattr(static_mesh, "static_materials"):
-                        material_slot_names = [mat.material_slot_name for mat in static_mesh.static_materials if hasattr(mat, 'material_slot_name')]
+                    if hasattr(static_mesh, "get_material"):
+                        material = static_mesh.get_material(i)
                 except:
                     pass
                 
-                # Process each material slot
-                for i in range(num_materials):
-                    material = None
-                    if hasattr(static_mesh_component, "get_material"):
-                        material = static_mesh_component.get_material(i)
-                    
-                    # Get the slot name
-                    slot_name = f"Material_{i}"
-                    if i < len(material_slot_names) and material_slot_names[i]:
-                        try:
-                            slot_name = str(material_slot_names[i])
-                        except:
-                            pass
-                    
-                    # Handle material naming
-                    material_name = material.get_name() if material else "None"
-                    if material:
-                        try:
-                            # Check if it's a Material Instance
-                            if material.is_a(unreal.MaterialInstanceConstant):
-                                # Rename only the Material Instance to match the slot name
-                                try:
-                                    material.set_name(slot_name)
-                                    material_name = slot_name
-                                except:
-                                    # If renaming fails, keep the original name
-                                    material_name = material.get_name()
-                        except:
-                            pass
-                    
-                    material_slots.append({
-                        'index': i,
-                        'name': slot_name,
-                        'material': material,
-                        'material_name': material_name
-                    })
+                # Get the slot name
+                slot_name = f"Material_{i}"
+                if i < len(material_slot_names) and material_slot_names[i]:
+                    slot_name = str(material_slot_names[i])
+                
+                # Get material name without modifying it
+                material_name = "None"
+                if material:
+                    try:
+                        material_name = material.get_name()
+                    except:
+                        pass
+                
+                # Store slot info
+                material_slots.append({
+                    'index': i,
+                    'name': slot_name,
+                    'original_name': original_slot_names[i] if i < len(original_slot_names) else slot_name,
+                    'material': material,
+                    'material_name': material_name
+                })
             
             # If we found no material slots, return a default one
             if not material_slots:
                 material_slots.append({
                     'index': 0,
                     'name': "Material_0",
+                    'original_name': "Material_0",
                     'material': None,
                     'material_name': "None"
                 })
             
             return material_slots
         
-        except:
+        except Exception as e:
+            # For debugging, uncomment this line
+            # QMessageBox.warning(self, "Error", f"Error getting material slots: {str(e)}")
+            
             # Return at least one default slot
             return [{
                 'index': 0,
                 'name': "Material_0",
+                'original_name': "Material_0",
                 'material': None,
                 'material_name': "None"
             }]
