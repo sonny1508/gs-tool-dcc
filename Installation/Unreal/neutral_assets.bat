@@ -16,7 +16,8 @@ set "destination_path_screamer1=D:\SCR 1\Engine\Plugins\ignition\ignitiongamepla
 if not exist "%source_path%" exit /b 1
 
 :: Create destination directory if it doesn't exist
-if not exist "%destination_path%" mkdir "%destination_path%"
+if not exist "%destination_path_ride6%" mkdir "%destination_path_ride6%"
+if not exist "%destination_path_screamer1%" mkdir "%destination_path_screamer1%"
 
 :: Delete all existing content in the destination directory
 :: if exist "%destination_path%\*" del /s /q "%destination_path%\*"
