@@ -7,8 +7,11 @@ set "BAT_DIR=%~dp0"
 :: Move up two levels to get to GSTools root
 for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
+:: Construct the path to application plugins
+set "source_path_autodesk=%GSTOOLS_ROOT%\Softwares\Autodesk\ApplicationPlugins"
+
 :: Construct the path to user setup
-set "source_path_users=%GSTOOLS_ROOT%\Softwares\Maya"
+set "source_path_users=%GSTOOLS_ROOT%\Softwares\Autodesk\Maya"
 
 :: Get the IP address of this machine
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
@@ -65,6 +68,9 @@ if not exist "C:\Users\%REAL_USER%" (
 :: Define source and destination paths
 set "destination_path_users=C:\Users\%REAL_USER%\Documents\maya"
 
+:: Define source and destination paths
+set "destination_path_autodesk=C:\ProgramData\Autodesk\ApplicationPlugins"
+
 :: Debugging: Print the detected user
 echo Detected user: %REAL_USER%
 echo Installing to: %destination_path_users%
@@ -78,7 +84,10 @@ if not exist "C:\Users\%REAL_USER%" (
 :: Create destination directories if they don't exist
 mkdir "%destination_path_users%" 2>nul
 
-:: Copy all files and subdirectories
+:: Copy all files and subdirectories for maya
 xcopy "%source_path_users%\*" "%destination_path_users%" /Y /E /I
+
+:: Copy all files and subdirectories for autodesk
+xcopy "%source_path_autodesk%\*" "%destination_path_autodesk%" /Y /E /I
 
 echo Installation completed for user: %REAL_USER%

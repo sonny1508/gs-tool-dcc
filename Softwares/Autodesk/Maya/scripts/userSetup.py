@@ -42,7 +42,7 @@ def addPaths():
         network_path = "//192.168.1.10/Softwares/Technical_Script"
         
         # Primary GSTools path
-        primary_gst_path = "//192.168.1.10/Softwares/Pipeline/GSTools/Softwares/Maya/scripts/GSTools"
+        primary_gst_path = "//192.168.1.10/Softwares/Pipeline/GSTools/Softwares/Autodesk/Maya/scripts/GSTools"
         # Backup GSTools path for when network is down
         # Use %USERPROFILE% equivalent in Python to get current user's directory
         user_home = os.path.expanduser("~")

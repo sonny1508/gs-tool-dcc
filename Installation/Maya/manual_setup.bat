@@ -7,8 +7,14 @@ set "BAT_DIR=%~dp0"
 :: Move up two levels to get to GSTools root
 for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
+:: Construct the path to application plugins
+set "source_path_autodesk=%GSTOOLS_ROOT%\Softwares\Autodesk\ApplicationPlugins"
+
 :: Construct the path to user setup
-set "source_path_users=%GSTOOLS_ROOT%\Softwares\Maya"
+set "source_path_users=%GSTOOLS_ROOT%\Softwares\Autodesk\Maya"
+
+:: Define source and destination paths
+set "destination_path_autodesk=C:\ProgramData\Autodesk\ApplicationPlugins"
 
 :: Define source and destination paths
 set "destination_path_users=%USERPROFILE%\Documents\maya"
@@ -23,5 +29,8 @@ mkdir "%destination_path_users%" 2>nul
 :: if exist "%destination_path_modules%\*" del /s /q "%destination_path_modules%\*"
 :: for /d %%i in ("%destination_path_modules%\*") do rmdir /s /q "%%i"
 
-:: Copy all files and subdirectories
+:: Copy all files and subdirectories for maya
 xcopy "%source_path_users%\*" "%destination_path_users%" /Y /E /I
+
+:: Copy all files and subdirectories for autodesk
+xcopy "%source_path_autodesk%\*" "%destination_path_autodesk%" /Y /E /I
