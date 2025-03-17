@@ -49,17 +49,11 @@ QLineEdit {
 
 /* Combo Boxes */
 QComboBox {
-    selection-background-color: #ffaa00;
-    background-color: QLinearGradient(x1: 0, y1: 0, x2: 0, y2: 1, 
-        stop: 0 #565656, 
-        stop: 0.1 #525252, 
-        stop: 0.5 #4e4e4e, 
-        stop: 0.9 #4a4a4a, 
-        stop: 1 #464646
-    );
-    border-style: solid;
-    border: 1px solid #1e1e1e;
-    border-radius: 5;
+    background-color: #333333;
+    color: #DDDDDD;
+    border: 1px solid #555555;
+    border-radius: 3px;
+    padding: 2px 8px;
 }
 
 QComboBox:hover {
@@ -82,23 +76,23 @@ QComboBox:on {
     selection-background-color: #ffaa00;
 }
 
+QComboBox[materialAssigner="true"]:focus {
+    border: 1px solid #666666;
+    outline: none;
+}
+
 QComboBox QAbstractItemView {
-    border: 2px solid darkgray;
-    selection-background-color: QLinearGradient(x1: 0, y1: 0, x2: 0, y2: 1, 
-        stop: 0 #ffa02f, 
-        stop: 1 #d7801a
-    );
+    background-color: #333333;
+    color: #DDDDDD;
+    selection-background-color: #444444;
+    selection-color: #FFFFFF;
 }
 
 QComboBox::drop-down {
     subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 15px;
-    border-left-width: 0px;
-    border-left-color: darkgray;
-    border-left-style: solid;
-    border-top-right-radius: 3px;
-    border-bottom-right-radius: 3px;
+    subcontrol-position: right;
+    width: 20px;
+    border-left: 1px solid #555555;
 }
 
 QComboBox::down-arrow {
@@ -428,3 +422,43 @@ QProgressBar::chunk {
 /* ==========================================================================
    Dock Widget Styles
    ========================================================================== */
+
+/* ==========================================================================
+   Material Assigner Specific Styles
+   ========================================================================== */
+
+/* Header Labels */
+QLabel[headerLabel="true"] {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QLabel[boldLabel="true"] {
+    font-weight: bold;
+}
+
+/* Material Preview Labels */
+QLabel[materialPreview="current"] {
+    color: #cc3d3d; /* Dimmed red */
+}
+
+QLabel[materialPreview="target"] {
+    color: #47b347; /* Dimmed green */
+}
+
+QLabel[materialPreview="unknown"] {
+    color: #ffebeb2f; /* Yellow */
+}
+
+/* Status Labels */
+QLabel[status="error"] {
+    color: red;
+}
+
+QLabel[status="success"] {
+    color: green;
+}
+
+QLabel[status="warning"], QLabel[status="info"] {
+    color: yellow;
+}

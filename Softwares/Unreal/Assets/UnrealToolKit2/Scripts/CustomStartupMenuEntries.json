@@ -274,6 +274,11 @@
 						  "name": "Screamer1",
 						  "label": "Screamer1",
 						  "path": "/ignitiongameplay/assets/GSTools/GS_Screamer1.GS_Screamer1"
+            },
+            {
+						  "name": "MotoGP25",
+						  "label": "MotoGP25",
+						  "path": "/ignitiongameplay/assets/GSTools/GS_MotoGP25.GS_MotoGP25"
             }
           ]
 			  }
