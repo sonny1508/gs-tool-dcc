@@ -11,6 +11,7 @@ for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 set "source_path=%GSTOOLS_ROOT%\Softwares\Unreal\Assets"
 set "destination_path_ride6=D:\Ride6\Engine\Plugins\ignition\ignitiongameplay\content\assets"
 set "destination_path_screamer1=D:\SCR 1\Engine\Plugins\ignition\ignitiongameplay\content\assets"
+set "destination_path_screamer1=D:\MGP25\Engine\Plugins\ignition\ignitiongameplay\content\assets"
 
 :: Check if source directory exists
 if not exist "%source_path%" exit /b 1

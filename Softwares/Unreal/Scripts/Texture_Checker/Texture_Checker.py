@@ -40,7 +40,7 @@ class TextureCheckerGUI(QMainWindow):
     def setup_ui(self):
         """Initialize the main UI components"""
         self.setWindowTitle("Texture Checker")
-        self.resize(1000, 800)
+        self.resize(720, 840)
         
         # Set font
         self.setFont(QFont("Meiryo UI", 10))
@@ -101,33 +101,43 @@ class TextureCheckerGUI(QMainWindow):
         self.texture_tree.setIndentation(5)
         self.texture_tree.setAlternatingRowColors(True)
         
-        # Set column behaviors
+        # Set all columns to resize to contents (making them responsive)
         header = self.texture_tree.header()
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)  # Set all columns to resize to contents
+        for i in range(self.texture_tree.columnCount()):
+            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         
-        # Make the "name" column take extra space
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Name column (index 1)
+        # Disable user ability to move columns
+        header.setSectionsMovable(False)
         
         # Connect to handle window resize events
         self.texture_tree.itemDoubleClicked.connect(self.open_asset)
-        
-    def resizeEvent(self, event):
-        """Handle window resize events to adjust columns"""
-        super().resizeEvent(event)
-        # Resize columns to content on window resize
-        if hasattr(self, 'texture_tree'):
-            self.adjust_columns()
-            
+
     def adjust_columns(self):
-        """Adjust column widths based on content"""
+        """Ensure columns maintain their responsive sizing with additional margin"""
         if self.texture_tree.topLevelItemCount() > 0:
             header = self.texture_tree.header()
+            
+            # First apply ResizeToContents to get the content width
             for i in range(self.texture_tree.columnCount()):
-                if i != 1:  # Skip the name column which uses Stretch
-                    header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-            # Allow the name column to stretch
-            header.setSectionResizeMode(1, QHeaderView.Stretch)
+                header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
+            
+            # Now add margin by setting an explicit width (content width + margin)
+            for i in range(self.texture_tree.columnCount()):
+                # Get the current width that fits the content
+                content_width = header.sectionSize(i)
+                # Set a new width with additional margin
+                margin = 10  # 10 pixel margin
+                header.setSectionResizeMode(i, QHeaderView.Interactive)  # Temporarily switch to allow explicit sizing
+                header.resizeSection(i, content_width + margin)
+                
+            # Disable user resizing by fixing the section sizes
+            header.setSectionsClickable(True)
+            header.setSectionResizeMode(QHeaderView.Fixed)
+
+    def resizeEvent(self, event):
+        """Handle window resize events"""
+        super().resizeEvent(event)
+        # Columns will automatically adjust due to ResizeToContents mode
         
     def load_style(self):
         """Load QSS style file"""
