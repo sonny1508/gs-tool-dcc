@@ -1,7 +1,6 @@
 from __future__ import unicode_literals, print_function
 import sys
 import os
-import csv
 import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -152,47 +151,23 @@ class TextureCheckerGUI(QMainWindow):
                     print(f"Warning: Could not load style file: {e}")
                     
         self.setStyleSheet(style)
-        
-    def get_texture_property(self):
-        """Load and parse texture properties from CSV"""
-        csv_path = os.path.join(PARENT_DIR, "Texture_Property.csv")
-        properties = []
-        
-        if os.path.exists(csv_path):
-            try:
-                with open(csv_path) as f:
-                    reader = csv.DictReader(f)
-                    properties = [row for row in reader]
-                    
-                # Convert TRUE/FALSE strings to Python booleans
-                for prop in properties:
-                    for key in prop:
-                        if key not in ["name"] and prop[key] in ["TRUE", "FALSE"]:
-                            prop[key] = prop[key] == "TRUE"
-            except Exception as e:
-                print(f"Warning: Could not load properties: {e}")
-                self.status_label.setText(f"Error loading CSV: {e}")
-        else:
-            print(f"Warning: CSV file not found at {csv_path}")
-            self.status_label.setText(f"CSV file not found at {csv_path}")
-                    
-        return properties
 
     def get_matching_suffix(self, texture_name):
         """Find the matching suffix for a texture name using regex patterns"""
         texture_name_lower = texture_name.lower()
         
+        # Debug info
+        print(f"Analyzing texture: {texture_name_lower}")
+        
         # Check each suffix in priority order using the regex patterns
         for suffix in self.suffix_priority:
             pattern = self.suffix_patterns.get(suffix)
             if pattern and re.search(pattern, texture_name_lower):
+                print(f"  Matched pattern {pattern} for suffix {suffix}")
                 return suffix
                 
-        # Special case for IC_M which might not follow standard pattern
-        if "ic_m" in texture_name_lower and "_m" not in texture_name_lower:
-            return "IC_M"
-                
         # No matching suffix found
+        print(f"  No pattern match found for {texture_name_lower}")
         return None
         
     def get_rule_from_name(self, texture_name):

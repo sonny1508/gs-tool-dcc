@@ -32,7 +32,17 @@ TEXTURE_RULES = {
         "srgb": False,
         "brightness_curve": 2.2
     },
-    "MASK": {
+    "CLEARCOAT_MASK": {
+        "compression_settings": "TC_MASKS", 
+        "srgb": False,
+        "brightness_curve": 1.0
+    },
+    "DIRT_MASK": {
+        "compression_settings": "TC_MASKS", 
+        "srgb": False,
+        "brightness_curve": 1.0
+    },
+    "AO_MASK": {
         "compression_settings": "TC_ALPHA", 
         "srgb": False,
         "brightness_curve": 1.0
@@ -51,18 +61,35 @@ TEXTURE_RULES = {
 
 # Define suffix priority for matching
 # Order from most specific to least specific to avoid substring matching issues
-SUFFIX_PRIORITY = ["IC_M", "PBR", "BC", "E", "N", "M", "D", "L", "MASK"]
+# Longer, more specific patterns should come first
+SUFFIX_PRIORITY = [
+    "CLEARCOAT_MASK", "DIRT_MASK", "AO_MASK",  # Most specific mask types first
+    "IC_M",  # Special case
+    "PBR", 
+    "BC", 
+    "E", 
+    "N", 
+    "M", 
+    "D", 
+    "L"
+]
 
-# Define regular expression patterns for each suffix type
-# These patterns ensure more precise matching
+# Define regular expression patterns for each suffix type with improved specificity
 SUFFIX_PATTERNS = {
-    "IC_M": r"ic_m(?:\d+)?$",  # "ic_m" at the end, possibly followed by numbers
-    "PBR": r"pbr(?:\d+)?$",    # "pbr" at the end, possibly followed by numbers
-    "BC": r"bc(?:\d+)?$",      # "bc" at the end, possibly followed by numbers
-    "E": r"e(?:\d+)?$",        # "e" at the end, possibly followed by numbers
-    "N": r"n(?:\d+)?$",        # "n" at the end, possibly followed by numbers
-    "M": r"m(?:\d+)?$" ,        # "m" at the end, possibly followed by numbers
-    "D": r"d(?:\d+)?$" ,
-    "L": r"l(?:\d+)?$" ,
-    "MASK": r"mask(?:\d+)?$"
+    # For mask types, look for the specific prefix before "mask"
+    "CLEARCOAT_MASK": r"(?:^|_)clearcoat(?:_)?mask(?:\d+)?$",  # Matches "clearcoat_mask" or "clearcoatmask"
+    "DIRT_MASK": r"(?:^|_)dirt(?:_)?mask(?:\d+)?$",            # Matches "dirt_mask" or "dirtmask"
+    "AO_MASK": r"(?:^|_)ao(?:_)?mask(?:\d+)?$",                # Matches "ao_mask" or "aomask"
+    
+    # Handle IC_M special case with more precision
+    "IC_M": r"(?:^|_)ic(?:_)?m(?:\d+)?$",                      # Matches "ic_m" or "icm"
+    
+    # Standard texture types with word boundary awareness
+    "PBR": r"(?:^|_)pbr(?:\d+)?$",                             # Must be at word start or after underscore
+    "BC": r"(?:^|_)bc(?:\d+)?$",
+    "E": r"(?:^|_)e(?:\d+)?$",
+    "N": r"(?:^|_)n(?:\d+)?$",
+    "M": r"(?:^|_)m(?:\d+)?$",
+    "D": r"(?:^|_)d(?:\d+)?$",
+    "L": r"(?:^|_)l(?:\d+)?$"
 }
