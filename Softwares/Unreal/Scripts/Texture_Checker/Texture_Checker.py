@@ -5,7 +5,6 @@ import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
-#sys.path.extend([SCRIPT_DIR, PARENT_DIR, os.path.join(PARENT_DIR, "ThirdParty")])
 python_lib = "//192.168.1.10/Softwares/Pipeline/GSTools/Library/Python/Python39/Lib/site-packages"
 if os.path.exists(python_lib):
     sys.path.append(python_lib)
@@ -22,9 +21,11 @@ expected_path = os.path.join(SCRIPT_DIR, "Texture_Checker_Rules.py")
 spec = importlib.util.spec_from_file_location("Texture_Checker_Rules", expected_path)
 texture_rules_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(texture_rules_module)
+
 TEXTURE_RULES = texture_rules_module.TEXTURE_RULES
 SUFFIX_PRIORITY = texture_rules_module.SUFFIX_PRIORITY
 SUFFIX_PATTERNS = texture_rules_module.SUFFIX_PATTERNS
+get_final_rule_for_texture = texture_rules_module.get_final_rule_for_texture
 
 class TextureCheckerGUI(QMainWindow):
     def __init__(self, parent=None):
@@ -36,10 +37,14 @@ class TextureCheckerGUI(QMainWindow):
         self.suffix_priority = SUFFIX_PRIORITY
         self.suffix_patterns = SUFFIX_PATTERNS
         
+        # Initialize dictionaries for texture group mapping but don't populate yet
+        self.enum_to_display = {}
+        self.display_to_enum = {}
+        
     def setup_ui(self):
         """Initialize the main UI components"""
         self.setWindowTitle("Texture Checker")
-        self.resize(720, 840)
+        self.resize(1000, 800)
         
         # Set font
         self.setFont(QFont("Meiryo UI", 10))
@@ -93,9 +98,9 @@ class TextureCheckerGUI(QMainWindow):
         
     def setup_tree_widget(self):
         """Configure the tree widget settings"""
-        # Updated to include size column
-        self.texture_tree.setColumnCount(6)  # 0/1 checkbox + 5 columns
-        self.texture_tree.setHeaderLabels(["0/1", "name", "size", "compression_settings", "srgb", "brightness_curve"])
+        # Updated to include target_size and texture_group columns
+        self.texture_tree.setColumnCount(8)  # 0/1 checkbox + 7 columns
+        self.texture_tree.setHeaderLabels(["0/1", "name", "current_size", "target_size", "compression_settings", "srgb", "brightness_curve", "texture_group"])
         self.texture_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.texture_tree.setIndentation(5)
         self.texture_tree.setAlternatingRowColors(True)
@@ -136,7 +141,6 @@ class TextureCheckerGUI(QMainWindow):
     def resizeEvent(self, event):
         """Handle window resize events"""
         super().resizeEvent(event)
-        # Columns will automatically adjust due to ResizeToContents mode
         
     def load_style(self):
         """Load QSS style file"""
@@ -156,30 +160,28 @@ class TextureCheckerGUI(QMainWindow):
         """Find the matching suffix for a texture name using regex patterns"""
         texture_name_lower = texture_name.lower()
         
-        # Debug info
-        print(f"Analyzing texture: {texture_name_lower}")
-        
         # Check each suffix in priority order using the regex patterns
         for suffix in self.suffix_priority:
             pattern = self.suffix_patterns.get(suffix)
             if pattern and re.search(pattern, texture_name_lower):
-                print(f"  Matched pattern {pattern} for suffix {suffix}")
                 return suffix
                 
         # No matching suffix found
-        print(f"  No pattern match found for {texture_name_lower}")
         return None
         
     def get_rule_from_name(self, texture_name):
-        """Determine texture properties based on file name suffix"""
+        """Determine texture properties based on file name suffix including special cases"""
         matching_suffix = self.get_matching_suffix(texture_name)
         
         # If we found a matching suffix, return the corresponding rule
         if matching_suffix and matching_suffix in self.texture_rules:
-            return self.texture_rules[matching_suffix]
+            # Get the base rule for this suffix
+            base_rule = self.texture_rules[matching_suffix]
+            # Apply any special case logic based on the texture name
+            return get_final_rule_for_texture(base_rule, matching_suffix, texture_name), matching_suffix
         
         # No matching rule found
-        return None
+        return None, matching_suffix
 
     def get_column_from_header(self, widget, match_text):
         """Get column index from header text"""
@@ -188,6 +190,67 @@ class TextureCheckerGUI(QMainWindow):
             if header_item.text(i) == match_text:
                 return i
         return None
+
+    def get_texture_group_mapping(self, needed_groups=None):
+        """Create a mapping between texture group display names and enum values
+        Optimized to only map groups that are needed"""
+        import unreal
+        
+        # Get all TextureGroup enum values
+        texture_group_enum = unreal.TextureGroup
+        
+        # If mappings are already populated and we don't need specific groups, return the existing mappings
+        if self.enum_to_display and self.display_to_enum and not needed_groups:
+            return
+            
+        # Create bidirectional mappings using string keys
+        if not self.enum_to_display:
+            self.enum_to_display = {}
+        if not self.display_to_enum:
+            self.display_to_enum = {}
+        
+        # If we have specific groups to map, handle those
+        if needed_groups:
+            for group_name in needed_groups:
+                # Skip if we already have this mapping
+                if group_name in self.display_to_enum:
+                    continue
+                    
+                # Try to find the enum value for this group name
+                for attr in dir(texture_group_enum):
+                    if not attr.startswith('_') and attr.startswith('TEXTUREGROUP_'):
+                        try:
+                            enum_value = getattr(texture_group_enum, attr)
+                            if isinstance(enum_value, unreal.TextureGroup):
+                                display_name = enum_value.get_display_name()
+                                
+                                # If this matches what we need, store it
+                                if display_name == group_name:
+                                    enum_str = str(enum_value)
+                                    self.enum_to_display[enum_str] = display_name
+                                    self.display_to_enum[display_name] = enum_value
+                                    break
+                        except:
+                            # Skip errors silently
+                            pass
+            return
+        
+        # Otherwise, populate all mappings (but quietly)
+        # This should only happen the first time we need a complete mapping
+        for attr in dir(texture_group_enum):
+            if not attr.startswith('_') and attr.startswith('TEXTUREGROUP_'):
+                try:
+                    enum_value = getattr(texture_group_enum, attr)
+                    if isinstance(enum_value, unreal.TextureGroup):
+                        display_name = enum_value.get_display_name()
+                        
+                        # Store mappings using string identifiers instead of enum objects
+                        enum_str = str(enum_value)
+                        self.enum_to_display[enum_str] = display_name
+                        self.display_to_enum[display_name] = enum_value
+                except:
+                    # Skip errors silently
+                    pass
 
     def create_custom_widget_item(self, color, value_dict, color_dict, meta_data):
         """Create a custom tree widget item"""
@@ -250,6 +313,9 @@ class TextureCheckerGUI(QMainWindow):
             # Track textures by similar naming patterns
             textures_by_pattern = {}
             
+            # Collect needed texture groups for lazy loading
+            needed_texture_groups = set()
+            
             # First pass: Check all textures and determine their rules
             for tex in texture_list:
                 tex_name = tex.get_name()
@@ -258,13 +324,17 @@ class TextureCheckerGUI(QMainWindow):
                 color = "white"
                 
                 # Get the matching suffix and rule
-                matching_suffix = self.get_matching_suffix(tex_name)
-                rule = self.get_rule_from_name(tex_name)
+                rule, matching_suffix = self.get_rule_from_name(tex_name)
                 
                 # Initialize value dictionary
                 value_dict = {
                     "name": tex_name,
                     "0/1": "0"
+                }
+                
+                # Initialize metadata
+                meta_data = {
+                    "path": tex.get_path_name()
                 }
                 
                 # Get current properties
@@ -277,7 +347,7 @@ class TextureCheckerGUI(QMainWindow):
                 # Get brightness curve value - using the correct property name "adjust_brightness_curve"
                 try:
                     current_brightness_curve = tex.get_editor_property("adjust_brightness_curve")
-                except Exception:
+                except:
                     # Property might not exist, default to 0
                     current_brightness_curve = 0.0
                 
@@ -285,33 +355,23 @@ class TextureCheckerGUI(QMainWindow):
                 
                 # Get texture size
                 try:
-                    # First try: Get dimensions from tags
+                    # Get dimensions from properties
                     tag_list = unreal.EditorAssetLibrary.get_tag_values(tex.get_path_name())
                     if "Dimensions" in tag_list:
-                        value_dict["size"] = tag_list["Dimensions"]
-                    else:
-                        # Second try: Get dimensions from properties
-                        try:
-                            width = tex.get_size_x()
-                            height = tex.get_size_y()
-                            value_dict["size"] = f"{width}x{height}"
-                        except:
-                            # Third try: Get dimensions from blueprint properties
-                            try:
-                                width = tex.get_editor_property("blueprint_get_size_x")
-                                height = tex.get_editor_property("blueprint_get_size_y")
-                                value_dict["size"] = f"{width}x{height}"
-                            except:
-                                # Final fallback
-                                value_dict["size"] = "Unknown"
-                except Exception as e:
-                    print(f"Error getting texture size: {e}")
-                    value_dict["size"] = "Unknown"
-                
-                # Create metadata for fixing
-                meta_data = {
-                    "path": tex.get_path_name()
-                }
+                        value_dict["current_size"] = tag_list["Dimensions"]
+                except:
+                    value_dict["current_size"] = "Unknown"
+
+                # Get texture group/LOD group
+                try:
+                    lod_group = tex.get_editor_property("lod_group")
+                    # Store the enum value in metadata for setting later
+                    meta_data["lod_group_enum"] = str(lod_group) # Convert enum to string
+                    # Get the display name for UI
+                    lod_group_display = lod_group.get_display_name()
+                    value_dict["texture_group"] = lod_group_display
+                except:
+                    value_dict["texture_group"] = "None"
                 
                 # Color dictionary for highlighting
                 color_dict = {}
@@ -322,6 +382,27 @@ class TextureCheckerGUI(QMainWindow):
                     meta_data["compression_settings"] = rule["compression_settings"]
                     meta_data["srgb"] = rule["srgb"]
                     meta_data["brightness_curve"] = rule["brightness_curve"]
+                    
+                    # Add new size property if present
+                    if "size" in rule:
+                        expected_width, expected_height = rule["size"]
+                        # Always display the target size, regardless of whether it matches
+                        value_dict["target_size"] = f"{expected_width}x{expected_height}"
+                        
+                        try:
+                            actual_width = tex.get_size_x()
+                            actual_height = tex.get_size_y()
+                            
+                            # Highlight mismatch but don't mark for fixing
+                            if actual_width != expected_width or actual_height != expected_height:
+                                color_dict["target_size"] = "orange"
+                                color_dict["current_size"] = "orange"
+                                meta_data["size_note"] = f"Texture should be {expected_width}x{expected_height} but is {actual_width}x{actual_height}"
+                        except:
+                            pass
+                    else:
+                        # If no size rule, indicate that there's no target size
+                        value_dict["target_size"] = "Not specified"
                     
                     # Check if compression settings need to be updated
                     if current_compression != rule["compression_settings"]:
@@ -339,9 +420,27 @@ class TextureCheckerGUI(QMainWindow):
                         if abs(current_brightness_curve - rule["brightness_curve"]) > 0.001:
                             color_dict["brightness_curve"] = "red"
                             value_dict["0/1"] = "1"
-                    except Exception:
+                    except:
                         # Skip comparison if there's an issue
                         pass
+
+                    # Handle texture group rules (if present)
+                    if "texture_group" in rule:
+                        # Add to needed groups for lazy loading
+                        needed_texture_groups.add(rule["texture_group"])
+                        
+                        # Store target texture group
+                        meta_data["texture_group"] = rule["texture_group"]
+                        
+                        # Check if they don't match against current
+                        current_texture_group = value_dict["texture_group"]
+                        if current_texture_group != rule["texture_group"]:
+                            color_dict["texture_group"] = "red"
+                            value_dict["0/1"] = "1"
+                    else:
+                        # No texture group rule
+                        meta_data["texture_group"] = "Not specified"
+                            
                 else:
                     # No matching rule - don't mark for fixing
                     color = "red"
@@ -362,6 +461,10 @@ class TextureCheckerGUI(QMainWindow):
                 
                 textures_by_pattern[pattern_key].append((rule, color_dict, value_dict, meta_data, tex_name, matching_suffix))
             
+            # Lazy-load only the texture groups we need
+            if needed_texture_groups:
+                self.get_texture_group_mapping(needed_texture_groups)
+                
             # Second pass: Create items
             items_to_add = []
             
@@ -372,9 +475,6 @@ class TextureCheckerGUI(QMainWindow):
                         item_color = "red"
                     else:
                         item_color = "white"
-                    
-                    # Debug - log matching suffix to console
-                    print(f"Texture: {tex_name}, Matched Suffix: {matching_suffix}")
                     
                     item = self.create_custom_widget_item(item_color, value_dict, color_dict, meta_data)
                     items_to_add.append((0, item))  # All items have same priority
@@ -422,6 +522,16 @@ class TextureCheckerGUI(QMainWindow):
             self.status_label.setText("No textures selected for fixing")
             return
             
+        # Collect needed texture groups for lazy loading
+        needed_texture_groups = set()
+        for fix_item in fix_items:
+            if "texture_group" in fix_item and fix_item["texture_group"] != "Not specified":
+                needed_texture_groups.add(fix_item["texture_group"])
+        
+        # Lazy-load only the texture groups we need
+        if needed_texture_groups:
+            self.get_texture_group_mapping(needed_texture_groups)
+            
         fixed_count = 0
         
         # Process each item
@@ -433,7 +543,6 @@ class TextureCheckerGUI(QMainWindow):
             if "srgb" in fix_item and fix_item["srgb"] != tex.get_editor_property("srgb"):
                 tex.set_editor_property("srgb", fix_item["srgb"])
                 modified = True
-                print(f"Updated sRGB for {fix_item['path']} to {fix_item['srgb']}")
             
             # Update compression settings if present in fix_item
             if "compression_settings" in fix_item:
@@ -443,9 +552,8 @@ class TextureCheckerGUI(QMainWindow):
                         new_compression = eval(f"unreal.TextureCompressionSettings.{fix_item['compression_settings']}")
                         tex.set_editor_property("compression_settings", new_compression)
                         modified = True
-                        print(f"Updated compression for {fix_item['path']} to {fix_item['compression_settings']}")
-                    except Exception as e:
-                        print(f"Error setting compression: {e}")
+                    except:
+                        pass
                         
             # Update brightness curve if present in fix_item
             if "brightness_curve" in fix_item:
@@ -455,10 +563,33 @@ class TextureCheckerGUI(QMainWindow):
                     if abs(fix_item["brightness_curve"] - current_brightness) > 0.001:
                         tex.set_editor_property("adjust_brightness_curve", fix_item["brightness_curve"])
                         modified = True
-                        print(f"Updated brightness curve for {fix_item['path']} to {fix_item['brightness_curve']}")
-                except Exception as e:
-                    print(f"Error setting brightness curve: {e}")
+                except:
+                    pass
                 
+            # Update texture group if present in fix_item
+            if "texture_group" in fix_item and fix_item["texture_group"] != "Not specified":
+                try:
+                    target_group = fix_item["texture_group"]
+                    
+                    # Find the matching enum value for the target group display name
+                    target_enum = self.display_to_enum.get(target_group)
+                    
+                    if target_enum:
+                        # Set the property using the enum value
+                        tex.set_editor_property("lod_group", target_enum)
+                        modified = True
+                    else:
+                        # If not found in our mapping, try direct lookup in the enum
+                        for attr in dir(unreal.TextureGroup):
+                            if attr.startswith('TEXTUREGROUP_'):
+                                enum_value = getattr(unreal.TextureGroup, attr)
+                                if enum_value.get_display_name() == target_group:
+                                    tex.set_editor_property("lod_group", enum_value)
+                                    modified = True
+                                    break
+                except:
+                    pass
+
             if modified:
                 fixed_count += 1
         

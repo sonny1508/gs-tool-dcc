@@ -1,8 +1,8 @@
 material_slot,material_instance,material_instance_path,parent_material,parent_material_path,livery,variant,id
 mat_livery,mat_livery#,default,BASE_LiveryLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,#,$,*
-mat_brake,mat_brake*,default,BASE_BrakesLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
+mat_brake,mat_brake#,default,BASE_BrakesLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
 mat_mechanics,mat_mechanics$,default,BASE_MechanicsLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
-mat_rim,mat_rim*,default,BASE_RimLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
+mat_rim,mat_rim#,default,BASE_RimLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
 mat_chain,mat_chain1_*,/Game/assets/graphics/vehicles/bikes/bikeShared/material_instances,BASE_ChainLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
 mat_gauge,mat_gauge*,default,BASE_GaugeLegacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
 mat_glass,mat_glass$,default,BASE_VehicleGlass_Legacy,/Game/assets/graphics/Materials/Bases/Vehicles,,,
