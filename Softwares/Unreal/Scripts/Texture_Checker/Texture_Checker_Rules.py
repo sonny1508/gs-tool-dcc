@@ -141,15 +141,19 @@ MOTOGP25_TEXTURE_RULES = {
                 "override": {
                     "texture_group": "VehicleHighRes",
                     "size": (4096, 4096)
-                },
+                }
+            },
+            {
                 "pattern": r"(?:gauge)",
                 "override": {
                     "size": (512, 512)
-                },
+                }
+            },
+            {
                 "pattern": r"(?:rim)",
                 "override": {
                     "size": (1024, 1024)
-                },
+                }
             }
         ]
     },
@@ -164,15 +168,19 @@ MOTOGP25_TEXTURE_RULES = {
                 "pattern": r"(?:gauge)",
                 "override": {
                     "size": (512, 512)
-                },
+                }
+            },
+            {
                 "pattern": r"(?:glass)",
                 "override": {
                     "size": (2048, 1024)
-                },
+                }
+            },
+            {
                 "pattern": r"(?:brake|rim)",
                 "override": {
                     "size": (1024, 1024)
-                },
+                }
             }
         ]
     },

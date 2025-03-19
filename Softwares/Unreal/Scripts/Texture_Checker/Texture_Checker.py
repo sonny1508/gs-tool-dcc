@@ -385,21 +385,16 @@ class TextureCheckerGUI(QMainWindow):
                     
                     # Add new size property if present
                     if "size" in rule:
-                        expected_width, expected_height = rule["size"]
-                        # Always display the target size, regardless of whether it matches
-                        value_dict["target_size"] = f"{expected_width}x{expected_height}"
+                        target_width, target_height = rule["size"]
+                        target_size = f"{target_width}x{target_height}"
+                        # Always display the target size
+                        value_dict["target_size"] = target_size
                         
-                        try:
-                            actual_width = tex.get_size_x()
-                            actual_height = tex.get_size_y()
-                            
-                            # Highlight mismatch but don't mark for fixing
-                            if actual_width != expected_width or actual_height != expected_height:
-                                color_dict["target_size"] = "orange"
-                                color_dict["current_size"] = "orange"
-                                meta_data["size_note"] = f"Texture should be {expected_width}x{expected_height} but is {actual_width}x{actual_height}"
-                        except:
-                            pass
+                        # Compare with current size if known
+                        current_size = value_dict.get("current_size", "Unknown")
+                        # Highlight mismatch but don't mark for fixing
+                        if current_size != "Unknown" and current_size != target_size:
+                            color_dict["current_size"] = "red"
                     else:
                         # If no size rule, indicate that there's no target size
                         value_dict["target_size"] = "Not specified"
