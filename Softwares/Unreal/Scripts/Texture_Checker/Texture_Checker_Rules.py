@@ -144,17 +144,24 @@ MOTOGP25_TEXTURE_RULES = {
                 }
             },
             {
+                "pattern": r"(?:glass)",
+                "override": {
+                    "size": (2048, 1024)
+                }
+            }
+            {
+                "pattern": r"(?:rim|brake)",
+                "override": {
+                    "size": (1024, 1024)
+                }
+            },
+            {
                 "pattern": r"(?:gauge)",
                 "override": {
                     "size": (512, 512)
                 }
             },
-            {
-                "pattern": r"(?:rim)",
-                "override": {
-                    "size": (1024, 1024)
-                }
-            }
+
         ]
     },
     "L": {
