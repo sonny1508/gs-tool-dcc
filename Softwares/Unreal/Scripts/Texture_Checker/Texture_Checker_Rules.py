@@ -148,7 +148,7 @@ MOTOGP25_TEXTURE_RULES = {
                 "override": {
                     "size": (2048, 1024)
                 }
-            }
+            },
             {
                 "pattern": r"(?:rim|brake)",
                 "override": {
@@ -169,7 +169,7 @@ MOTOGP25_TEXTURE_RULES = {
         "srgb": False,
         "brightness_curve": 1.0,
         "texture_group": "VehicleSpecular",
-        "size": (2048, 2048),
+        "sgit staize": (2048, 2048),
         "special_cases": [
             {
                 "pattern": r"(?:gauge)",
