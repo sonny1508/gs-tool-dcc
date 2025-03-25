@@ -273,7 +273,7 @@
                 {
                   "name": "Vehicle",
                   "label": "Vehicle",
-                  "path": "/ignitiongameplay/assets/GSTools/Ride6/GS_Ride6.GS_Ride6"
+                  "path": "/ignitiongameplay/assets/GSTools/Ride6/Vehicle_Ride6.Vehicle_Ride6"
                 }
               ]
             },
@@ -286,7 +286,7 @@
                 {
                   "name": "Vehicle",
                   "label": "Vehicle",
-                  "path": "/ignitiongameplay/assets/GSTools/Screamer1/GS_Screamer1.GS_Screamer1"
+                  "path": "/ignitiongameplay/assets/GSTools/Screamer1/Vehicle_Screamer1.Vehicle_Screamer1"
                 }
               ]
             },
