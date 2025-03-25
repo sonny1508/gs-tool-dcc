@@ -142,7 +142,7 @@ class TextureCheckerGUI(QMainWindow):
         
     def get_texture_property(self):
         """Load and parse texture properties from CSV"""
-        csv_path = os.path.join(PARENT_DIR, "R6_TextureProperty.csv")
+        csv_path = os.path.join(SCRIPT_DIR, "R6_TextureProperty.csv")
         properties = []
         
         if os.path.exists(csv_path):

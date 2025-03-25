@@ -262,23 +262,51 @@
           "section_name": "GSTools",
           "name": "GSTools",
           "label": "GSTools",
-          "tool_tip": "GS Toolkit",
-          "commands":
+          "sub_menus":
           [
             {
+              "section_name": "Ride6",
 						  "name": "Ride6",
 						  "label": "RIde6",
-						  "path": "/ignitiongameplay/assets/GSTools/GS_Ride6.GS_Ride6"
+              "commands":
+              [
+                {
+                  "name": "Vehicle",
+                  "label": "Vehicle",
+                  "path": "/ignitiongameplay/assets/GSTools/Ride6/GS_Ride6.GS_Ride6"
+                }
+              ]
             },
             {
+              "section_name": "Screamer1",
 						  "name": "Screamer1",
 						  "label": "Screamer1",
-						  "path": "/ignitiongameplay/assets/GSTools/GS_Screamer1.GS_Screamer1"
+              "commands":
+              [
+                {
+                  "name": "Vehicle",
+                  "label": "Vehicle",
+                  "path": "/ignitiongameplay/assets/GSTools/Screamer1/GS_Screamer1.GS_Screamer1"
+                }
+              ]
             },
             {
+              "section_name": "MotoGP25",
 						  "name": "MotoGP25",
 						  "label": "MotoGP25",
-						  "path": "/ignitiongameplay/assets/GSTools/GS_MotoGP25.GS_MotoGP25"
+              "commands":
+              [
+                {
+                  "name": "Vehicle",
+                  "label": "Vehicle",
+                  "path": "/ignitiongameplay/assets/GSTools/MotoGP25/Vehicle_MotoGP25.Vehicle_MotoGP25"
+                },
+                {
+                  "name": "Character",
+                  "label": "Character",
+                  "path": "/ignitiongameplay/assets/GSTools/MotoGP25/Character_MotoGP25.Character_MotoGP25"
+                }
+              ]
             }
           ]
 			  }
