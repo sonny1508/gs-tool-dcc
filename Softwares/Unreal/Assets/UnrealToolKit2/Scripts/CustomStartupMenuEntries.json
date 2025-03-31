@@ -309,7 +309,28 @@
               ]
             }
           ]
-			  }
+			  },
+        {
+          "section_name": "GSAutomation",
+          "name": "GSAutomation",
+          "label": "GSAutomation",
+          "sub_menus":
+          [
+            {
+              "section_name": "Ride6",
+						  "name": "Ride6",
+						  "label": "RIde6",
+              "commands":
+              [
+                {
+                  "name": "Vehicle",
+                  "label": "Vehicle",
+                  "path": "/ignitiongameplay/assets/GSAutomation/Ride6/Vehicle_Ride6.Vehicle_Ride6"
+                }
+              ]
+            }
+          ]
+        }
 		  ]
 	  }
 	]
