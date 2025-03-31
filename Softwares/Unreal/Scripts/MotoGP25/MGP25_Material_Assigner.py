@@ -27,6 +27,7 @@ class MaterialAssigner(QWidget):
         self.livery_materials = []
         self.variant_widgets = []
         self.material_instances_dir = ""
+        self.initialize_special_variants()
         self.load_material_mapping()
         self.load_style()
         self.setup_ui()
@@ -206,6 +207,33 @@ class MaterialAssigner(QWidget):
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
     
+    def initialize_special_variants(self):
+        """Initialize special variant mappings for specific chassis and liveries"""
+        # Format: {chassis_suffix: {livery_id: [variants_list]}}
+        self.special_variant_mappings = {
+            "201": {
+                "009": ["022", "023", "024"],
+                "010": ["025", "026", "027"],
+                "011": ["028", "029", "030"],
+                "013": ["034", "035", "036"],
+                # Add more special case liveries as needed
+            },
+            # Add more chassis types as needed
+        }
+
+    def extract_chassis_id(self, skeletal_mesh):
+        """Extract chassis ID from the skeletal mesh name"""
+        if not skeletal_mesh:
+            return None
+        
+        mesh_name = skeletal_mesh.get_name()
+        # Look for "chassis" followed by numbers in the mesh name
+        match = re.search(r'chassis(\d+)', mesh_name, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        
+        return None
+
     def get_selected_skeletal_mesh(self):
         """Get the first selected skeletal mesh in the editor"""
         # Try content browser selection first
@@ -488,17 +516,31 @@ class MaterialAssigner(QWidget):
         # Get selected livery
         livery_name = self.livery_combo.currentText()
         selected_livery = next((livery for livery in self.livery_materials 
-                              if livery['name'] == livery_name), None)
+                            if livery['name'] == livery_name), None)
         
         if not selected_livery:
             return
         
-        # Calculate variants
-        livery_number = int(selected_livery['number'])
-        base_variant = ((livery_number - 1) * 3) + 1
+        # Extract livery number
+        livery_number = selected_livery['number']
+        variants = []
+        
+        # Check for special case variants based on chassis ID in mesh name
+        if self.skeletal_mesh:
+            chassis_id = self.extract_chassis_id(self.skeletal_mesh)
+            
+            if chassis_id and chassis_id in self.special_variant_mappings:
+                if livery_number in self.special_variant_mappings[chassis_id]:
+                    variants = self.special_variant_mappings[chassis_id][livery_number]
+                    # Add a debug message to console (optional)
+                    print(f"Using special variants for chassis {chassis_id}, livery {livery_number}: {variants}")
+        
+        # If no special variants were found, use the standard calculation
+        if not variants:
+            base_variant = ((int(livery_number) - 1) * 3) + 1
+            variants = [f"{base_variant + i:03d}" for i in range(3)]
         
         # Add variants to dropdown
-        variants = [f"{base_variant + i:03d}" for i in range(3)]
         for variant in variants:
             self.variant_combo.addItem(variant)
         
