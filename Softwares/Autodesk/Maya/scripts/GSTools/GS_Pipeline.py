@@ -117,6 +117,13 @@ def createMenuAndShelf():
                         display_name = display_name[:-3]  # Remove "_UI" suffix
                     display_name = display_name.replace("_", " ")  # Replace underscores with spaces
                     
+                    # Get button name by removing folder prefix and _UI suffix
+                    button_name = script_name
+                    if button_name.endswith("_UI"):
+                        button_name = button_name[:-3]  # Remove "_UI" suffix
+                    if button_name.startswith(folder + "_"):
+                        button_name = button_name[len(folder) + 1:]  # Remove "FolderName_" prefix
+                    
                     script_path = os.path.join(folder_path, file).replace("\\", "/")
                     
                     # Create a simpler command that works for both Python 2 and 3
@@ -130,6 +137,7 @@ def createMenuAndShelf():
                     # Add to UI scripts list for shelf creation
                     ui_scripts.append({
                         'name': display_name,
+                        'button_name': button_name,
                         'path': script_path,
                         'command': cmd
                     })
@@ -149,37 +157,22 @@ def createMenuAndShelf():
                     enable=False
                 )
             
-            # == SHELF: If there are UI scripts in this folder, create a shelf button ==
-            if ui_scripts:
-                # Create a shelf button for the folder
-                folder_button = cmds.shelfButton(
+            # == SHELF: Create individual shelf buttons for each UI script ==
+            for script in ui_scripts:
+                # Extract first two letters for the overlay label
+                overlay_label = script['button_name']
+                
+                # Create a shelf button for each UI script
+                cmds.shelfButton(
                     parent=main_shelf,
-                    label=display_folder_name,
-                    image='menuIconFolders.png',  # Default Maya folder icon
-                    imageOverlayLabel=folder[:2].upper(),  # First two letters of folder name
-                    annotation=display_folder_name,
+                    label=script['button_name'],
+                    image='pythonFamily.png',  # Default Maya script icon
+                    imageOverlayLabel=overlay_label,
+                    annotation=script['name'],
+                    command=script['command'],
                     width=37,
                     height=37
                 )
-                
-                # Create popup menu for the folder button
-                popup_menu = cmds.popupMenu(parent=folder_button)
-                
-                # Add menu items for each UI script
-                for script in ui_scripts:
-                    cmds.menuItem(
-                        parent=popup_menu,
-                        label=script['name'],
-                        command=script['command']
-                    )
-                
-                # If only one script in the folder, make the button execute it directly
-                if len(ui_scripts) == 1:
-                    cmds.shelfButton(
-                        folder_button,
-                        edit=True,
-                        command=ui_scripts[0]['command']
-                    )
         
         # Print Python version info for debugging
         print("Python Version: " + str(sys.version_info.major) + "." + str(sys.version_info.minor))
