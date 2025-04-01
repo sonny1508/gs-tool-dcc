@@ -15,7 +15,7 @@ set "game[2]=SCR 1"
 set "game[3]=MGP25"
 
 :: Define drives to scan
-set "drives=D E"
+set "drives=D E G"
 
 :: Ensure source_path doesn't have a trailing backslash
 if "%source_path:~-1%" == "\" set "source_path=%source_path:~0,-1%"
