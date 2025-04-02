@@ -119,7 +119,6 @@ MOTOGP25_TEXTURE_RULES = {
                 },
             }
         ]
-
     },
     "AO_MASK": {
         "compression_settings": "TC_ALPHA", 
@@ -169,7 +168,7 @@ MOTOGP25_TEXTURE_RULES = {
         "srgb": False,
         "brightness_curve": 1.0,
         "texture_group": "VehicleSpecular",
-        "sgit staize": (2048, 2048),
+        "size": (2048, 2048),
         "special_cases": [
             {
                 "pattern": r"(?:gauge)",
@@ -215,7 +214,6 @@ MOTOGP25_SUFFIX_PRIORITY = [
     "N"
 ]
 
-# MotoGP25 complete suffix patterns
 MOTOGP25_SUFFIX_PATTERNS = {
     # For mask types, look for the specific prefix before "mask"
     "CLEARCOAT_MASK": r"(?:^|_)clearcoat(?:_)?mask(?:\d+)?$",  # Matches "clearcoat_mask" or "clearcoatmask"
@@ -226,6 +224,100 @@ MOTOGP25_SUFFIX_PATTERNS = {
     "D": r"(?:^|_)d(?:\d+)?$",
     "L": r"(?:^|_)l(?:\d+)?$",
     "N": r"(?:^|_)n(?:\d+)?$"
+}
+
+# Screamer1 extended rule set with texture group-based sizing
+SCREAMER1_TEXTURE_RULES = {
+    "BC": {
+        "compression_settings": "TC_DEFAULT", 
+        "srgb": True,
+        "brightness_curve": 1.0,
+
+        # Special flag to indicate size should be determined by texture group
+        "group_based_size": True,
+
+        # Dictionary mapping texture groups to lists of approved sizes
+        "group_size_map": {
+            "WorldLow": [(512, 512), (2048, 2048)],
+            "World": [(1024, 1024), (2048, 2048)],
+            "Runnable": (4096, 4096),
+            "Sponsor": (2048, 2048),
+            "Landscape": (1024, 1024),
+            "Character": (1024, 1024),
+        }
+    },
+    "E": {
+        "compression_settings": "TC_DEFAULT", 
+        "srgb": True,
+        "brightness_curve": 1.0,
+        "texture_group": "InteriorMap",
+
+        "group_based_size": True,
+        "group_size_map": {
+            "InteriorMap": [(256, 256), (1024, 1024)],
+        }
+    },
+    "N": {
+        "compression_settings": "TC_NORMALMAP", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+
+        "group_based_size": True,
+        "group_size_map": {
+            "WorldLowNrmMap": [(1024, 1024), (4096, 4096)],
+            "WorldNormalMap": [(1024, 1024), (2048, 2048)],
+            "RunnableNrmMap": [(4096, 4096)],
+            "LandscapeNormalMap": [(1024, 1024)],
+            "CharacterNormalMap": [(1024, 1024)],
+        }
+    },
+    "PBR": {
+        "compression_settings": "TC_MASKS", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+
+        "group_based_size": True,
+        "group_size_map": {
+            "WorldLowSpecular": [(512, 512)],
+            "WorldSpecular": [(1024, 1024), (2048, 2048)],
+            "RunnableSpecular": [(4096, 4096)],
+            "LandscapeSpecular": [(1024, 1024)],
+            "CharacterSpecular": [(1024, 1024)],
+        }
+    },
+    "M": {
+        "compression_settings": "TC_ALPHA", 
+        "srgb": False,
+        "brightness_curve": 2.2,
+
+        "group_based_size": True,
+        "group_size_map": {
+            "OpacityMaskr": [(1024, 1024), (2048, 2048)],
+            "RunnableMask": [(1024, 1024), (2048, 2048)],
+        }
+    },
+    "IC_M": {
+        "compression_settings": "TC_ALPHA", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+        "texture_group": "OpacityMask",
+    },
+}
+
+SCREAMER1_SUFFIX_PRIORITY = [
+    "BC", "E", "N", "PBR", "M", "IC_M"
+]
+
+SCREAMER1_SUFFIX_PATTERNS = {
+    # Standard texture types with word boundary awareness
+    "BC": r"(?:^|_)bc(?:\d+)?$",
+    "E": r"(?:^|_)e(?:\d+)?$",
+    "N": r"(?:^|_)n(?:\d+)?$",
+    "PBR": r"(?:^|_)pbr(?:\d+)?$",  
+    "M": r"(?:^|_)m(?:\d+)?$",
+
+    # Handle IC_M special case with more precision
+    "IC_M": r"(?:^|_)ic(?:_)?m(?:\d+)?$",                      # Matches "ic_m" or "icm"
 }
 
 # Template for adding a new project (copy and modify as needed)
@@ -267,6 +359,9 @@ def get_rules_for_current_project():
     if project_name == "motogp25":
         print("Using MotoGP25 specific texture rules")
         return (MOTOGP25_TEXTURE_RULES, MOTOGP25_SUFFIX_PRIORITY, MOTOGP25_SUFFIX_PATTERNS)
+    elif project_name == "screamer":
+        print("Using SCREAMER1 specific texture rules")
+        return (SCREAMER1_TEXTURE_RULES, SCREAMER1_SUFFIX_PRIORITY, SCREAMER1_SUFFIX_PATTERNS)
     # Add more project matches as needed
     # elif project_name == "project2":
     #     return (PROJECT2_TEXTURE_RULES, PROJECT2_SUFFIX_PRIORITY, PROJECT2_SUFFIX_PATTERNS)
@@ -275,15 +370,16 @@ def get_rules_for_current_project():
     print("No project-specific rules found, using default texture rules")
     return (DEFAULT_TEXTURE_RULES, DEFAULT_SUFFIX_PRIORITY, DEFAULT_SUFFIX_PATTERNS)
 
-def get_final_rule_for_texture(rules, suffix, texture_name):
+def get_final_rule_for_texture(rules, suffix, texture_name, current_texture_group=None):
     """
     Apply any conditional logic to get the final rule for a specific texture.
-    This handles special cases based on texture name patterns.
+    This handles special cases based on texture name patterns or texture groups.
     
     Args:
         rules (dict): The base rule dictionary for the matching suffix
         suffix (str): The texture suffix that matched
         texture_name (str): The full texture name
+        current_texture_group (str or UE enum, optional): The current texture group of the texture
         
     Returns:
         dict: The final rule dictionary with any special case overrides applied
@@ -291,7 +387,48 @@ def get_final_rule_for_texture(rules, suffix, texture_name):
     # Make a copy of the base rule to avoid modifying the original
     final_rule = rules.copy()
     
-    # Check if there are special cases defined
+    # Handle group-based sizing for SCREAMER1 project
+    if "group_based_size" in final_rule and final_rule["group_based_size"] and current_texture_group:
+        group_size_map = final_rule.get("group_size_map", {})
+        
+        # Get the display name for the current texture group
+        # Convert to string to ensure it's hashable
+        try:
+            # First try to get display name (for Unreal enum objects)
+            if hasattr(current_texture_group, 'get_display_name'):
+                group_display_name = current_texture_group.get_display_name()
+            else:
+                # If it's already a string or another object, convert to string
+                group_display_name = str(current_texture_group)
+                
+            print(f"Processing texture group: '{group_display_name}' for texture '{texture_name}'")
+        except Exception as e:
+            print(f"Error getting texture group display name: {e}")
+            group_display_name = "Unknown"
+        
+        # Look up the approved sizes for this texture group
+        if group_display_name in group_size_map:
+            # Store the approved sizes list
+            sizes = group_size_map[group_display_name]
+            # Ensure sizes is a list, not a single tuple
+            if isinstance(sizes, tuple) and len(sizes) == 2 and isinstance(sizes[0], int):
+                # Convert single tuple to a list with one tuple
+                sizes = [sizes]
+                
+            final_rule["approved_sizes"] = sizes
+            print(f"Found approved sizes for '{texture_name}' with group '{group_display_name}': {sizes}")
+        else:
+            # If no approved sizes for this group, create an empty list
+            final_rule["approved_sizes"] = []
+            print(f"No approved sizes found for '{texture_name}' with group '{group_display_name}'")
+        
+        # Remove the special flags from the final rule
+        if "group_based_size" in final_rule:
+            del final_rule["group_based_size"]
+        if "group_size_map" in final_rule:
+            del final_rule["group_size_map"]
+    
+    # Process normal special cases based on name patterns
     if "special_cases" in final_rule:
         texture_name_lower = texture_name.lower()
         

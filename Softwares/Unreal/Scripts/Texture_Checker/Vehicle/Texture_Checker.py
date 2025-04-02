@@ -192,7 +192,7 @@ class TextureCheckerGUI(QMainWindow):
         # No matching suffix found
         return None
         
-    def get_rule_from_name(self, texture_name):
+    def get_rule_from_name(self, texture_name, current_texture_group=None):
         """Determine texture properties based on file name suffix including special cases"""
         matching_suffix = self.get_matching_suffix(texture_name)
         
@@ -200,8 +200,8 @@ class TextureCheckerGUI(QMainWindow):
         if matching_suffix and matching_suffix in self.texture_rules:
             # Get the base rule for this suffix
             base_rule = self.texture_rules[matching_suffix]
-            # Apply any special case logic based on the texture name
-            return get_final_rule_for_texture(base_rule, matching_suffix, texture_name), matching_suffix
+            # Apply any special case logic based on the texture name and texture group
+            return get_final_rule_for_texture(base_rule, matching_suffix, texture_name, current_texture_group), matching_suffix
         
         # No matching rule found
         return None, matching_suffix
@@ -346,9 +346,6 @@ class TextureCheckerGUI(QMainWindow):
                 # Default color is white, but will be changed below if needed
                 color = "white"
                 
-                # Get the matching suffix and rule
-                rule, matching_suffix = self.get_rule_from_name(tex_name)
-                
                 # Initialize value dictionary
                 value_dict = {
                     "name": tex_name,
@@ -399,6 +396,13 @@ class TextureCheckerGUI(QMainWindow):
                 # Color dictionary for highlighting
                 color_dict = {}
                 
+                # Get current texture group for rule determination (needed for SCREAMER1)
+                current_texture_group = value_dict["texture_group"]
+                
+                # Get the matching suffix and rule (now passing texture group as string)
+                # This ensures we're passing a hashable value to avoid the "Type cannot be hashed" error
+                rule, matching_suffix = self.get_rule_from_name(tex_name, current_texture_group)
+                
                 # If we have a rule, check if properties need fixing
                 if rule is not None:
                     # Add rule values to metadata
@@ -406,8 +410,33 @@ class TextureCheckerGUI(QMainWindow):
                     meta_data["srgb"] = rule["srgb"]
                     meta_data["brightness_curve"] = rule["brightness_curve"]
                     
-                    # Add new size property if present
-                    if "size" in rule:
+                    # Handle different sizing approaches
+                    if "approved_sizes" in rule:
+                        # SCREAMER1 group-based size checking
+                        approved_sizes = rule["approved_sizes"]
+                        approved_size_strings = [f"{w}x{h}" for w, h in approved_sizes]
+                        
+                        # Display approved sizes in the target size column
+                        if approved_size_strings:
+                            value_dict["target_size"] = ", ".join(approved_size_strings)
+                        else:
+                            value_dict["target_size"] = "No size rules for this group"
+                        
+                        # Check if current size is among the approved sizes
+                        current_size = value_dict.get("current_size", "Unknown")
+                        if current_size != "Unknown" and approved_sizes:
+                            # Parse current size
+                            match = re.match(r"(\d+)x(\d+)", current_size)
+                            if match:
+                                current_width, current_height = int(match.group(1)), int(match.group(2))
+                                current_size_tuple = (current_width, current_height)
+                                
+                                # Check if current size is in approved sizes
+                                if current_size_tuple not in approved_sizes:
+                                    color_dict["current_size"] = "red"
+                                    # Note: We don't set value_dict["0/1"] = "1" since this is just a warning
+                    elif "size" in rule:
+                        # Standard size checking (unchanged from original)
                         target_width, target_height = rule["size"]
                         target_size = f"{target_width}x{target_height}"
                         # Always display the target size
