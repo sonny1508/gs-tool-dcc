@@ -178,25 +178,27 @@ class UVPrecisionTool(QMainWindow):
             self.mesh_table.setItem(row_position, 1, name_item)
     
     def apply_uv_precision(self):
-        """Apply full precision UVs to selected LODs for selected meshes"""
+        """Apply full precision UVs to selected LODs and disable recompute normals for all LODs"""
         if not self.selected_meshes:
             self.status_label.setText("No skeletal meshes selected.")
             self.status_label.setProperty("status", "error")
             return
         
-        # Get selected LODs
+        # Get selected LODs for UV precision
         selected_lods = []
         for i, checkbox in enumerate(self.lod_checkboxes):
             if checkbox.isChecked():
                 selected_lods.append(i)
         
         if not selected_lods:
-            self.status_label.setText("No LODs selected.")
+            self.status_label.setText("No LODs selected for UV precision.")
             self.status_label.setProperty("status", "warning")
             return
         
         try:
-            count = 0
+            uv_count = 0
+            normal_count = 0
+            
             # Apply changes to each selected mesh
             for mesh in self.selected_meshes:
                 mesh_name = mesh.get_name()
@@ -204,33 +206,63 @@ class UVPrecisionTool(QMainWindow):
                 # Use the skeletal mesh editor subsystem
                 skeletal_mesh_editor = unreal.get_editor_subsystem(unreal.SkeletalMeshEditorSubsystem)
                 
-                for lod_index in selected_lods:
+                # Get the number of LODs for this mesh
+                lod_count = skeletal_mesh_editor.get_lod_count(mesh)
+                
+                # First, disable recompute normals for ALL LODs in the mesh
+                for lod_index in range(lod_count):
                     try:
-                        # Get current build settings first
+                        # Get current build settings
                         current_settings = skeletal_mesh_editor.get_lod_build_settings(mesh, lod_index)
                         
-                        # Only modify the full precision UVs property
-                        current_settings.set_editor_property('use_full_precision_u_vs', True)
-                        
-                        # Apply the modified settings back to the mesh's LOD
-                        skeletal_mesh_editor.set_lod_build_settings(mesh, lod_index, current_settings)
-                        count += 1
-                        print(f"Set full precision UVs for {mesh_name} LOD{lod_index}")
+                        # Check if recompute normals is enabled
+                        if current_settings.get_editor_property('recompute_normals'):
+                            # Disable recompute normals
+                            current_settings.set_editor_property('recompute_normals', False)
+                            
+                            # Apply the modified settings back to the mesh's LOD
+                            skeletal_mesh_editor.set_lod_build_settings(mesh, lod_index, current_settings)
+                            normal_count += 1
+                            print(f"Disabled recompute normals for {mesh_name} LOD{lod_index}")
                     except Exception as e:
-                        print(f"Failed to set full precision UVs for {mesh_name} LOD{lod_index}: {e}")
+                        print(f"Failed to disable recompute normals for {mesh_name} LOD{lod_index}: {e}")
+                
+                # Then, apply full precision UVs to selected LODs only
+                for lod_index in selected_lods:
+                    # Only process valid LOD indices
+                    if lod_index < lod_count:
+                        try:
+                            # Get current build settings again (might have been updated above)
+                            current_settings = skeletal_mesh_editor.get_lod_build_settings(mesh, lod_index)
+                            
+                            # Set full precision UVs to true
+                            current_settings.set_editor_property('use_full_precision_u_vs', True)
+                            
+                            # Apply the modified settings back to the mesh's LOD
+                            skeletal_mesh_editor.set_lod_build_settings(mesh, lod_index, current_settings)
+                            uv_count += 1
+                            print(f"Set full precision UVs for {mesh_name} LOD{lod_index}")
+                        except Exception as e:
+                            print(f"Failed to set full precision UVs for {mesh_name} LOD{lod_index}: {e}")
             
             # Update status
-            if count > 0:
-                self.status_label.setText(f"Applied full precision UVs to {count} LODs across selected meshes.")
+            status_message = []
+            if uv_count > 0:
+                status_message.append(f"Applied full precision UVs to {uv_count} LODs.")
+            if normal_count > 0:
+                status_message.append(f"Disabled recompute normals for {normal_count} LODs.")
+            
+            if status_message:
+                self.status_label.setText(" ".join(status_message))
                 self.status_label.setProperty("status", "success")
             else:
-                self.status_label.setText("No changes applied. Could not access build settings for the selected LODs.")
+                self.status_label.setText("No changes applied. Could not access build settings for the selected meshes.")
                 self.status_label.setProperty("status", "warning")
                 
         except Exception as e:
             self.status_label.setText(f"Error: {str(e)}")
             self.status_label.setProperty("status", "error")
-            print(f"Error applying UV precision: {e}")
+            print(f"Error applying settings: {e}")
 
 try:
     app = QApplication.instance()
