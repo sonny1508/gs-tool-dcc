@@ -206,12 +206,14 @@ class UVPrecisionTool(QMainWindow):
                 
                 for lod_index in selected_lods:
                     try:
-                        # Create build settings with full precision UVs enabled
-                        settings = unreal.SkeletalMeshBuildSettings()
-                        settings.set_editor_property('use_full_precision_u_vs', True)
+                        # Get current build settings first
+                        current_settings = skeletal_mesh_editor.get_lod_build_settings(mesh, lod_index)
                         
-                        # Apply the settings to the mesh's LOD
-                        skeletal_mesh_editor.set_lod_build_settings(mesh, lod_index, settings)
+                        # Only modify the full precision UVs property
+                        current_settings.set_editor_property('use_full_precision_u_vs', True)
+                        
+                        # Apply the modified settings back to the mesh's LOD
+                        skeletal_mesh_editor.set_lod_build_settings(mesh, lod_index, current_settings)
                         count += 1
                         print(f"Set full precision UVs for {mesh_name} LOD{lod_index}")
                     except Exception as e:
