@@ -7,7 +7,7 @@ fn logMessage msg =
     format "[GSTools] %: %\n" (timestamp()) msg
 )
 
--- Function to check if GSTools menu already exists using a more robust method
+-- Function to check if GSTools menu already exists
 fn checkGSToolsMenuExists = 
 (
     try
@@ -21,77 +21,21 @@ fn checkGSToolsMenuExists =
             return false
         )
         
-        -- METHOD 1: Safely look for the menu by title
-        logMessage "METHOD 1: Checking menu by title"
-        local menuCount = mainMenuBar.numItems()
-        logMessage ("Found " + menuCount as string + " menu items to check")
+        -- METHOD 1: Try to find the menu by name in menuMan
+        logMessage "Trying to find by menu name"
+        local gsMenu = menuMan.findMenu "GSTools"
         
-        for i = 0 to (menuCount - 1) do
+        if gsMenu != undefined then
         (
-            try
-            (
-                local item = mainMenuBar.getItem i
-                
-                if item != undefined and classOf item == SubMenuItem then
-                (
-                    try
-                    (
-                        local title = item.getTitle()
-                        logMessage ("Menu #" + i as string + ": " + title)
-                        
-                        if title == "GSTools" then
-                        (
-                            logMessage "FOUND GSTools menu by title!"
-                            return true
-                        )
-                    )
-                    catch
-                    (
-                        -- Skip any items that cause errors when getting title
-                        logMessage ("Error getting title for menu item " + i as string)
-                    )
-                )
-            )
-            catch
-            (
-                logMessage ("Error checking menu item " + i as string)
-            )
+            logMessage "FOUND GSTools menu using findMenu!"
+            return true
         )
         
-        -- METHOD 2: Try to find the menu by name in menuMan
-        logMessage "METHOD 2: Trying to find by menu name"
-        
-        try
+        -- METHOD 2: Check global persistent flag via user properties
+        if getAppData rootNode 12345 == "GSToolsMenuInstalled" then
         (
-            local gsMenu = menuMan.findMenu "GSTools"
-            
-            if gsMenu != undefined then
-            (
-                logMessage "FOUND GSTools menu using findMenu!"
-                return true
-            )
-        )
-        catch
-        (
-            logMessage "Error using findMenu method"
-        )
-        
-        -- METHOD 3: Check if the persistent flag is present in user preferences
-        logMessage "METHOD 3: Checking persistent flag in user preferences"
-        
-        try
-        (
-            local gsPreference = getINISetting (getMAXIniFile()) "GSTools" "MenuInstalled"
-            
-            if gsPreference == "true" then
-            (
-                logMessage "Found flag in user preferences indicating GSTools was installed"
-                return true
-            )
-        )
-        catch
-        (
-            logMessage "Error checking user preferences"
+            logMessage "Found flag indicating GSTools menu was previously installed"
+            return true
         )
         
         logMessage "GSTools menu not found by any method"
@@ -100,6 +44,67 @@ fn checkGSToolsMenuExists =
     catch
     (
         logMessage ("Error checking for existing menu: " + (getCurrentException()))
+        return false
+    )
+)
+
+-- Function to remove existing GSTools menu
+fn removeGSToolsMenu = 
+(
+    logMessage "Attempting to remove existing GSTools menu"
+    
+    try
+    (
+        -- Get the main menu bar
+        local mainMenuBar = menuMan.getMainMenuBar()
+        
+        if mainMenuBar == undefined then
+        (
+            logMessage "ERROR: Could not get main menu bar for removal"
+            return false
+        )
+        
+        -- Use menuMan to find and unregister the menu
+        try
+        (
+            logMessage "Attempting to remove menu using menuMan methods"
+            local gsMenu = menuMan.findMenu "GSTools"
+            
+            if gsMenu != undefined then
+            (
+                menuMan.unRegisterMenu gsMenu
+                logMessage "Unregistered GSTools menu"
+            )
+        )
+        catch
+        (
+            logMessage ("Error unregistering menu: " + (getCurrentException()))
+        )
+        
+        -- Update the menu bar after removal
+        try
+        (
+            menuMan.updateMenuBar()
+            logMessage "Menu bar updated after removal"
+            
+            -- Clear the installation flag
+            if getAppData rootNode 12345 == "GSToolsMenuInstalled" then
+            (
+                setAppData rootNode 12345 ""
+                logMessage "Cleared GSToolsMenuInstalled flag"
+            )
+            
+            return true
+        )
+        catch
+        (
+            logMessage ("Error updating menu bar after removal: " + (getCurrentException()))
+            return false
+        )
+    )
+    catch
+    (
+        logMessage ("CRITICAL ERROR in removeGSToolsMenu: " + (getCurrentException()))
         return false
     )
 )
@@ -116,13 +121,17 @@ fn createGSToolsMenu =
         local exists = checkGSToolsMenuExists()
         logMessage ("GSTools menu exists: " + exists as string)
         
+        -- If the menu exists, remove it first
         if exists then
         (
-            logMessage "GSTools menu already exists - skipping creation"
-            return true
+            logMessage "GSTools menu already exists - removing it first"
+            local removeResult = removeGSToolsMenu()
+            
+            if not removeResult then
+                logMessage "WARNING: Could not completely remove existing menu, but will try to create anyway"
         )
         
-        logMessage "No existing GSTools menu found - creating new one"
+        logMessage "Creating new GSTools menu"
         
         -- Get the main menu bar
         logMessage "Getting main menu bar"
@@ -230,24 +239,18 @@ fn createGSToolsMenu =
             menuMan.updateMenuBar()
             logMessage "Menu bar updated successfully"
             
-            -- Set a persistent flag in the INI file
-            try
-            (
-                setINISetting (getMAXIniFile()) "GSTools" "MenuInstalled" "true"
-                logMessage "Set persistent flag in user preferences"
-            )
-            catch
-            (
-                logMessage ("Error setting persistent flag: " + (getCurrentException()))
-            )
+            -- Set a flag to indicate menu has been installed
+            -- Using rootNode appData instead of globalVars
+            setAppData rootNode 12345 "GSToolsMenuInstalled"
+            logMessage "Set GSToolsMenuInstalled flag"
+            
+            return true
         )
         catch
         (
             logMessage ("Error updating menu bar: " + (getCurrentException()))
             return false
         )
-        
-        return true
     )
     catch
     (

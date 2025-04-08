@@ -1,5 +1,5 @@
 macroScript GS_File_Transfer
-Category:"GS_Tools"
+Category:"GSTools"
 toolTip:"GS_File_Transfer"
 buttonText:"GS_File_Transfer"
 
@@ -10,7 +10,7 @@ buttonText:"GS_File_Transfer"
 	
 	-- Construct temp directory path directly using username
 	local tempDir = "C:\\Users\\" + username + "\\AppData\\Local\\Temp\\"
-	local localExportPath = tempDir + "maxExportFbx\\"
+	local localExportPath = tempDir + "fileTransferFbx\\"
 	
 	-- Create the directory if it doesn't exist
 	if (doesFileExist localExportPath) == false then (
@@ -36,25 +36,25 @@ buttonText:"GS_File_Transfer"
 		groupBox 'groupBox_local' "Local" pos:[10,5] width:180 height:112 align:#center
 
 		groupBox 'groupBox_local_blender' "Blender" pos:[20,25] width:75 height:82 align:#center
-		button 'button_local_blender_import' "Import" pos:[25,45] width:65 height:23 align:#center
-		button 'button_local_blender_export' "Export" pos:[25,78] width:65 height:23 align:#center
+		button 'button_local_blender_import' "Import" pos:[25,45] width:65 height:25 align:#center
+		button 'button_local_blender_export' "Export" pos:[25,78] width:65 height:25 align:#center
 		
 		groupBox 'groupBox_local_maya' "Maya" pos:[105,25] width:75 height:82 align:#center
-		button 'button_local_maya_import' "Import" pos:[110,45] width:65 height:23 align:#center
-		button 'button_local_maya_export' "Export" pos:[110,78] width:65 height:23 align:#center
+		button 'button_local_maya_import' "Import" pos:[110,45] width:65 height:25 align:#center
+		button 'button_local_maya_export' "Export" pos:[110,78] width:65 height:25 align:#center
 
 		--------------------------------------------------------------------
 		groupBox 'groupBox_server' "Server" pos:[10,123] width:180 height:195 align:#center
 
 		groupBox 'groupBox_server_import' "Import" pos:[20,140] width:160 height:80 align:#center
-		dropDownList 'dropDownList_server_import_app' "" pos:[30,160] width:65 height:23 items:#("Blender", "Maya", "Max") align:#center
-		dropDownList 'dropDownList_server_import_person' "" pos:[105,160] width:65 height:23 items:gsFolderList align:#center
-		button 'button_server_import' "Import" pos:[30,188] width:140 height:23 align:#center
+		dropDownList 'dropDownList_server_import_app' "" pos:[30,160] width:65 height:25 items:#("Blender", "Maya", "Max") align:#center
+		dropDownList 'dropDownList_server_import_person' "" pos:[105,160] width:65 height:25 items:gsFolderList align:#center
+		button 'button_server_import' "Import" pos:[30,188] width:140 height:25 align:#center
 
 		groupBox 'groupBox_server_export' "Export" pos:[20,227] width:160 height:80 align:#center
-		dropDownList 'dropDownList_server_export_app' "" pos:[30,247] width:65 height:23 items:#("Blender", "Maya", "Max") align:#center
-		dropDownList 'dropDownList_server_export_person' "" pos:[105,247] width:65 height:23 items:gsFolderList align:#center
-		button 'button_server_export' "Export" pos:[30,275] width:140 height:23 align:#center
+		dropDownList 'dropDownList_server_export_app' "" pos:[30,247] width:65 height:25 items:#("Blender", "Maya", "Max") align:#center
+		dropDownList 'dropDownList_server_export_person' "" pos:[105,247] width:65 height:25 items:gsFolderList align:#center
+		button 'button_server_export' "Export" pos:[30,275] width:140 height:25 align:#center
 		
 		-- Add username display at bottom (with fixed syntax)
 		label label_user "User: " pos:[10,325] width:100 height:20 align:#left
@@ -222,13 +222,13 @@ buttonText:"GS_File_Transfer"
 		on button_server_import pressed do 		
 		(	
 			app1 = dropDownList_server_import_app.selected as string
-			app1_lowercase = toLower app1
+            app1_lowercase = toLower app1
 			app2 = "max" as string
 			gsFolder = dropDownList_server_import_person.selected as string
 			
 			-- Build the path with new folder structure
 			local serverPath = "\\\\192.168.1.10\\Temp\\File_Transfer\\"
-			local filePath = serverPath + gsFolder + "\\" + app1_lowercase + "_to_" + app2 + ".fbx"
+            local filePath = serverPath + gsFolder + "\\" + gsFolder + "_" + app1_lowercase + "_to_" + app2 + "_" + username + ".fbx"
 			
 			print ("Attempting to import from server: " + filePath)
 			GS_File_Transfer_Import filePath
@@ -236,14 +236,14 @@ buttonText:"GS_File_Transfer"
 		
 		on button_server_export pressed do 		
 		(	
-			app1 = "max" as string
 			app2 = dropDownList_server_export_app.selected as string
-			app2_lowercase = toLower app2
+            app2_lowercase = toLower app2
+            app1 = "max" as string
 			gsFolder = dropDownList_server_export_person.selected as string
 			
 			-- Build the path with new folder structure
 			local serverPath = "\\\\192.168.1.10\\Temp\\File_Transfer\\"
-			local filePath = serverPath + gsFolder + "\\" + app1 + "_to_" + app2_lowercase + ".fbx"
+            local filePath = serverPath + username + "\\" + username + "_" + app1 + "_to_" + app2_lowercase + "_" + gsFolder + ".fbx"
 			
 			print ("Attempting to export to server: " + filePath)
 			GS_File_Transfer_Export filePath
