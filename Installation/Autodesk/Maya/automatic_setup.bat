@@ -4,8 +4,8 @@ setlocal
 :: Get the current batch file directory
 set "BAT_DIR=%~dp0"
 
-:: Move up two levels to get to GSTools root
-for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
+:: Move up to get to GSTools root
+for %%I in ("%BAT_DIR%\..\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
 :: Construct the path to application plugins
 set "source_path_autodesk=%GSTOOLS_ROOT%\Softwares\Autodesk\ApplicationPlugins"
