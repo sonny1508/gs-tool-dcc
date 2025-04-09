@@ -3,12 +3,40 @@ setlocal EnableDelayedExpansion
 
 :: Get the current batch file directory
 set "BAT_DIR=%~dp0"
+set "CURRENT_DIR=%BAT_DIR%"
 
-:: Move up to get to GSTools root
-for %%I in ("%BAT_DIR%\..\..\..") do set "GSTOOLS_ROOT=%%~fI"
+:: Navigate up until we find GSTools directory
+:find_gstools
+for %%I in ("!CURRENT_DIR!") do set "PARENT_DIR=%%~dpI"
+set "PARENT_DIR=!PARENT_DIR:~0,-1!"
 
-:: Define source and destination paths
-set "source_path=%GSTOOLS_ROOT%\Library\Maya\pymel"
+for %%I in ("!PARENT_DIR!") do set "FOLDER_NAME=%%~nxI"
+if "!FOLDER_NAME!"=="GSTools" (
+    :: Found GSTools, set GSTOOLS_ROOT to its parent directory
+    for %%J in ("!PARENT_DIR!") do set "GSTOOLS_ROOT=%%~dpJ"
+    set "GSTOOLS_ROOT=!GSTOOLS_ROOT:~0,-1!"
+    goto :found_gstools
+)
+
+:: Check if we're already in GSTools directory
+for %%I in ("!CURRENT_DIR:~0,-1!") do set "CURRENT_FOLDER=%%~nxI"
+if "!CURRENT_FOLDER!"=="GSTools" (
+    for %%J in ("!CURRENT_DIR!") do set "GSTOOLS_ROOT=%%~dpJ"
+    set "GSTOOLS_ROOT=!GSTOOLS_ROOT:~0,-1!"
+    goto :found_gstools
+)
+
+:: Not found yet, move up one directory and try again
+if "!PARENT_DIR!"=="!CURRENT_DIR!" (
+    echo GSTools directory not found in parent path.
+    exit /b 1
+)
+set "CURRENT_DIR=!PARENT_DIR!"
+goto :find_gstools
+
+:found_gstools
+:: Define source and destination paths based on the directory structure you showed
+set "source_path=!GSTOOLS_ROOT!\Library\Maya\pymel"
 set "destination_path=C:\temp\Maya\pymel"
 
 :: Check if source directory exists
