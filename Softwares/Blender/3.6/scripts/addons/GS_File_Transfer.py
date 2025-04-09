@@ -77,7 +77,7 @@ class IMPORT_OT_from_application(Operator):
             # FBX files from Max and Maya are in centimeters
             # If Blender is set to meters (1.0), we need to import at 0.01 scale
             # If Blender is set to centimeters (0.01), we keep the scale at 1.0
-            scale_factor = unit_scale / 0.01 if unit_scale > 0 else 1.0
+            scale_factor = unit_scale / 1.0 if unit_scale > 0 else 1.0
             
             # Import FBX with settings from reference and adjusted scale
             bpy.ops.import_scene.fbx(
@@ -148,7 +148,7 @@ class EXPORT_OT_to_application(Operator):
         # 0.01 = cm in Blender's unit system
         # If unit_scale is 0.01, we're already in centimeters
         # If it's 1.0, we're in meters and need to multiply by 100 to get to cm
-        scale_factor = 0.01 / unit_scale if unit_scale > 0 else 1.0
+        scale_factor = 1.0 / unit_scale if unit_scale > 0 else 1.0
         
         # Export selected objects as FBX with settings from reference
         bpy.ops.export_scene.fbx(
