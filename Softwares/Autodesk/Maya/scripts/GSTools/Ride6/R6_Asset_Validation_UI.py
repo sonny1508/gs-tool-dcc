@@ -15,7 +15,8 @@ class pieceInfo(object):  # Explicitly inherit from object for Python 2.7
 
 def getPiecesList():
     pm.select(cl=True)
-    piecesList = [pieceInfo("MAIN_BODY_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics", "mat_cockpit"]),
+    piecesList = [
+                pieceInfo("MAIN_BODY_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics", "mat_cockpit"]),
                 pieceInfo("F_SUSP_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics", "mat_cockpit"]),  
                 pieceInfo("SUSP_LOD", ["mat_mechanics"]),
                 pieceInfo("B_RAKE_LOD", ["mat_livery_0", "mat_livery_1", "mat_mechanics", "mat_cockpit"]),
@@ -96,14 +97,26 @@ def getPiecesList():
     ]
 
     
-    def addPiece(pieceName, materialsList):
-        pieces = pm.ls(pieceName, type="transform")
+    def addPiece(piecePattern, materialsList):
+        # This will find all piece names matching the pattern
+        pieces = pm.ls(piecePattern, type="transform")
         for piece in pieces:
-            piecesList.append(pieceInfo(piece.name().replace("_LODA", "_LOD"), materialsList))
-    
-    addPiece("MUFFLER_00*_LODA", ["mat_muffler"])
-    addPiece("MOUNT_00*_LODA", ["mat_muffler"])
-    addPiece("EXMANIFOLD_00*_LODA", ["mat_exmanifold"])
+            # Extract the original name and replace any _LOD[letter] with _LOD
+            piece_name = piece.name()
+            if "_LOD" in piece_name:
+                # Find where the _LOD part starts
+                lod_index = piece_name.find("_LOD")
+                # Take everything up to _LOD and add _LOD
+                new_name = piece_name[:lod_index] + "_LOD"
+                piecesList.append(pieceInfo(new_name, materialsList))
+            else:
+                # Fallback if the naming pattern is different
+                piecesList.append(pieceInfo(piece_name, materialsList))
+
+    # Then call it with a pattern that matches LODA, LODB, etc.
+    addPiece("MUFFLER_00*_LOD?", ["mat_muffler"])
+    addPiece("MOUNT_00*_LOD?", ["mat_muffler"])
+    addPiece("EXMANIFOLD_00*_LOD?", ["mat_exmanifold"])
         
     return piecesList
     
