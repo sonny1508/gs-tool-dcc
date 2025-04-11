@@ -27,12 +27,8 @@ goto :find_gstools
 :found_gstools
 echo Found GSTools at: !GSTOOLS_ROOT!
 
-:: Continue with the rest of your script using GSTOOLS_ROOT
 :: Construct the path to user setup
 set "source_path_users=!GSTOOLS_ROOT!\Softwares\Adobe\SubstancePainter\python\plugins"
-
-:: Define source and destination paths
-set "destination_path_users=%USERPROFILE%\Documents\Adobe\Adobe Substance 3D Painter\python\plugins"
 
 :: Get the IP address of this machine
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
@@ -86,7 +82,7 @@ if not exist "C:\Users\%REAL_USER%" (
 )
 
 :user_found
-:: Define source and destination paths
+:: Define destination path
 set "destination_path_users=C:\Users\%REAL_USER%\Documents\Adobe\Adobe Substance 3D Painter\python\plugins"
 
 :: Debugging: Print the detected user
@@ -100,13 +96,29 @@ if not exist "C:\Users\%REAL_USER%" (
 )
 
 :: Create destination directories if they don't exist
-mkdir "%destination_path_users%" 2>nul
+if not exist "%destination_path_users%" (
+    mkdir "%destination_path_users%" 2>nul
+    if errorlevel 1 (
+        echo ERROR: Failed to create destination directory!
+        exit /b 1
+    )
+)
 
-:: Copy all files and subdirectories for maya
+:: First, clean the destination directory if it exists
+if exist "%destination_path_users%\*" (
+    echo Cleaning destination directory...
+    del /s /q "%destination_path_users%\*" >nul 2>&1
+    for /d %%i in ("%destination_path_users%\*") do rmdir /s /q "%%i" >nul 2>&1
+)
+
+:: Check if source directory exists
+if not exist "%source_path_users%" (
+    echo ERROR: Source directory not found: %source_path_users%
+    exit /b 1
+)
+
+:: Copy all files and subdirectories
+echo Copying files from %source_path_users% to %destination_path_users%...
 xcopy "%source_path_users%\*" "%destination_path_users%" /Y /E /I
 
-:: Delete all existing content in the destination directory
-if exist "%destination_path_users%\*" del /s /q "%destination_path_users%\*"
-for /d %%i in ("%destination_path_users%\*") do rmdir /s /q "%%i"
-
-echo Installation completed for user: %REAL_USER%
+echo Installation completed successfully for user: %REAL_USER%
