@@ -372,11 +372,263 @@ def exportSelectionAsFBX(*args):
     pm.textScrollList("resultField", e=True, a="- Included: Smoothing Groups, Smooth Mesh, Triangulate")
     pm.textScrollList("resultField", e=True, a="- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
 
+def exportSelectionAsUV2FBX(*args):
+    """Export selected objects as FBX files with only UV channel 2 preserved"""
+    # First, make sure user has saved their file
+    pm.textScrollList("resultField", e=True, ra=True)
+    pm.textScrollList("resultField", e=True, a="Please save your Maya file before exporting...")
+    
+    # Use centered dialog (appears on main screen)
+    try:
+        # Try to position the dialog in the center of Maya's main window
+        result = cmds.confirmDialog(
+            title='Save File',
+            message='Please save your Maya file before exporting.\nClick OK when ready to continue.',
+            button=['OK', 'Cancel'],
+            defaultButton='OK',
+            cancelButton='Cancel',
+            dismissString='Cancel',
+            icon='warning'
+        )
+    except:
+        # Fallback if positioning fails
+        result = cmds.confirmDialog(
+            title='Save File',
+            message='Please save your Maya file before exporting.\nClick OK when ready to continue.',
+            button=['OK', 'Cancel'],
+            defaultButton='OK',
+            cancelButton='Cancel',
+            dismissString='Cancel'
+        )
+    
+    if result != 'OK':
+        pm.textScrollList("resultField", e=True, a="Export canceled.")
+        return
+    
+    # Get export folder - use directory browser that only shows folders
+    try:
+        # Use fileMode=3 to ensure only directories are visible/selectable
+        # Use dialogStyle=2 for directory browser (no files shown)
+        # Set fileFilter to only show folders by using "Folders (*)" as a filter
+        export_folder = cmds.fileDialog2(
+            fileMode=3,          # 3 = Directory selection only
+            dialogStyle=2,       # 2 = Directory browser (hides files)
+            caption="Select Export Folder",
+            okCaption="Select",
+            fileFilter="Folders (*)|" # This ensures only folders are shown in the browser
+        )
+    except:
+        # Fallback if advanced options cause issues
+        export_folder = cmds.fileDialog2(
+            fileMode=3,          # Directory selection only
+            fileFilter="Folders (*)|" # Filter to show only folders
+        )
+    
+    if not export_folder:
+        pm.textScrollList("resultField", e=True, a="Export canceled - no folder selected.")
+        return
+    
+    export_folder = export_folder[0]  # Get the first path
+    
+    # Get selected objects using longnames (using same approach as the check function)
+    selected_paths = cmds.ls(selection=True, long=True)
+    if not selected_paths:
+        pm.textScrollList("resultField", e=True, a="No objects selected for export.")
+        return
+    
+    # Process groups to get all mesh objects (using same approach as the check function)
+    mesh_objects = []
+    for obj_path in selected_paths:
+        # Check if the selected object is itself a mesh
+        if cmds.objectType(obj_path, isType="transform"):
+            shapes = cmds.listRelatives(obj_path, shapes=True, fullPath=True, type="mesh")
+            if shapes:
+                mesh_objects.append(obj_path)
+        
+        # Find all mesh children but keep their full paths
+        children = cmds.listRelatives(obj_path, allDescendents=True, fullPath=True, type="transform") or []
+        for child_path in children:
+            shapes = cmds.listRelatives(child_path, shapes=True, fullPath=True, type="mesh")
+            if shapes and child_path not in mesh_objects:
+                mesh_objects.append(child_path)
+    
+    # Track groups for reporting
+    group_objects = []
+    for obj_path in selected_paths:
+        if obj_path not in mesh_objects:
+            children = cmds.listRelatives(obj_path, allDescendents=True, fullPath=True, type="transform") or []
+            has_mesh_children = False
+            for child_path in children:
+                if child_path in mesh_objects:
+                    has_mesh_children = True
+                    break
+            
+            if has_mesh_children:
+                # Get just the object name without the full path for reporting
+                obj_name = obj_path.split('|')[-1]
+                group_objects.append(obj_name)
+    
+    # Report processing information
+    if group_objects:
+        pm.textScrollList("resultField", e=True, a="The following groups will be processed for their children:")
+        for obj in group_objects:
+            pm.textScrollList("resultField", e=True, a=f"  - {obj}")
+    
+    # Check if we have valid objects to export
+    if not mesh_objects:
+        pm.textScrollList("resultField", e=True, a="No valid geometry objects to export. Only mesh objects can be exported.")
+        return
+    
+    pm.textScrollList("resultField", e=True, a=f"Exporting {len(mesh_objects)} individual mesh objects with only UV channel 2 to: {export_folder}")
+    
+    # Store original selection to restore later
+    original_selection = cmds.ls(selection=True, long=True)
+    
+    # List to keep track of objects to clean up
+    temp_objects = []
+    
+    # Process each mesh object individually
+    for obj_path in mesh_objects:
+        # Get just the object name without the full path
+        obj_name = obj_path.split('|')[-1]
+        file_path = os.path.join(export_folder, f"{obj_name}.fbx")
+        
+        # Check if the object has a UV channel 2 first
+        shapes = cmds.listRelatives(obj_path, shapes=True, fullPath=True, type="mesh") or []
+        if not shapes:
+            pm.textScrollList("resultField", e=True, a=f"No mesh shape found for {obj_name}, skipping...")
+            continue
+            
+        shape = shapes[0]
+        original_uv_sets = cmds.polyUVSet(shape, query=True, allUVSets=True) or []
+        
+        # Check if UV channel 2 exists (index 1 in zero-based array)
+        if len(original_uv_sets) < 2:
+            pm.textScrollList("resultField", e=True, a=f"{obj_name} doesn't have a UV channel 2, skipping...")
+            continue
+            
+        # Get the name of the second UV set (index 1)
+        uv_channel_2 = original_uv_sets[1]
+        
+        # Duplicate the object
+        cmds.select(obj_path, replace=True)
+        duplicate_result = cmds.duplicate()[0]  # Get the first result (the duplicated object)
+        
+        # Add to temp objects for cleanup later
+        temp_objects.append(duplicate_result)
+        
+        # Get the duplicated shape node
+        dup_shapes = cmds.listRelatives(duplicate_result, shapes=True, fullPath=True, type="mesh") or []
+        if not dup_shapes:
+            pm.textScrollList("resultField", e=True, a=f"No mesh shape found in duplicated {obj_name}, skipping...")
+            continue
+            
+        dup_shape = dup_shapes[0]
+        
+        try:
+            # Get UV sets in the duplicate
+            dup_uv_sets = cmds.polyUVSet(dup_shape, query=True, allUVSets=True) or []
+            
+            # Create a temporary UV set as a buffer
+            temp_uv_set = "TEMP_UV_SET"
+            cmds.polyUVSet(dup_shape, create=True, uvSet=temp_uv_set)
+            
+            # Copy UV channel 2 to temporary set
+            cmds.polyUVSet(dup_shape, copy=True, uvSet=uv_channel_2, newUVSet=temp_uv_set)
+            
+            # Delete all original UV sets except the first one (which we'll overwrite)
+            for uv_set in dup_uv_sets:
+                if uv_set != dup_uv_sets[0]:  # Don't delete the first UV set
+                    cmds.polyUVSet(dup_shape, delete=True, uvSet=uv_set)
+            
+            # Copy temp UV set to the first UV set
+            cmds.polyUVSet(dup_shape, copy=True, uvSet=temp_uv_set, newUVSet=dup_uv_sets[0])
+            
+            # Delete the temporary UV set
+            cmds.polyUVSet(dup_shape, delete=True, uvSet=temp_uv_set)
+            
+            # Rename the UV set to UVChannel2
+            cmds.polyUVSet(dup_shape, rename=True, uvSet=dup_uv_sets[0], newUVSet="UVChannel2")
+            
+            # Select only the duplicate object for export
+            cmds.select(duplicate_result, replace=True)
+            
+            # Reset export settings to default
+            mel.eval('FBXResetExport')
+            
+            # Set FBX version to 2020
+            mel.eval('FBXExportFileVersion "FBX202000"')
+            
+            # Set up axis to Z
+            mel.eval('FBXExportUpAxis z')
+            
+            # Set units to Centimeters (not automatic)
+            mel.eval('FBXExportScaleFactor 1.0')  # 1.0 for centimeters
+            mel.eval('FBXExportConvertUnitString "cm"')
+            
+            # Include geometry settings
+            mel.eval('FBXExportSmoothingGroups -v true')      # Smoothing Groups
+            mel.eval('FBXExportSmoothMesh -v true')           # Smooth Mesh
+            mel.eval('FBXExportTriangulate -v true')         # Triangulate
+            
+            # Disable other geometry settings
+            mel.eval('FBXExportTangents -v false')            # Tangents and Binormals
+            mel.eval('FBXExportInstances -v false')           # Preserve Instances
+            mel.eval('FBXExportHardEdges -v false')           # Hard Edges
+            mel.eval('FBXExportReferencedAssetsContent -v false')  # Referenced Assets Content
+            
+            # Disable animation, cameras, lights, etc.
+            mel.eval('FBXExportBakeComplexAnimation -v false')  # Animation
+            mel.eval('FBXExportCameras -v false')               # Cameras
+            mel.eval('FBXExportLights -v false')                # Lights
+            mel.eval('FBXExportAudio -v false')                 # Audio
+            mel.eval('FBXExportEmbeddedTextures -v false')      # Embed Media
+            
+            # Additional settings to ensure clean export
+            mel.eval('FBXExportConstraints -v false')
+            mel.eval('FBXExportInputConnections -v false')
+            
+            # Export the FBX - using forward slashes and quotes
+            try:
+                # Convert path to use forward slashes for Maya's MEL
+                file_path_mel = file_path.replace("\\", "/")
+                
+                # Export - use original object name for the file name
+                fbx_command = f'FBXExport -f "{file_path_mel}" -s'
+                mel.eval(fbx_command)
+                pm.textScrollList("resultField", e=True, a=f"Exported: {obj_name}.fbx with UVChannel2")
+                    
+            except Exception as e:
+                pm.textScrollList("resultField", e=True, a=f"Error exporting {obj_name}: {str(e)}")
+            
+        except Exception as e:
+            pm.textScrollList("resultField", e=True, a=f"Error processing UV sets for {obj_name}: {str(e)}")
+    
+    # Clean up - delete all temporary objects
+    if temp_objects:
+        cmds.select(temp_objects, replace=True)
+        cmds.delete()
+        pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
+    
+    # Restore original selection
+    cmds.select(original_selection)
+    pm.textScrollList("resultField", e=True, a="Export with UV channel 2 complete.")
+    
+    # Final verification message
+    pm.textScrollList("resultField", e=True, a="")
+    pm.textScrollList("resultField", e=True, a="Export Settings Used:")
+    pm.textScrollList("resultField", e=True, a="- FBX Version: 2020")
+    pm.textScrollList("resultField", e=True, a="- Up Axis: Z")
+    pm.textScrollList("resultField", e=True, a="- Units: Centimeters")
+    pm.textScrollList("resultField", e=True, a="- Included: Smoothing Groups, Smooth Mesh, Triangulate")
+    pm.textScrollList("resultField", e=True, a="- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
+    pm.textScrollList("resultField", e=True, a="- UV Modification: Keep only UV Set 2 and renamed to UVChannel2")
+
 def UI():
     if cmds.window("win", exists=True):
         cmds.deleteUI("win", window=True)
     
-    cmds.window("win", title="Scr1 Tools (Python 3.7)")   
+    cmds.window("win", title="Scr1 GSTools (Python 3.7)")   
     
     height = 20
         
@@ -385,27 +637,27 @@ def UI():
     # Main check section
     pm.separator(style="out", height=5)
     pm.text(label="Asset Validation", font="boldLabelFont", align="center")
-    pm.separator(style="in", height=5)
+    pm.separator(style="in", height=10)
     
     pm.button(label="Check Selection", height=height+10, command=check)
     pm.separator(style="none", height=5)
     
     pm.text(label="Results:", align="left")
     pm.textScrollList("resultField", height=300)
-    pm.button(label="Print Results", height=height+10, command=printResult)
+    # pm.button(label="Print Results", height=height+10, command=printResult)
     
-    pm.separator(style="in", height=10)
+    pm.separator(style="in", height=30)
 
     # Export section
     pm.text(label="Export Tools", font="boldLabelFont", align="center")
-    pm.separator(style="in", height=5)
+    pm.separator(style="in", height=10)
     
     pm.button(label="Export Selection as FBX", height=height+10, command=exportSelectionAsFBX)
+    pm.button(label="Export FBX with UVChannel 2", height=height+10, command=exportSelectionAsUV2FBX)
     
     pm.separator(style="in", height=10)
 
     cmds.showWindow("win")
-
 
 if __name__ == "__main__":
     UI()
