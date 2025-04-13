@@ -590,11 +590,11 @@ def exportSelectionAsUV2FBX(*args):
     if temp_objects:
         cmds.select(temp_objects, replace=True)
         cmds.delete()
-        pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
+        # pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
     
     # Restore original selection
     cmds.select(original_selection)
-    pm.textScrollList("resultField", e=True, a="Export with UV channel 2 complete.")
+    pm.textScrollList("resultField", e=True, a="Export with UVchannel2 complete.")
     
     # Final verification message
     pm.textScrollList("resultField", e=True, a="")
