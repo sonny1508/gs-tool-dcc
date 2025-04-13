@@ -493,7 +493,7 @@ def exportSelectionAsUV2FBX(*args):
         obj_name = obj_path.split('|')[-1]
         file_path = os.path.join(export_folder, f"{obj_name}.fbx")
         
-        # Check if the object has a UV channel 2 first
+        # Check if the object has UV sets
         shapes = cmds.listRelatives(obj_path, shapes=True, fullPath=True, type="mesh") or []
         if not shapes:
             pm.textScrollList("resultField", e=True, a=f"No mesh shape found for {obj_name}, skipping...")
@@ -502,14 +502,11 @@ def exportSelectionAsUV2FBX(*args):
         shape = shapes[0]
         original_uv_sets = cmds.polyUVSet(shape, query=True, allUVSets=True) or []
         
-        # Check if UV channel 2 exists (index 1 in zero-based array)
-        if len(original_uv_sets) < 2:
-            pm.textScrollList("resultField", e=True, a=f"{obj_name} doesn't have a UV channel 2, skipping...")
+        # Check if the mesh has any UV sets
+        if not original_uv_sets:
+            pm.textScrollList("resultField", e=True, a=f"{obj_name} has no UV sets, skipping...")
             continue
             
-        # Get the name of the second UV set (index 1)
-        uv_channel_2 = original_uv_sets[1]
-        
         # Duplicate the object
         cmds.select(obj_path, replace=True)
         duplicate_result = cmds.duplicate()[0]  # Get the first result (the duplicated object)
@@ -529,26 +526,40 @@ def exportSelectionAsUV2FBX(*args):
             # Get UV sets in the duplicate
             dup_uv_sets = cmds.polyUVSet(dup_shape, query=True, allUVSets=True) or []
             
-            # Create a temporary UV set as a buffer
-            temp_uv_set = "TEMP_UV_SET"
-            cmds.polyUVSet(dup_shape, create=True, uvSet=temp_uv_set)
+            # Handle based on number of UV sets
+            if len(dup_uv_sets) >= 2:
+                # Case: Multiple UV sets - preserve only UV channel 2
+                
+                # Get the name of the second UV set (index 1)
+                uv_channel_2 = dup_uv_sets[1]
+                
+                # Create a temporary UV set as a buffer
+                temp_uv_set = "TEMP_UV_SET"
+                cmds.polyUVSet(dup_shape, create=True, uvSet=temp_uv_set)
+                
+                # Copy UV channel 2 to temporary set
+                cmds.polyUVSet(dup_shape, copy=True, uvSet=uv_channel_2, newUVSet=temp_uv_set)
+                
+                # Delete all original UV sets except the first one (which we'll overwrite)
+                for uv_set in dup_uv_sets:
+                    if uv_set != dup_uv_sets[0]:  # Don't delete the first UV set
+                        cmds.polyUVSet(dup_shape, delete=True, uvSet=uv_set)
+                
+                # Copy temp UV set to the first UV set
+                cmds.polyUVSet(dup_shape, copy=True, uvSet=temp_uv_set, newUVSet=dup_uv_sets[0])
+                
+                # Delete the temporary UV set
+                cmds.polyUVSet(dup_shape, delete=True, uvSet=temp_uv_set)
+                
+                pm.textScrollList("resultField", e=True, a=f"For {obj_name}: Moved UVchannel2 to slot 1")
+            else:
+                # Case: Only one UV set - just rename it
+                pm.textScrollList("resultField", e=True, a=f"For {obj_name}: Only one UV set found, keeping it")
             
-            # Copy UV channel 2 to temporary set
-            cmds.polyUVSet(dup_shape, copy=True, uvSet=uv_channel_2, newUVSet=temp_uv_set)
-            
-            # Delete all original UV sets except the first one (which we'll overwrite)
-            for uv_set in dup_uv_sets:
-                if uv_set != dup_uv_sets[0]:  # Don't delete the first UV set
-                    cmds.polyUVSet(dup_shape, delete=True, uvSet=uv_set)
-            
-            # Copy temp UV set to the first UV set
-            cmds.polyUVSet(dup_shape, copy=True, uvSet=temp_uv_set, newUVSet=dup_uv_sets[0])
-            
-            # Delete the temporary UV set
-            cmds.polyUVSet(dup_shape, delete=True, uvSet=temp_uv_set)
-            
-            # Rename the UV set to UVChannel2
-            cmds.polyUVSet(dup_shape, rename=True, uvSet=dup_uv_sets[0], newUVSet="UVChannel2")
+            # Rename the UV set to UVChannel2 (regardless of which case)
+            current_uv_sets = cmds.polyUVSet(dup_shape, query=True, allUVSets=True) or []
+            if current_uv_sets:
+                cmds.polyUVSet(dup_shape, rename=True, uvSet=current_uv_sets[0], newUVSet="UVChannel2")
             
             # Select only the duplicate object for export
             cmds.select(duplicate_result, replace=True)
@@ -608,11 +619,11 @@ def exportSelectionAsUV2FBX(*args):
     if temp_objects:
         cmds.select(temp_objects, replace=True)
         cmds.delete()
-        pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
+        # pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
     
     # Restore original selection
     cmds.select(original_selection)
-    pm.textScrollList("resultField", e=True, a="Export with UV channel 2 complete.")
+    pm.textScrollList("resultField", e=True, a="Export with UVchannel2 complete.")
     
     # Final verification message
     pm.textScrollList("resultField", e=True, a="")
