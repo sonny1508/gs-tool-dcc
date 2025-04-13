@@ -373,7 +373,7 @@ def exportSelectionAsFBX(*args):
     pm.textScrollList("resultField", e=True, a="- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
 
 def exportSelectionAsUV2FBX(*args):
-    """Export selected objects as FBX files with only UV channel 2 preserved"""
+    """Export all selected objects as a single FBX file with only UV channel 2 preserved"""
     # First, make sure user has saved their file
     pm.textScrollList("resultField", e=True, ra=True)
     pm.textScrollList("resultField", e=True, a="Please save your Maya file before exporting...")
@@ -405,38 +405,13 @@ def exportSelectionAsUV2FBX(*args):
         pm.textScrollList("resultField", e=True, a="Export canceled.")
         return
     
-    # Get export folder - use directory browser that only shows folders
-    try:
-        # Use fileMode=3 to ensure only directories are visible/selectable
-        # Use dialogStyle=2 for directory browser (no files shown)
-        # Set fileFilter to only show folders by using "Folders (*)" as a filter
-        export_folder = cmds.fileDialog2(
-            fileMode=3,          # 3 = Directory selection only
-            dialogStyle=2,       # 2 = Directory browser (hides files)
-            caption="Select Export Folder",
-            okCaption="Select",
-            fileFilter="Folders (*)|" # This ensures only folders are shown in the browser
-        )
-    except:
-        # Fallback if advanced options cause issues
-        export_folder = cmds.fileDialog2(
-            fileMode=3,          # Directory selection only
-            fileFilter="Folders (*)|" # Filter to show only folders
-        )
-    
-    if not export_folder:
-        pm.textScrollList("resultField", e=True, a="Export canceled - no folder selected.")
-        return
-    
-    export_folder = export_folder[0]  # Get the first path
-    
-    # Get selected objects using longnames (using same approach as the check function)
+    # Get selected objects using longnames
     selected_paths = cmds.ls(selection=True, long=True)
     if not selected_paths:
         pm.textScrollList("resultField", e=True, a="No objects selected for export.")
         return
     
-    # Process groups to get all mesh objects (using same approach as the check function)
+    # Process groups to get all mesh objects
     mesh_objects = []
     for obj_path in selected_paths:
         # Check if the selected object is itself a mesh
@@ -452,34 +427,26 @@ def exportSelectionAsUV2FBX(*args):
             if shapes and child_path not in mesh_objects:
                 mesh_objects.append(child_path)
     
-    # Track groups for reporting
-    group_objects = []
-    for obj_path in selected_paths:
-        if obj_path not in mesh_objects:
-            children = cmds.listRelatives(obj_path, allDescendents=True, fullPath=True, type="transform") or []
-            has_mesh_children = False
-            for child_path in children:
-                if child_path in mesh_objects:
-                    has_mesh_children = True
-                    break
-            
-            if has_mesh_children:
-                # Get just the object name without the full path for reporting
-                obj_name = obj_path.split('|')[-1]
-                group_objects.append(obj_name)
-    
-    # Report processing information
-    if group_objects:
-        pm.textScrollList("resultField", e=True, a="The following groups will be processed for their children:")
-        for obj in group_objects:
-            pm.textScrollList("resultField", e=True, a=f"  - {obj}")
-    
     # Check if we have valid objects to export
     if not mesh_objects:
         pm.textScrollList("resultField", e=True, a="No valid geometry objects to export. Only mesh objects can be exported.")
         return
     
-    pm.textScrollList("resultField", e=True, a=f"Exporting {len(mesh_objects)} individual mesh objects with only UV channel 2 to: {export_folder}")
+    # Ask user for the export filename
+    try:
+        # Use Maya's standard file dialog with FBX default
+        result_file = pm.fileDialog(m=1, dm="*.fbx", t="Enter name for exported FBX")
+        
+        if not result_file:
+            pm.textScrollList("resultField", e=True, a="Export canceled - no filename provided.")
+            return
+            
+        # Ensure the file has .fbx extension
+        if not result_file.lower().endswith('.fbx'):
+            result_file += '.fbx'
+    except:
+        pm.textScrollList("resultField", e=True, a="Error getting export filename.")
+        return
     
     # Store original selection to restore later
     original_selection = cmds.ls(selection=True, long=True)
@@ -487,11 +454,12 @@ def exportSelectionAsUV2FBX(*args):
     # List to keep track of objects to clean up
     temp_objects = []
     
-    # Process each mesh object individually
+    # Process each mesh object individually to prepare UV sets
+    pm.textScrollList("resultField", e=True, a=f"Processing {len(mesh_objects)} mesh objects for export...")
+    
     for obj_path in mesh_objects:
         # Get just the object name without the full path
         obj_name = obj_path.split('|')[-1]
-        file_path = os.path.join(export_folder, f"{obj_name}.fbx")
         
         # Check if the object has UV sets
         shapes = cmds.listRelatives(obj_path, shapes=True, fullPath=True, type="mesh") or []
@@ -551,7 +519,7 @@ def exportSelectionAsUV2FBX(*args):
                 # Delete the temporary UV set
                 cmds.polyUVSet(dup_shape, delete=True, uvSet=temp_uv_set)
                 
-                pm.textScrollList("resultField", e=True, a=f"For {obj_name}: Moved UVchannel2 to slot 1")
+                pm.textScrollList("resultField", e=True, a=f"For {obj_name}: Moved UV channel 2 to slot 1")
             else:
                 # Case: Only one UV set - just rename it
                 pm.textScrollList("resultField", e=True, a=f"For {obj_name}: Only one UV set found, keeping it")
@@ -561,69 +529,72 @@ def exportSelectionAsUV2FBX(*args):
             if current_uv_sets:
                 cmds.polyUVSet(dup_shape, rename=True, uvSet=current_uv_sets[0], newUVSet="UVChannel2")
             
-            # Select only the duplicate object for export
-            cmds.select(duplicate_result, replace=True)
-            
-            # Reset export settings to default
-            mel.eval('FBXResetExport')
-            
-            # Set FBX version to 2020
-            mel.eval('FBXExportFileVersion "FBX202000"')
-            
-            # Set up axis to Z
-            mel.eval('FBXExportUpAxis z')
-            
-            # Set units to Centimeters (not automatic)
-            mel.eval('FBXExportScaleFactor 1.0')  # 1.0 for centimeters
-            mel.eval('FBXExportConvertUnitString "cm"')
-            
-            # Include geometry settings
-            mel.eval('FBXExportSmoothingGroups -v true')      # Smoothing Groups
-            mel.eval('FBXExportSmoothMesh -v true')           # Smooth Mesh
-            mel.eval('FBXExportTriangulate -v true')         # Triangulate
-            
-            # Disable other geometry settings
-            mel.eval('FBXExportTangents -v false')            # Tangents and Binormals
-            mel.eval('FBXExportInstances -v false')           # Preserve Instances
-            mel.eval('FBXExportHardEdges -v false')           # Hard Edges
-            mel.eval('FBXExportReferencedAssetsContent -v false')  # Referenced Assets Content
-            
-            # Disable animation, cameras, lights, etc.
-            mel.eval('FBXExportBakeComplexAnimation -v false')  # Animation
-            mel.eval('FBXExportCameras -v false')               # Cameras
-            mel.eval('FBXExportLights -v false')                # Lights
-            mel.eval('FBXExportAudio -v false')                 # Audio
-            mel.eval('FBXExportEmbeddedTextures -v false')      # Embed Media
-            
-            # Additional settings to ensure clean export
-            mel.eval('FBXExportConstraints -v false')
-            mel.eval('FBXExportInputConnections -v false')
-            
-            # Export the FBX - using forward slashes and quotes
-            try:
-                # Convert path to use forward slashes for Maya's MEL
-                file_path_mel = file_path.replace("\\", "/")
-                
-                # Export - use original object name for the file name
-                fbx_command = f'FBXExport -f "{file_path_mel}" -s'
-                mel.eval(fbx_command)
-                pm.textScrollList("resultField", e=True, a=f"Exported: {obj_name}.fbx with UVChannel2")
-                    
-            except Exception as e:
-                pm.textScrollList("resultField", e=True, a=f"Error exporting {obj_name}: {str(e)}")
-            
         except Exception as e:
             pm.textScrollList("resultField", e=True, a=f"Error processing UV sets for {obj_name}: {str(e)}")
+    
+    # Select all duplicated objects for combined export
+    if temp_objects:
+        cmds.select(temp_objects, replace=True)
+        
+        # Reset export settings to default
+        mel.eval('FBXResetExport')
+        
+        # Set FBX version to 2020
+        mel.eval('FBXExportFileVersion "FBX202000"')
+        
+        # Set up axis to Z
+        mel.eval('FBXExportUpAxis z')
+        
+        # Set units to Centimeters (not automatic)
+        mel.eval('FBXExportScaleFactor 1.0')  # 1.0 for centimeters
+        mel.eval('FBXExportConvertUnitString "cm"')
+        
+        # Include geometry settings
+        mel.eval('FBXExportSmoothingGroups -v true')      # Smoothing Groups
+        mel.eval('FBXExportSmoothMesh -v true')           # Smooth Mesh
+        mel.eval('FBXExportTriangulate -v true')         # Triangulate
+        
+        # Disable other geometry settings
+        mel.eval('FBXExportTangents -v false')            # Tangents and Binormals
+        mel.eval('FBXExportInstances -v false')           # Preserve Instances
+        mel.eval('FBXExportHardEdges -v false')           # Hard Edges
+        mel.eval('FBXExportReferencedAssetsContent -v false')  # Referenced Assets Content
+        
+        # Disable animation, cameras, lights, etc.
+        mel.eval('FBXExportBakeComplexAnimation -v false')  # Animation
+        mel.eval('FBXExportCameras -v false')               # Cameras
+        mel.eval('FBXExportLights -v false')                # Lights
+        mel.eval('FBXExportAudio -v false')                 # Audio
+        mel.eval('FBXExportEmbeddedTextures -v false')      # Embed Media
+        
+        # Additional settings to ensure clean export
+        mel.eval('FBXExportConstraints -v false')
+        mel.eval('FBXExportInputConnections -v false')
+        
+        # Export the combined FBX - using forward slashes and quotes
+        try:
+            # Convert path to use forward slashes for Maya's MEL
+            file_path_mel = result_file.replace("\\", "/")
+            
+            # Export
+            fbx_command = f'FBXExport -f "{file_path_mel}" -s'
+            mel.eval(fbx_command)
+            pm.textScrollList("resultField", e=True, a=f"Exported combined FBX to: {result_file}")
+                
+        except Exception as e:
+            pm.textScrollList("resultField", e=True, a=f"Error exporting: {str(e)}")
+    else:
+        pm.textScrollList("resultField", e=True, a="No valid objects to export after UV processing.")
     
     # Clean up - delete all temporary objects
     if temp_objects:
         cmds.select(temp_objects, replace=True)
         cmds.delete()
-        # pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
+        pm.textScrollList("resultField", e=True, a="Cleaned up temporary objects.")
     
     # Restore original selection
     cmds.select(original_selection)
-    pm.textScrollList("resultField", e=True, a="Export with UVchannel2 complete.")
+    pm.textScrollList("resultField", e=True, a="Export with UV channel 2 complete.")
     
     # Final verification message
     pm.textScrollList("resultField", e=True, a="")
@@ -634,6 +605,7 @@ def exportSelectionAsUV2FBX(*args):
     pm.textScrollList("resultField", e=True, a="- Included: Smoothing Groups, Smooth Mesh, Triangulate")
     pm.textScrollList("resultField", e=True, a="- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
     pm.textScrollList("resultField", e=True, a="- UV Modification: Keep only UV Set 2 and renamed to UVChannel2")
+    pm.textScrollList("resultField", e=True, a="- Export Type: Combined single FBX file")
 
 def UI():
     if cmds.window("win", exists=True):
