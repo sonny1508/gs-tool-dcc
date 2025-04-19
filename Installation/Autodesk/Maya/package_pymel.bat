@@ -64,7 +64,7 @@ for %%v in (%maya_versions%) do (
     
     if exist "!maya_path!" (
         echo Installing PyMel for Maya %%v...
-        "!maya_path!" -m pip install --user "%destination_path%\pymel-1.5.0-py2.py3-none-any.whl"
+        "!maya_path!" -m pip install "%destination_path%\pymel-1.5.0-py2.py3-none-any.whl"
         if !errorlevel! neq 0 (
             echo Warning: Installation for Maya %%v failed with error code !errorlevel!
         ) else (
