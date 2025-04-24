@@ -167,6 +167,7 @@ buttonText:"GS_File_Transfer"
 				FBXExporterSetParam "SmoothingGroups" true
 				FBXExporterSetParam "ASCII" false
 				FBXExporterSetParam "Animation" false
+				FBXExporterSetParam "Triangulate" false
 				
 				-- Export the file
 				local result = exportFile fileName #noPrompt selectedOnly:true usage:FBXEXP

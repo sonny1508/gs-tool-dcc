@@ -1,4 +1,4 @@
--- Startup script to add GS_File_Transfer to the 3ds Max menu
+-- Startup script to add GSTools to the 3ds Max menu with dynamic submenu loading
 -- Save this file as gs_menu_startup.ms in your 3ds Max startup scripts folder
 
 -- Create a function to log messages
@@ -109,7 +109,78 @@ fn removeGSToolsMenu =
     )
 )
 
--- Create the GSTools menu
+-- Function to create submenus with macros
+fn createSubmenusWithMacros gsToolsMenu =
+(
+    try
+    (
+        -- Create a list of folders and associated scripts
+        local folderStructure = #(
+            -- #("FolderName", #("MacroName1", "MacroName2", ...))
+            #("Hotwheels3", #("HW3_File_Exporter"))
+            -- Add more folders here as needed
+        )
+        
+        -- Create each folder and add macros
+        for folderInfo in folderStructure do
+        (
+            local folderName = folderInfo[1]
+            local macroNames = folderInfo[2]
+            
+            -- Skip empty folders
+            if macroNames.count == 0 then continue
+            
+            -- Create folder submenu
+            local folderMenu = menuMan.createMenu folderName
+            logMessage ("Created submenu for folder: " + folderName)
+            
+            -- Add each macro to the folder menu
+            for macroName in macroNames do
+            (
+                try
+                (
+                    local actionItem = menuMan.createActionItem macroName "GSTools"
+                    if actionItem != undefined then
+                    (
+                        folderMenu.addItem actionItem -1
+                        logMessage ("Added " + macroName + " to " + folderName + " submenu")
+                    )
+                    else
+                        logMessage ("WARNING: Could not create menu item for: " + macroName)
+                )
+                catch
+                (
+                    logMessage ("Error adding macro " + macroName + " to menu: " + (getCurrentException()))
+                )
+            )
+            
+            -- Create submenu item and add to main GSTools menu
+            local subMenuItem = menuMan.createSubMenuItem folderName folderMenu
+            if subMenuItem != undefined then
+            (
+                gsToolsMenu.addItem subMenuItem -1
+                logMessage ("Added " + folderName + " submenu to GSTools menu")
+            )
+        )
+        
+        -- Add GS_File_Transfer directly to the main menu (if it exists)
+        local fileTransferItem = menuMan.createActionItem "GS_File_Transfer" "GSTools"
+        if fileTransferItem != undefined then
+        (
+            gsToolsMenu.addItem fileTransferItem -1
+            logMessage "Added GS_File_Transfer item to main GSTools menu"
+        )
+        
+        return true
+    )
+    catch
+    (
+        logMessage ("Error creating submenus: " + (getCurrentException()))
+        return false
+    )
+)
+
+-- Create the GSTools menu with submenus
 fn createGSToolsMenu = 
 (
     logMessage "====== STARTING MENU SETUP ======"
@@ -164,61 +235,32 @@ fn createGSToolsMenu =
             return false
         )
         
-        -- Create a menu item for the existing macro
-        logMessage "Creating GS_File_Transfer menu item"
-        local fileTransferItem = undefined
+        -- Create submenus and add macros
+        createSubmenusWithMacros gsToolsMenu
         
-        try
-        (
-            fileTransferItem = menuMan.createActionItem "GS_File_Transfer" "GSTools"
-            logMessage "File transfer item created"
-        )
-        catch
-        (
-            logMessage ("Error creating menu item: " + (getCurrentException()))
-            -- Continue anyway, as this might not be critical
-        )
-        
-        -- Add the menu item to the menu if it was created
-        if fileTransferItem != undefined then
-        (
-            try
-            (
-                gsToolsMenu.addItem fileTransferItem -1
-                logMessage "Added GS_File_Transfer item to menu"
-            )
-            catch
-            (
-                logMessage ("Error adding item to menu: " + (getCurrentException()))
-                -- Continue anyway
-            )
-        )
-        else
-            logMessage "WARNING: Could not create GS_File_Transfer menu item"
-        
-        -- Create a submenu item
-        logMessage "Creating submenu item"
+        -- Create a submenu item for the main GSTools menu
+        logMessage "Creating main GSTools submenu item"
         local subMenuItem = undefined
         
         try
         (
             subMenuItem = menuMan.createSubMenuItem "GSTools" gsToolsMenu
-            logMessage "Submenu item created"
+            logMessage "GSTools submenu item created"
         )
         catch
         (
-            logMessage ("Error creating submenu item: " + (getCurrentException()))
+            logMessage ("Error creating main submenu item: " + (getCurrentException()))
             return false
         )
         
         if subMenuItem == undefined then
         (
-            logMessage "ERROR: Failed to create submenu item"
+            logMessage "ERROR: Failed to create main submenu item"
             return false
         )
         
         -- Add submenu to main menu bar
-        logMessage "Adding submenu to main menu bar"
+        logMessage "Adding GSTools submenu to main menu bar"
         
         try
         (
@@ -240,7 +282,6 @@ fn createGSToolsMenu =
             logMessage "Menu bar updated successfully"
             
             -- Set a flag to indicate menu has been installed
-            -- Using rootNode appData instead of globalVars
             setAppData rootNode 12345 "GSToolsMenuInstalled"
             logMessage "Set GSToolsMenuInstalled flag"
             
