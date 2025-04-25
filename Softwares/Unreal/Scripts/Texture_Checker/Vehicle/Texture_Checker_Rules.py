@@ -1,6 +1,3 @@
-# Texture Checker Rules
-# Define texture type rules based on suffix and project
-
 import unreal
 import os
 import re
@@ -320,6 +317,65 @@ SCREAMER1_SUFFIX_PATTERNS = {
     "IC_M": r"(?:^|_)ic(?:_)?m(?:\d+)?$",                      # Matches "ic_m" or "icm"
 }
 
+# Hotwheels3 extended rule set with texture group-based sizing
+HOTWHEELS3_TEXTURE_RULES = {
+    "BC": {
+        "compression_settings": "TC_DEFAULT", 
+        "srgb": True,
+        "brightness_curve": 1.0,
+        "lod_bias": 1,
+        "texture_group": "World",
+        "size": (4096, 4096),
+    },
+    "E": {
+        "compression_settings": "TC_DEFAULT", 
+        "srgb": True,
+        "brightness_curve": 1.0,
+        "lod_bias": 1,
+        "texture_group": "World",
+        "size": (4096, 4096),
+    },
+    "N": {
+        "compression_settings": "TC_NORMALMAP", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+        "lod_bias": 0,
+        "texture_group": "WorldNormalMap",
+        "size": (4096, 4096),
+    },
+    "PBR": {
+        "compression_settings": "TC_MASKS", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+        "lod_bias": 1,
+        "texture_group": "WorldSpecular",
+        "size": (4096, 4096),
+    },
+    "IC_M": {
+        "compression_settings": "TC_ALPHA", 
+        "srgb": False,
+        "brightness_curve": 1.0,
+        "lod_bias": 1,
+        "texture_group": "WorldSpecular",
+        "size": (4096, 4096),
+    },
+}
+
+HOTWHEELS3_SUFFIX_PRIORITY = [
+    "BC", "E", "N", "PBR", "IC_M"
+]
+
+HOTWHEELS3_SUFFIX_PATTERNS = {
+    # Standard texture types with word boundary awareness
+    "BC": r"(?:^|_)bc(?:\d+)?$",
+    "E": r"(?:^|_)e(?:\d+)?$",
+    "N": r"(?:^|_)n(?:\d+)?$",
+    "PBR": r"(?:^|_)pbr(?:\d+)?$",  
+
+    # Handle IC_M special case with more precision
+    "IC_M": r"(?:^|_)ic(?:_)?m(?:\d+)?$",                      # Matches "ic_m" or "icm"
+}
+
 # Template for adding a new project (copy and modify as needed)
 """
 # PROJECT2 complete rule set
@@ -362,6 +418,9 @@ def get_rules_for_current_project():
     elif project_name == "screamer":
         print("Using SCREAMER1 specific texture rules")
         return (SCREAMER1_TEXTURE_RULES, SCREAMER1_SUFFIX_PRIORITY, SCREAMER1_SUFFIX_PATTERNS)
+    elif project_name == "hotwheels3":
+        print("Using HOTWHEELS3 specific texture rules")
+        return (HOTWHEELS3_TEXTURE_RULES, HOTWHEELS3_SUFFIX_PRIORITY, HOTWHEELS3_SUFFIX_PATTERNS)
     # Add more project matches as needed
     # elif project_name == "project2":
     #     return (PROJECT2_TEXTURE_RULES, PROJECT2_SUFFIX_PRIORITY, PROJECT2_SUFFIX_PATTERNS)

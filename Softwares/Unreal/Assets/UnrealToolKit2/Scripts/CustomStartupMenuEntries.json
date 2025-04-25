@@ -307,6 +307,19 @@
                   "path": "/ignitiongameplay/assets/GSTools/MotoGP25/Character_MotoGP25.Character_MotoGP25"
                 }
               ]
+            },
+            {
+              "section_name": "Hotwheels3",
+						  "name": "Hotwheels3",
+						  "label": "Hotwheels3",
+              "commands":
+              [
+                {
+                  "name": "Vehicle",
+                  "label": "Vehicle",
+                  "path": "/ignitiongameplay/assets/GSTools/Hotwheels3/Vehicle_Hotwheels3.Vehicle_Hotwheels3"
+                }
+              ]
             }
           ]
 			  },

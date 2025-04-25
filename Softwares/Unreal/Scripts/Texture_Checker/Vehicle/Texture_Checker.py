@@ -121,9 +121,9 @@ class TextureCheckerGUI(QMainWindow):
         
     def setup_tree_widget(self):
         """Configure the tree widget settings"""
-        # Updated to include target_size and texture_group columns
-        self.texture_tree.setColumnCount(8)  # 0/1 checkbox + 7 columns
-        self.texture_tree.setHeaderLabels(["0/1", "name", "current_size", "target_size", "compression_settings", "srgb", "brightness_curve", "texture_group"])
+
+        self.texture_tree.setColumnCount(9)  # 0/1 checkbox + 8 columns
+        self.texture_tree.setHeaderLabels(["0/1", "name", "current_size", "target_size", "compression_settings", "srgb", "brightness_curve", "lod_bias", "texture_group"])
         self.texture_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.texture_tree.setIndentation(5)
         self.texture_tree.setAlternatingRowColors(True)
@@ -373,6 +373,15 @@ class TextureCheckerGUI(QMainWindow):
                 
                 value_dict["brightness_curve"] = current_brightness_curve
                 
+                # Get lod_bias value
+                try:
+                    current_lod_bias = tex.get_editor_property("lod_bias")
+                except:
+                    # Property might not exist, default to 0
+                    current_lod_bias = 0
+                
+                value_dict["lod_bias"] = current_lod_bias
+
                 # Get texture size
                 try:
                     # Get dimensions from properties
@@ -409,6 +418,7 @@ class TextureCheckerGUI(QMainWindow):
                     meta_data["compression_settings"] = rule["compression_settings"]
                     meta_data["srgb"] = rule["srgb"]
                     meta_data["brightness_curve"] = rule["brightness_curve"]
+                    meta_data["lod_bias"] = rule.get("lod_bias", 0)
                     
                     # Handle different sizing approaches
                     if "approved_sizes" in rule:
@@ -466,6 +476,17 @@ class TextureCheckerGUI(QMainWindow):
                         # Use a small epsilon (0.001) for floating-point comparison to avoid precision issues
                         if abs(current_brightness_curve - rule["brightness_curve"]) > 0.001:
                             color_dict["brightness_curve"] = "red"
+                            value_dict["0/1"] = "1"
+                    except:
+                        # Skip comparison if there's an issue
+                        pass
+
+                    # Check lod_bias
+                    try:
+                        # Get rule lod_bias with default of 0 if not specified
+                        rule_lod_bias = rule.get("lod_bias", 0)
+                        if current_lod_bias != rule_lod_bias:
+                            color_dict["lod_bias"] = "red"
                             value_dict["0/1"] = "1"
                     except:
                         # Skip comparison if there's an issue
@@ -554,8 +575,6 @@ class TextureCheckerGUI(QMainWindow):
             
     def fix_texture_property(self):
         """Fix texture properties for selected items"""
-        import unreal
-        
         # Get checked items
         iterator = QTreeWidgetItemIterator(self.texture_tree)
         fix_items = []
@@ -609,6 +628,16 @@ class TextureCheckerGUI(QMainWindow):
                     # Use a small epsilon (0.001) for floating-point comparison to avoid precision issues
                     if abs(fix_item["brightness_curve"] - current_brightness) > 0.001:
                         tex.set_editor_property("adjust_brightness_curve", fix_item["brightness_curve"])
+                        modified = True
+                except:
+                    pass
+
+            # Update lod_bias if present in fix_item
+            if "lod_bias" in fix_item:
+                try:
+                    current_lod_bias = tex.get_editor_property("lod_bias")
+                    if fix_item["lod_bias"] != current_lod_bias:
+                        tex.set_editor_property("lod_bias", fix_item["lod_bias"])
                         modified = True
                 except:
                     pass
