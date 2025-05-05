@@ -4,7 +4,7 @@ toolTip:"HW3_File_Exporter"
 buttonText:"HW3_File_Exporter"
 
 (
-    -- We'll let the user define the export path via the UI
+    -- Global variable for export path
     global exportPath = ""
     
     -- Function to export objects as FBX
@@ -228,14 +228,25 @@ buttonText:"HW3_File_Exporter"
         return collisionObjects
     )
     
-    -- Create UI for the exporter
-    rollout HW3_File_Exporter_Rollout "HW3 File Exporter" 
+    -- Check if the dialog already exists and close it
+    if (HW3ExporterFloater != undefined) do
     (
-        editText txt_exportPath "Export Path:" width:620 height:20 readonly:true
+        closeRolloutFloater HW3ExporterFloater
+    )
+    
+    -- Define the main rollout
+    rollout HW3_Exporter_Main "HW3 File Exporter"
+    (
+        editText txt_exportPath "Export Path:" width:620 height:20
         button btn_browse "Browse..." width:60 height:20 align:#right offset:[3,-25]
+        
+        -- Mode selection - left aligned like Export Path
+        label lbl_mode "Export Mode:" align:#left
+        radioButtons rad_mode "" labels:#("All", "Selection") default:1 columns:2 align:#left offset:[70,-20]
+        
         button btn_export "Export Source objects and Collisions" width:700 height:30
         
-        -- Log display - make it bigger for the larger UI
+        -- Log display
         listBox lbx_log "Operation Logs:" height:25 width:700
         
         -- Custom function to add log messages with type indicators
@@ -258,6 +269,25 @@ buttonText:"HW3_File_Exporter"
             lbx_log.selection = idx
         )
         
+        on txt_exportPath changed text do
+        (
+            -- Update exportPath variable when text changes
+            exportPath = text
+            
+            -- Check if path ends with backslash, add if needed
+            if exportPath != "" then
+            (
+                -- Get the last character
+                local lastChar = ""
+                if exportPath.count > 0 do
+                    lastChar = substring exportPath exportPath.count 1
+                
+                -- Add backslash if needed
+                if lastChar != "\\" do
+                    exportPath = exportPath + "\\"
+            )
+        )
+        
         on btn_browse pressed do
         (
             local path = getSavePath caption:"Select Export Directory" initialDir:(maxFilePath)
@@ -265,7 +295,6 @@ buttonText:"HW3_File_Exporter"
             (
                 exportPath = path + "\\"
                 txt_exportPath.text = exportPath
-                -- addLogEntry ("Export path set to: " + exportPath)
             )
         )
         
@@ -294,18 +323,54 @@ buttonText:"HW3_File_Exporter"
                 )
             )
             
-            -- Find source objects
-            addLogEntry "Searching for source objects..."
-            local sourceObjects = findSourceObjects()
+            -- Determine which objects to process based on mode selection
+            local sourceObjects = #()
             
-            if sourceObjects.count == 0 then
+            if rad_mode.state == 1 then -- All mode
             (
-                messageBox "No source objects found (objects with 'SM_' prefix)!" title:"Warning" beep:true
-                addLogEntry "No source objects found!" color:"red"
-                return false
+                -- Find all source objects
+                addLogEntry "Searching for all source objects..."
+                sourceObjects = findSourceObjects()
+                
+                if sourceObjects.count == 0 then
+                (
+                    messageBox "No source objects found (objects with 'SM_' prefix)!" title:"Warning" beep:true
+                    addLogEntry "No source objects found!" logType:"error"
+                    return false
+                )
+                
+                addLogEntry ("Found " + sourceObjects.count as string + " source objects")
+            )
+            else -- Selection mode
+            (
+                -- Get only selected source objects
+                addLogEntry "Processing selected objects..."
+                local selectedObjects = getCurrentSelection()
+                
+                if selectedObjects.count == 0 then
+                (
+                    messageBox "No objects selected!" title:"Warning" beep:true
+                    addLogEntry "No objects selected!" logType:"error"
+                    return false
+                )
+                
+                -- Filter for source objects (SM_ prefix)
+                for obj in selectedObjects do
+                (
+                    if obj != undefined and classOf obj.name == String and (matchPattern obj.name pattern:"SM_*") do
+                        append sourceObjects obj
+                )
+                
+                if sourceObjects.count == 0 then
+                (
+                    messageBox "No source objects (SM_ prefix) found in selection!" title:"Warning" beep:true
+                    addLogEntry "No source objects found in selection!" logType:"error"
+                    return false
+                )
+                
+                addLogEntry ("Found " + sourceObjects.count as string + " source objects in selection")
             )
             
-            addLogEntry ("Found " + sourceObjects.count as string + " source objects")
             addLogEntry ("")
             
             -- Track export count
@@ -315,43 +380,50 @@ buttonText:"HW3_File_Exporter"
             -- Process each source object
             for sourceObj in sourceObjects do
             (
-                -- Get base name (without SM_ prefix)
-                local baseName = sourceObj.name
-                if (matchPattern baseName pattern:"SM_*") then
-                    baseName = substring baseName 4 -1
-                
-                -- Find corresponding collision objects
-                local collisionObjs = findCollisionObjects sourceObj.name
-                
-                -- Create export filename
-                local exportFileName = exportPath + baseName + ".fbx"
-                
-                -- Log export attempt
-                addLogEntry ("Processing: " + baseName)
-                
-                if collisionObjs.count > 0 then
-                    addLogEntry ("  Found " + collisionObjs.count as string + " collision objects")
-                else
-                    addLogEntry ("  No collision objects found") logType:"warning"
-                
-                -- Export the objects
-                local result = exportPairedObjectsAsFBX sourceObj collisionObjs exportFileName
-                
-                if result[1] then
+                if sourceObj != undefined and classOf sourceObj.name == String then
                 (
-                    exportCount += 1
-                    local successMsg = "  Exported: " + filenameFromPath exportFileName
-                    if result[3] > 0 then
-                        successMsg += " (with " + result[3] as string + " collision objects)"
-                    else
-                        successMsg += " (without collisions)"
+                    -- IMPORTANT: Keep the full name including SM_ prefix
+                    local exportBaseName = sourceObj.name -- This preserves the SM_ prefix
                     
-                    addLogEntry successMsg logType:"success"
+                    -- Find corresponding collision objects
+                    local collisionObjs = findCollisionObjects sourceObj.name
+                    
+                    -- Create export filename with preserved SM_ prefix
+                    local exportFileName = exportPath + exportBaseName + ".fbx"
+                    
+                    -- Log export attempt
+                    addLogEntry ("Processing: " + exportBaseName)
+                    
+                    if collisionObjs.count > 0 then
+                        addLogEntry ("  Found " + collisionObjs.count as string + " collision objects")
+                    else
+                        addLogEntry ("  No collision objects found") logType:"warning"
+                    
+                    -- Export the objects
+                    local result = exportPairedObjectsAsFBX sourceObj collisionObjs exportFileName
+                    
+                    if result[1] then
+                    (
+                        exportCount += 1
+                        local successMsg = "  Exported: " + filenameFromPath exportFileName
+                        if result[3] > 0 then
+                            successMsg += " (with " + result[3] as string + " collision objects)"
+                        else
+                            successMsg += " (without collisions)"
+                        
+                        addLogEntry successMsg logType:"success"
+                    )
+                    else
+                    (
+                        skippedCount += 1
+                        addLogEntry ("  Failed: " + result[2]) logType:"error"
+                    )
                 )
                 else
                 (
+                    -- Skip invalid objects
                     skippedCount += 1
-                    addLogEntry ("  Failed: " + result[2]) logType:"error"
+                    addLogEntry ("  Skipped invalid object") logType:"warning"
                 )
             )
             
@@ -369,6 +441,15 @@ buttonText:"HW3_File_Exporter"
         )
     )
     
-    -- Create the dialog
-    createDialog HW3_File_Exporter_Rollout 720 480 style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+    -- Create the floater with the rollout
+    global HW3ExporterFloater
+    try (
+        HW3ExporterFloater = newRolloutFloater "HW3 File Exporter" 720 480
+        if HW3ExporterFloater != undefined then
+            addRollout HW3_Exporter_Main HW3ExporterFloater
+        else
+            messageBox "Failed to create the rollout floater!" title:"Error"
+    ) catch (
+        messageBox ("Error creating floater: " + (getCurrentException())) title:"Error"
+    )
 )

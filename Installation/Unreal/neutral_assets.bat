@@ -9,13 +9,14 @@ set "source_path=%GSTOOLS_ROOT%\Softwares\Unreal\Assets"
 :: Common path structure for all games
 set "common_path=Engine\Plugins\ignition\ignitiongameplay\content\assets"
 :: Define games and their folder names (without drive letter)
-set "games_count=3"
+set "games_count=4"
 set "game[1]=Ride6"
 set "game[2]=SCR 1"
 set "game[3]=MGP25"
+set "game[4]=unrealProjects\HW3"
 
 :: Define drives to scan
-set "drives=D E G"
+set "drives=D E G T"
 
 :: Ensure source_path doesn't have a trailing backslash
 if "%source_path:~-1%" == "\" set "source_path=%source_path:~0,-1%"
