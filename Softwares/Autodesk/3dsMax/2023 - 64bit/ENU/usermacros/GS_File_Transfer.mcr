@@ -94,7 +94,7 @@ buttonText:"GS_File_Transfer"
 				
 				-- Set FBX import parameters
 				FBXImporterSetParam "Mode" #create
-				FBXImporterSetParam "SmoothingGroups" true		
+				FBXImporterSetParam "SmoothingGroups" false		
 				FBXImporterSetParam "ScaleFactor" systemunit_x_
 				FBXImporterSetParam "ConvertUnit" systemtype_x
 				FBXImporterSetParam "Animation" false

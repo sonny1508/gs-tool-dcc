@@ -56,7 +56,7 @@ def GS_File_Transfer_UI():
         print("Attempting to import: " + import_file)
         
         if os.path.exists(import_file):
-            mel.eval('FBXImportUnlockNormals -v true;')
+            mel.eval('FBXImportUnlockNormals -v false;')
             mel.eval('FBXImportScaleFactor 1;')
             
             # Convert path to MEL-safe format

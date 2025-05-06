@@ -5,9 +5,9 @@ This add-on provides tools for transferring files between Blender, Maya and 3ds 
 
 bl_info = {
     "name": "GS File Transfer",
-    "author": "Your Name",
+    "author": "Sonny",
     "version": (1, 0),
-    "blender": (3, 6, 0),
+    "blender": (3, 6, 21),
     "location": "View3D > Sidebar > GS Tools",
     "description": "Tool for transferring files between Blender, Maya and 3ds Max",
     "warning": "",
@@ -326,7 +326,7 @@ class GS_PT_FileTransferPanel(Panel):
     bl_idname = "GS_PT_FileTransferPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'GS Tools'
+    bl_category = 'GS File Transfer'
     
     def draw(self, context):
         layout = self.layout

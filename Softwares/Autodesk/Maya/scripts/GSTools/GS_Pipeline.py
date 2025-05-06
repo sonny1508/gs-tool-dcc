@@ -104,50 +104,63 @@ def createMenuAndShelf():
             # Find UI scripts in this folder
             ui_scripts = []
             has_ui_scripts = False
-            
+
             for file in os.listdir(folder_path):
-                # Only add scripts that end with UI.py
-                if file.endswith("UI.py"):
-                    has_ui_scripts = True
-                    script_name = os.path.splitext(file)[0]
-                    
-                    # Format the display name: remove underscores and "UI" suffix
-                    display_name = script_name
-                    if display_name.endswith("_UI"):
-                        display_name = display_name[:-3]  # Remove "_UI" suffix
-                    display_name = display_name.replace("_", " ")  # Replace underscores with spaces
-                    
-                    # Get button name by removing folder prefix and _UI suffix
-                    button_name = script_name
-                    if button_name.endswith("_UI"):
-                        button_name = button_name[:-3]  # Remove "_UI" suffix
-                    if button_name.startswith(folder + "_"):
-                        button_name = button_name[len(folder) + 1:]  # Remove "FolderName_" prefix
-                    
-                    script_path = os.path.join(folder_path, file).replace("\\", "/")
-                    
-                    # Create a simpler command that works for both Python 2 and 3
-                    if sys.version_info.major >= 3:
-                        # For Python 3.x
-                        cmd = "exec(compile(open(r'{}', 'r').read(), r'{}', 'exec'))".format(script_path, script_path)
-                    else:
-                        # For Python 2.x
-                        cmd = "execfile(r'{}')".format(script_path)
-                    
-                    # Add to UI scripts list for shelf creation
-                    ui_scripts.append({
-                        'name': display_name,
-                        'button_name': button_name,
-                        'path': script_path,
-                        'command': cmd
-                    })
-                    
-                    # == MENU: Add menu item ==
-                    cmds.menuItem(
-                        parent=folder_menu,
-                        label=display_name,
-                        command=cmd
-                    )
+                # Get filename and extension
+                filename, ext = os.path.splitext(file)
+                
+                # Look for files ending with "UI" regardless of extension
+                if filename.endswith("UI"):
+                    # Only process .py and .mel files
+                    if ext.lower() in ['.py', '.mel']:
+                        has_ui_scripts = True
+                        script_name = filename
+                        
+                        # Format the display name: remove underscores and "UI" suffix
+                        display_name = script_name
+                        if display_name.endswith("_UI"):
+                            display_name = display_name[:-3]  # Remove "_UI" suffix
+                        display_name = display_name.replace("_", " ")  # Replace underscores with spaces
+                        
+                        # Get button name by removing folder prefix and _UI suffix
+                        button_name = script_name
+                        if button_name.endswith("_UI"):
+                            button_name = button_name[:-3]  # Remove "_UI" suffix
+                        if button_name.startswith(folder + "_"):
+                            button_name = button_name[len(folder) + 1:]  # Remove "FolderName_" prefix
+                        
+                        script_path = os.path.join(folder_path, file).replace("\\", "/")
+                        
+                        # Create appropriate command based on file extension
+                        if ext.lower() == '.py':
+                            # Python command
+                            if sys.version_info.major >= 3:
+                                # For Python 3.x
+                                cmd = "exec(compile(open(r'{}', 'r').read(), r'{}', 'exec'))".format(script_path, script_path)
+                            else:
+                                # For Python 2.x
+                                cmd = "execfile(r'{}')".format(script_path)
+                        else:  # .mel file
+                            # Use Python's maya.mel.eval to properly execute MEL commands
+                            cmd = "import maya.mel as mel; mel.eval('source \\\"{}\\\" ; {}();')".format(
+                                script_path.replace("\\", "/"), 
+                                filename
+                            )
+                        
+                        # Add to UI scripts list for shelf creation
+                        ui_scripts.append({
+                            'name': display_name,
+                            'button_name': button_name,
+                            'path': script_path,
+                            'command': cmd
+                        })
+                        
+                        # == MENU: Add menu item ==
+                        cmds.menuItem(
+                            parent=folder_menu,
+                            label=display_name,
+                            command=cmd
+                        )
             
             # == MENU: If no UI scripts were found, add a placeholder item ==
             if not has_ui_scripts:
