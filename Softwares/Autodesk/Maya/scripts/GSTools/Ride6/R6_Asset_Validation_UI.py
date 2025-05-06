@@ -168,6 +168,36 @@ def check(self):
             # Handle case when no polygonal objects are found
             pm.textScrollList("resultField", e=True, a="No polygonal objects found for "+lod)  
 
+    # CHECK FOR N-GONS
+    meshes = pm.ls(type="mesh")
+    for mesh in meshes:
+        try:
+            # Get the parent transform node
+            transform = pm.listRelatives(mesh, parent=True)[0]
+            
+            # Check for n-gons using Maya's polyEvaluate
+            face_counts = pm.polyEvaluate(mesh, face=True)
+            ngons = 0
+            
+            # Use Maya's MItMeshPolygon to check face vertex counts
+            selection_list = api.MSelectionList()
+            selection_list.add(str(mesh))
+            dag_path = api.MDagPath()
+            selection_list.getDagPath(0, dag_path)
+            
+            poly_iter = api.MItMeshPolygon(dag_path)
+            while not poly_iter.isDone():
+                # If vertex count > 4, it's an n-gon
+                if poly_iter.polygonVertexCount() > 4:
+                    ngons += 1
+                poly_iter.next()
+            
+            if ngons > 0:
+                pm.textScrollList("resultField", e=True, a=transform.name() + " has " + str(ngons) + " n-gons (faces with more than 4 edges)")
+        except Exception as e:
+            pm.textScrollList("resultField", e=True, a="Error checking n-gons on " + mesh.name() + ": " + str(e))
+            continue
+
     # UNKNOWN MATERIALS
     shadingEngineList = pm.ls(type="shadingEngine")
     unknownMaterialsList = []

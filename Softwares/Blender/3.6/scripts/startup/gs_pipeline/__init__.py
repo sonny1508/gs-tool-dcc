@@ -1,6 +1,18 @@
 import bpy
+from bpy.app.handlers import persistent
 
-def setup_script_paths():
+bl_info = {
+    "name": "GS Pipeline Setup",
+    "author": "Your Name",
+    "version": (1, 0),
+    "blender": (3, 6, 0),
+    "description": "Auto-configures GS pipeline settings",
+    "category": "System",
+}
+
+@persistent
+def setup_script_paths_handler(dummy):
+    """Run the setup after Blender has fully loaded a file"""
     print("Setting up script paths...")
     
     # Target paths to set up
@@ -35,8 +47,8 @@ def setup_script_paths():
     
     # Enable the GS File Transfer add-on
     addon_names = [
-    "GS_File_Transfer",  # This should be the actual module name of the add-on
-    "GS_Asset_Validation"
+        "GS_File_Transfer",  # This should be the actual module name of the add-on
+        "GS_Asset_Validation"
     ]
     
     # Enable each add-on in the list
@@ -56,5 +68,19 @@ def setup_script_paths():
     bpy.ops.wm.save_userpref()
     print("Preferences saved successfully")
 
-# Run the function
-setup_script_paths()
+def register():
+    """Required register function for Blender startup scripts"""
+    print("Registering GS Pipeline Setup")
+    # Register the load handler to run when Blender is fully initialized
+    bpy.app.handlers.load_post.append(setup_script_paths_handler)
+
+def unregister():
+    """Required unregister function for Blender startup scripts"""
+    print("Unregistering GS Pipeline Setup")
+    # Remove our handler
+    if setup_script_paths_handler in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(setup_script_paths_handler)
+
+# This runs when the script is loaded
+if __name__ == "__main__":
+    register()
