@@ -78,10 +78,12 @@ def triangles(_, SLMesh):
             numOfEdges = faceIt.getEdges()
             if len(numOfEdges) == 3:
                 triangles[uuid].append(faceIt.index())
-            faceIt.next()
-        selIt.next()
+            try:
+                faceIt.next(True)  # Try with argument first
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+        selIt.next()  # No argument for selection iterator
     return "polygon", triangles
-
 
 def ngons(_, SLMesh):
     ngons = defaultdict(list)
@@ -94,8 +96,16 @@ def ngons(_, SLMesh):
             numOfEdges = faceIt.getEdges()
             if len(numOfEdges) > 4:
                 ngons[uuid].append(faceIt.index())
-            faceIt.next()
+            
+            # For faceIt.next(), use a try-except to handle different behaviors
+            try:
+                faceIt.next(True)  # Try with an argument first (based on first error)
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+        
+        # For selIt.next(), no argument (based on second error)
         selIt.next()
+    
     return "polygon", ngons
 
 def hardEdges(_, SLMesh):
@@ -112,6 +122,7 @@ def hardEdges(_, SLMesh):
         selIt.next()
     return "edge", hardEdges
 
+
 def lamina(_, SLMesh):
     lamina = defaultdict(list)
     selIt = om.MItSelectionList(SLMesh)
@@ -123,8 +134,11 @@ def lamina(_, SLMesh):
             laminaFaces = faceIt.isLamina()
             if laminaFaces is True:
                 lamina[uuid].append(faceIt.index())
-            faceIt.next()
-        selIt.next()
+            try:
+                faceIt.next(True)  # Try with argument first
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+        selIt.next()  # No argument for selection iterator
     return "polygon", lamina
 
 
@@ -139,8 +153,11 @@ def zeroAreaFaces(_, SLMesh):
             faceArea = faceIt.getArea()
             if faceArea <= 0.00000001:
                 zeroAreaFaces[uuid].append(faceIt.index())
-            faceIt.next()
-        selIt.next()
+            try:
+                faceIt.next(True)  # Try with argument first
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+        selIt.next()  # No argument for selection iterator
     return "polygon", zeroAreaFaces
 
 
@@ -229,9 +246,13 @@ def starlike(_, SLMesh):
         while not polyIt.isDone():
             if polyIt.isStarlike() is False:
                 noneStarlike[uuid].append(polyIt.index())
-            polyIt.next()
-        selIt.next()
+            try:
+                polyIt.next(True)  # Try with argument first
+            except TypeError:
+                polyIt.next()  # If that fails, try without argument
+        selIt.next()  # No argument for selection iterator
     return "polygon", noneStarlike
+
 
 def missingUVs(_, SLMesh):
     missingUVs = defaultdict(list)
@@ -243,8 +264,11 @@ def missingUVs(_, SLMesh):
         while not faceIt.isDone():
             if faceIt.hasUVs() is False:
                 missingUVs[uuid].append(faceIt.index())
-            faceIt.next()
-        selIt.next()
+            try:
+                faceIt.next(True)  # Try with argument first
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+        selIt.next()  # No argument for selection iterator
     return "polygon", missingUVs
 
 def uvRange(_, SLMesh):
@@ -294,11 +318,19 @@ def crossBorder(_, SLMesh):
                     V.add(vAdd)
                 if len(U) > 1 or len(V) > 1:
                     crossBorder[uuid].append(faceIt.index())
-                faceIt.next()
+                # Replace the iterator advancement with the try-except pattern
+                try:
+                    faceIt.next(True)
+                except TypeError:
+                    faceIt.next()
             except:
                 cmds.warning("Face " + str(faceIt.index()) + " has no UVs")
-                faceIt.next()
-        selIt.next()
+                # Also replace the iterator advancement in the exception handler
+                try:
+                    faceIt.next(True)
+                except TypeError:
+                    faceIt.next()
+        selIt.next()  # No argument for selection iterator
     return "polygon", crossBorder
 
 def unfrozenTransforms(nodes, _):
