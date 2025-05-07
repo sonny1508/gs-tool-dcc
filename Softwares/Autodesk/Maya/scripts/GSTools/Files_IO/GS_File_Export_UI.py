@@ -220,7 +220,9 @@ def UI():
     
     # Operations output section
     pm.text(label="Operations:", align="left")
-    pm.textScrollList("operationField", height=270, backgroundColor=[0.5, 0.5, 0.5])
+    pm.frameLayout(label="", borderVisible=False, labelVisible=False, backgroundColor=[0.3, 0.3, 0.3], marginWidth=0, marginHeight=0)
+    pm.textScrollList("operationField", height=280)
+    pm.setParent('..')
     
     # Show the window
     cmds.showWindow("gs_exporter_win")
