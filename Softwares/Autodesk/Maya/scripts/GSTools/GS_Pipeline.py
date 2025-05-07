@@ -6,7 +6,7 @@ import maya.utils
 # Python version compatibility functions
 def is_python2():
     """Check if running Python 2"""
-    return sys.version_info.major < 3
+    return sys.version_info[0] < 3  # Use index instead of .major attribute
 
 def ensure_unicode(text):
     """Ensure string is unicode for Python 2/3 compatibility"""
@@ -16,8 +16,9 @@ def ensure_unicode(text):
 
 def ensure_str(text):
     """Ensure unicode is converted to str for Python 2/3 compatibility"""
-    if is_python2() and isinstance(text, unicode):  # noqa: F821
-        return text.encode('utf-8')
+    if is_python2():
+        if isinstance(text, unicode):  # noqa: F821
+            return text.encode('utf-8')
     return text
 
 def join_paths(path1, path2):
@@ -86,13 +87,8 @@ def find_ui_scripts_recursive(base_dir, folder_path, parent_folder=""):
                 
                 # Create appropriate command based on file extension
                 if ext.lower() == '.py':
-                    # Python command
-                    if sys.version_info.major >= 3:
-                        # For Python 3.x
-                        cmd = "exec(compile(open(r'{}', 'r').read(), r'{}', 'exec'))".format(script_path, script_path)
-                    else:
-                        # For Python 2.x
-                        cmd = "execfile(r'{}')".format(script_path)
+                    # Python command - compatible with both Python 2 and 3
+                    cmd = "exec(compile(open(r'{}', 'r').read(), r'{}', 'exec'))".format(script_path, script_path)
                 else:  # .mel file
                     # Use Python's maya.mel.eval to properly execute MEL commands
                     cmd = "import maya.mel as mel; mel.eval('source \\\"{}\\\" ; {}();')".format(
@@ -179,13 +175,9 @@ def createMenuAndShelf():
         # Sort folders alphabetically for consistent menu ordering
         folder_list.sort()
         
-        # Create menus for each top-level folder with separators between them
-        for i, folder in enumerate(folder_list):
+        # Create menus for each top-level folder (without separators)
+        for folder in folder_list:
             item_path = os.path.join(SCRIPT_DIR, folder)
-            
-            # Add a separator before each folder (except the first one)
-            if i > 0:
-                cmds.menuItem(parent=main_menu, divider=True)
             
             # Format the folder name for display
             display_folder_name = folder.replace("_", " ")
@@ -271,7 +263,7 @@ def createMenuAndShelf():
                 if os.path.exists(icon_path):
                     icon_to_use = icon_path
                 else:
-                    print(f"Icon not found: {icon_filename}. Using default icon.")
+                    print("Icon not found: {}. Using default icon.".format(icon_filename))
                     icon_to_use = 'pythonFamily.png'  # Default Maya script icon
                 
                 # Create a shelf button with label on top of the icon
@@ -286,8 +278,8 @@ def createMenuAndShelf():
                     height=100
                 )
         
-        # Print Python version info for debugging
-        print("Python Version: " + str(sys.version_info.major) + "." + str(sys.version_info.minor))
+        # Print Python version info for debugging - fixed for Python 2 compatibility
+        print("Python Version: " + str(sys.version_info[0]) + "." + str(sys.version_info[1]))
         print("{} menu and shelf created successfully".format(DISPLAY_NAME))
         print("Script directory: " + SCRIPT_DIR)
         print("Menu ID: " + MENU_ID)
