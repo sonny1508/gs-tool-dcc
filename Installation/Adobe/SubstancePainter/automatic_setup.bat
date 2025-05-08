@@ -28,7 +28,7 @@ goto :find_gstools
 echo Found GSTools at: !GSTOOLS_ROOT!
 
 :: Construct the path to user setup
-set "source_path_users=!GSTOOLS_ROOT!\Softwares\Adobe\SubstancePainter\python\plugins"
+set "source_path_users=!GSTOOLS_ROOT!\Environment\Adobe\SubstancePainter\python\plugins"
 
 :: Get the IP address of this machine
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (

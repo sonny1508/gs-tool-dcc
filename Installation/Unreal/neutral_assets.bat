@@ -5,7 +5,7 @@ set "BAT_DIR=%~dp0"
 :: Move up two levels to get to GSTools root
 for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 :: Source path for assets
-set "source_path=%GSTOOLS_ROOT%\Softwares\Unreal\Assets"
+set "source_path=%GSTOOLS_ROOT%\Environment\Unreal\Assets"
 :: Common path structure for all games
 set "common_path=Engine\Plugins\ignition\ignitiongameplay\content\assets"
 :: Define games and their folder names (without drive letter)

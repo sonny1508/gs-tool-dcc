@@ -8,7 +8,7 @@ set "BAT_DIR=%~dp0"
 for %%I in ("%BAT_DIR%\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
 :: Construct the path to user setup
-set "source_path_users=%GSTOOLS_ROOT%\Softwares\Blender"
+set "source_path_users=%GSTOOLS_ROOT%\Environment\Blender"
 
 :: Get the IP address of this machine
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (

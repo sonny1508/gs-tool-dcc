@@ -8,10 +8,10 @@ set "BAT_DIR=%~dp0"
 for %%I in ("%BAT_DIR%\..\..\..") do set "GSTOOLS_ROOT=%%~fI"
 
 :: Construct the path to application plugins
-set "source_path_autodesk=%GSTOOLS_ROOT%\Softwares\Autodesk\ApplicationPlugins"
+set "source_path_autodesk=%GSTOOLS_ROOT%\Environment\Autodesk\ApplicationPlugins"
 
 :: Construct the path to user setup
-set "source_path_users=%GSTOOLS_ROOT%\Softwares\Autodesk\Maya"
+set "source_path_users=%GSTOOLS_ROOT%\Environment\Autodesk\Maya"
 
 :: Define source and destination paths
 set "destination_path_autodesk=C:\ProgramData\Autodesk\ApplicationPlugins"
