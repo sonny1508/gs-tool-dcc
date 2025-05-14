@@ -318,6 +318,11 @@
                   "name": "Vehicle",
                   "label": "Vehicle",
                   "path": "/ignitiongameplay/assets/GSTools/Hotwheels3/Vehicle_Hotwheels3.Vehicle_Hotwheels3"
+                },
+                {
+                  "name": "Environment",
+                  "label": "Environment",
+                  "path": "/ignitiongameplay/assets/GSTools/Hotwheels3/Environment_Hotwheels3.Environment_Hotwheels3"
                 }
               ]
             }

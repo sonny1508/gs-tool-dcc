@@ -11,7 +11,7 @@ set "common_path=Engine\Plugins\ignition\ignitiongameplay\content\assets"
 :: Define games and their folder names (without drive letter)
 set "games_count=4"
 set "game[1]=Ride6"
-set "game[2]=SCR 1"
+set "game[2]=unrealProjects\SCR1"
 set "game[3]=MGP25"
 set "game[4]=unrealProjects\HW3"
 
