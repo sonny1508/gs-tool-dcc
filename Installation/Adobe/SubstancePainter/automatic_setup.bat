@@ -28,7 +28,7 @@ goto :find_gstools
 echo Found GSTools at: !GSTOOLS_ROOT!
 
 :: Construct the path to user setup
-set "source_path_users=!GSTOOLS_ROOT!\Environment\Adobe\SubstancePainter\python\plugins"
+set "source_path_users=!GSTOOLS_ROOT!\Environment\Adobe\SubstancePainter"
 
 :: Get the IP address of this machine
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
@@ -56,38 +56,9 @@ echo Last Two Digits: %LAST_TWO_DIGITS%
 :: Set the real user to gs + last two digits
 set "REAL_USER=gs%LAST_TWO_DIGITS%"
 
-:: Fallback methods if the above doesn't work
-if not exist "C:\Users\%REAL_USER%" (
-    echo User %REAL_USER% not found, trying alternate detection methods
-    
-    :: Try to find gs* users
-    for /d %%u in (C:\Users\gs*) do (
-        set "REAL_USER=%%~nu"
-        echo Found potential user: %REAL_USER%
-        goto :user_found
-    )
-    
-    :: Original methods as fallback
-    for /f "tokens=1" %%u in ('query user ^| findstr /v "SESSIONNAME USERNAME" ^| findstr /v "Disc" ^| findstr /v "support"') do (
-        set "REAL_USER=%%u"
-        echo Found active user: %REAL_USER%
-        goto :user_found
-    )
-    
-    :: WMI method as last resort
-    echo No active user session found, trying WMI method
-    for /f "tokens=2 delims==" %%A in ('wmic computersystem get username /value ^| findstr "="') do set "TEMP_USER=%%A"
-    :: Remove the domain if present (handles DOMAIN\User format)
-    for /f "tokens=2 delims=\" %%A in ("%TEMP_USER%") do set "REAL_USER=%%A"
-)
-
 :user_found
 :: Define destination path
-set "destination_path_users=C:\Users\%REAL_USER%\Documents\Adobe\Adobe Substance 3D Painter\python\plugins"
-
-:: Debugging: Print the detected user
-echo Detected user: %REAL_USER%
-echo Installing to: %destination_path_users%
+set "destination_path_users=C:\Users\%REAL_USER%\Documents\Adobe\Adobe Substance 3D Painter"
 
 :: Check if user directory exists
 if not exist "C:\Users\%REAL_USER%" (
@@ -102,13 +73,6 @@ if not exist "%destination_path_users%" (
         echo ERROR: Failed to create destination directory!
         exit /b 1
     )
-)
-
-:: First, clean the destination directory if it exists
-if exist "%destination_path_users%\*" (
-    echo Cleaning destination directory...
-    del /s /q "%destination_path_users%\*" >nul 2>&1
-    for /d %%i in ("%destination_path_users%\*") do rmdir /s /q "%%i" >nul 2>&1
 )
 
 :: Check if source directory exists

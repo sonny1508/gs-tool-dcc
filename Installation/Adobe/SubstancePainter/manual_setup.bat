@@ -29,10 +29,10 @@ echo Found GSTools at: !GSTOOLS_ROOT!
 
 :: Continue with the rest of your script using GSTOOLS_ROOT
 :: Construct the path to user setup
-set "source_path_users=!GSTOOLS_ROOT!\Environment\Adobe\SubstancePainter\python\plugins"
+set "source_path_users=!GSTOOLS_ROOT!\Environment\Adobe\SubstancePainter"
 
 :: Define source and destination paths
-set "destination_path_users=%USERPROFILE%\Documents\Adobe\Adobe Substance 3D Painter\python\plugins"
+set "destination_path_users=%USERPROFILE%\Documents\Adobe\Adobe Substance 3D Painter"
 
 :: Check if source directory exists
 if not exist "%source_path_users%" exit /b 1
