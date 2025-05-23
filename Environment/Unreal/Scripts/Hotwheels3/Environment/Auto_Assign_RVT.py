@@ -16,3 +16,4 @@ for actor in selected_actors:
     if mesh_comp:
         # Assign the RVT to the mesh component
         mesh_comp.set_editor_property("runtime_virtual_textures", [rvt_asset])
+        mesh_comp.set_editor_property("VirtualTextureRenderPassType", unreal.RuntimeVirtualTextureMainPassType.NEVER)
