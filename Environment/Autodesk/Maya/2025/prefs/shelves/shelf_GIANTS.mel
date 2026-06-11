@@ -1,0 +1,76 @@
+global proc shelf_GIANTS () {
+    global string $gBuffStr;
+    global string $gBuffStr0;
+    global string $gBuffStr1;
+
+
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "GIANTS I3D Tools (Version 10.0.0)" 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "GIANTS I3D Tools (Version 10.0.0)" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "C:/Users/sonny.nguyen.01/Documents/maya/2025/scripts/giants_i3d_exporter_10.0.0//I3D_icon.bmp" 
+        -image1 "C:/Users/sonny.nguyen.01/Documents/maya/2025/scripts/giants_i3d_exporter_10.0.0//I3D_icon.bmp" 
+        -style "iconOnly" 
+        -marginWidth 0
+        -marginHeight 1
+        -command "import imp as imp\nimport maya.cmds as cmds\nimport sys\ntry:\n\treload\nexcept NameError:\n\tfrom importlib import reload\ncmds.loadPlugin(\"C:/Users/sonny.nguyen.01/Documents/maya/2025/scripts/giants_i3d_exporter_10.0.0//I3DExporter2025-x64.mll\", quiet=True)\nsys.path.append('C:/Users/sonny.nguyen.01/Documents/maya/2025/scripts/giants_i3d_exporter_10.0.0//')\nimport I3DExporter\nreload(I3DExporter)\nI3DExporter.I3DExport()" 
+        -sourceType "python" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Environment Tools" 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "Environment Tools" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "commandButton.png" 
+        -image1 "commandButton.png" 
+        -style "iconOnly" 
+        -marginWidth 0
+        -marginHeight 1
+        -command "import sys\nimport importlib; \n\npath = 'D:/code/giants_tools/maya/environmentTools'\nif path not in sys.path:\n    sys.path.append(path)\nimport environmentToolSet\nimport objectsWindow\nimport houdiniToolSet\nimport substanceExporterFBX\nimport foliageTools\nimportlib.reload(environmentToolSet);\nimportlib.reload(objectsWindow);\nimportlib.reload(houdiniToolSet);\nimportlib.reload(substanceExporterFBX);\nimportlib.reload(foliageTools);\nui = environmentToolSet.EnvironmentToolsPanel();" 
+        -sourceType "python" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+
+} 

@@ -1,0 +1,107 @@
+//Close Maya Fast v1.5
+
+global proc m341_killMayaFast()
+{
+	//Save current work space so it loads next time Maya starts
+	workspaceLayoutManager -save;	
+
+	//Open script editor to prevent losing script tabs
+    scriptEditorInfo -ch;
+	ScriptEditor;
+
+	//Save script editor tabs to temp folder
+	syncExecuterBackupFiles();
+
+	//Save all preferences
+	SavePreferences;
+
+	//Save all shelves
+	global string $gShelfTopLevel;
+	saveAllShelves $gShelfTopLevel;
+
+	//Save MTK shelf
+	dRSaveShelves;
+
+	//Save tool settings
+	saveToolSettings;
+	saveViewportSettings;
+
+	//Save content browser settings
+	saveContentBrowserSettings;
+
+	//Save plug-in prefs
+	pluginInfo -savePluginPrefs;
+
+	//Save menuset prefs
+	menuSetPref -saveAll;
+
+	//Close script editor	
+	deleteUI scriptEditorPanel1Window;
+	
+	//Save current work space so it loads next time Maya starts
+	workspaceLayoutManager -save;	
+
+	//Save Window prefs
+	windowPref -saveMainWindowState startupMainWindowState;
+
+	//Save scene if changed
+	//saveChanges("");
+	
+	//Close Maya
+	//system("taskkill /IM maya.exe /f /t");
+	
+	//Query application ID and use that to kill only the currently focused Maya
+	$mayaInstanceID = `getpid`;
+	//If Mac
+	string $maCurrentMayaVersionMac = `about -mac`;
+	if( $maCurrentMayaVersionMac == 1)
+	{
+		system("kill -9 "  + $mayaInstanceID);
+	}
+
+	else
+	{
+		system("taskkill /PID "  + $mayaInstanceID +" /f /t");	
+	}
+}
+
+//Check which version of Maya is running
+string $findMayaYear2020 = `about -product`;
+string $findMayaYear2019 = `about -product`;
+string $findMayaYear2018 = `about -product`;
+string $findMayaYear2017 = `about -product`;
+int $mayaYear2020 = `gmatch $findMayaYear2020 "*2020*"`;
+int $mayaYear2019 = `gmatch $findMayaYear2019 "*2019*"`;
+int $mayaYear2018 = `gmatch $findMayaYear2018 "*2018*"`;
+int $mayaYear2017 = `gmatch $findMayaYear2017 "*2017*"`;
+
+//Use fast close for older versions of Maya
+if ($mayaYear2020 == 1 || $mayaYear2019 == 1 || $mayaYear2018 == 1 || $mayaYear2017 == 1)
+{
+	//Check if scene was modified
+	int $checkFileDirty = `file -q -modified`;
+	if ($checkFileDirty == 0)
+	{
+		m341_killMayaFast();		
+	}
+
+	else if ($checkFileDirty == 1)
+	{
+		//If user cancels don't kill Maya
+		if(!saveChanges(""))
+		{
+			print "Canceled fast close";
+		}
+	
+		else
+		{
+			m341_killMayaFast();
+		}
+	}
+}
+
+else
+{
+	//Use regular close for newer versions of Maya
+	Quit;
+}

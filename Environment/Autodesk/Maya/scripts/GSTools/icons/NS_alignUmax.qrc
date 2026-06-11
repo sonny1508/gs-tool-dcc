@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_alignUmax.png">NS_alignUmax_100.png</file>
+		<file>NS_alignUmax_150.png</file>
+		<file>NS_alignUmax_200.png</file>
+	</qresource>

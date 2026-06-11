@@ -1,8 +1,5 @@
-import os
 import sys
 from maya import cmds
-
-from PySide2 import QtCore
 
 from mayautils.tools.pipeline.legacy import mayautils_setup as mus
 

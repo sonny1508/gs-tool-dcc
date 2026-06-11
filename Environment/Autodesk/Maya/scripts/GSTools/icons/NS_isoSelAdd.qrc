@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_isoSelAdd.png">NS_isoSelAdd_100.png</file>
+		<file>NS_isoSelAdd_150.png</file>
+		<file>NS_isoSelAdd_200.png</file>
+	</qresource>

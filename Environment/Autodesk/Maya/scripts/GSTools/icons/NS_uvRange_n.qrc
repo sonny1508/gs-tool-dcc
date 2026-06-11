@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_uvRange_n.png">NS_uvRange_n_100.png</file>
+		<file>NS_uvRange_n_150.png</file>
+		<file>NS_uvRange_n_200.png</file>
+	</qresource>

@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_alignUmin.png">NS_alignUmin_100.png</file>
+		<file>NS_alignUmin_150.png</file>
+		<file>NS_alignUmin_200.png</file>
+	</qresource>

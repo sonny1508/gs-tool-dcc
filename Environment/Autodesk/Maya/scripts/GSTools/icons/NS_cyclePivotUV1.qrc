@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_cyclePivotUV1.png">NS_cyclePivotUV1_100.png</file>
+		<file>NS_cyclePivotUV1_150.png</file>
+		<file>NS_cyclePivotUV1_200.png</file>
+	</qresource>

@@ -1,0 +1,238 @@
+// Depend on these scripts:
+// GS_TransferAttrNormal
+// GS_TransferNormal2RecessPart
+// GS_CopyVertexNormalArr
+// GS_CopyNormals
+// GS_ApplyEverageNormal
+
+global proc TranferNormalTargetSource(){
+	string $slObj[] = `ls -l -sl` ;
+	DeleteHistory $slObj ;
+	// make sure 2 selected Objs have mesh node
+	if (size(`listRelatives -c -type mesh $slObj`) != 2){
+		confirmDialog -t "GS: Transfer Normal" -m "Please select TARGET then SOURCE to transfer" -db "Yes" ;
+		return ;
+	}
+	//print("Debug: Transfer Normal " + $slObj[1] + " - " + $slObj[0] + "\n") ;
+	GS_TransferAttrNormal($slObj[1], $slObj[0]) ;
+}
+global proc MkRecessTargetSource(){
+	string $slObj[] = `ls -l -sl` ;
+	DeleteHistory $slObj ;
+	// make sure 2 selected Objs have mesh node
+	if (size(`listRelatives -c -type mesh $slObj`) != 2){
+		confirmDialog -t "GS: Recess Coppy Normal" -m "Please select TARGET then \"RECESS badge\" to transfer" -db "Yes" ;
+		return ;
+	}
+	GS_TransferNormal2RecessPart($slObj[1], $slObj[0]) ;
+}
+global proc TranferNormal2SelectedVertices(){
+	GS_CopyNormals();
+}
+global proc EverageNormal(){
+	GS_ApplyEverageNormal();
+	repeatLast -ac "GS_ApplyEverageNormal";
+}
+
+global proc callSelectSourceMesh(){
+	string $slObjs[] = `ls -l -sl` ;
+	if (size($slObjs) == 1){
+		textField -e -text $slObjs[0] txtSrcMesh;
+	}else{
+		confirmDialog -t "GS Normal Tools" -m ("Please select only ONE mesh") -button "OK" ;
+	}
+}
+
+global proc callTranferNormalFromSourceToSelectedMeshes()
+{
+	string $srcMesh = `textField -q -text txtSrcMesh`;
+	
+	string $slMesh[] = `ls -l -sl` ;
+	for ($aMesh in $slMesh)
+	{
+	    string $shapeNode[] = `listRelatives -c -type mesh $aMesh`;
+		if (!size($shapeNode)){
+			continue ;
+		}
+		GS_TransferAttrNormal($srcMesh, $aMesh) ;
+	}
+}
+
+
+proc DoMatchVertexNormal(string $objDst, string $objSrc){
+	select -cl;
+	string $srcVtf[] = `polyListComponentConversion -tvf $objSrc` ;
+	$srcVtf = `ls -l -fl $srcVtf`;
+	for ($aVtf in $srcVtf){
+		float $vNormal[] = `polyNormalPerVertex -q -xyz $aVtf`;
+		string $dstStr = `substitute $objSrc $aVtf $objDst`;
+		polyNormalPerVertex -xyz $vNormal[0] $vNormal[1] $vNormal[2] $dstStr;
+	}
+	print("-------- DONE ----------\n");
+}
+
+global proc MatchVertexNormalOn2DupMeshes(){
+	string $slMesh[] = `ls -l -sl`;
+	if (size($slMesh)!= 2){
+		print("Please select two Object: Target then Source\n");
+		return;
+	}
+	DoMatchVertexNormal($slMesh[0], $slMesh[1]);
+}
+
+global proc float polyFaceArea() {
+ string $list[] = `ls -sl`;
+ float $totalArea = 0;
+ for ($origFace in $list) {
+  string $sel = $origFace;
+  string $tokens[];
+  int $num = `tokenize $sel "." $tokens`;
+  string $object = $tokens[0];
+  polyTriangulate -ch 1 $sel;
+  string $listOfFaces[] =`ls -sl -flatten`;
+  for ($face in $listOfFaces) {
+   if ( size(`match "\.f\[[0-9]+\]$" $face`) > 0 ) {
+	   string $listOfVertsToToke[] = `polyInfo -fv $face`;
+	   	tokenize $listOfVertsToToke[0] " " $tokens;
+	   	float $x[],$y[],$z[];
+	   	for ($i = 2; $i<5;$i++) {
+			string $vertName = ($object+".vtx["+$tokens[$i]+"]");
+			float $loc[] = `xform -q -ws -t $vertName`;
+			$x[$i-2] = $loc[0];
+			$y[$i-2] = $loc[1];
+			$z[$i-2] = $loc[2];
+	   	}
+	    float $a = `distanceBetween {$x[0],$y[0],$z[0]} {$x[1],$y[1],$z[1]}`;
+	    float $b = `distanceBetween {$x[1],$y[1],$z[1]} {$x[2],$y[2],$z[2]}`;
+	    float $c = `distanceBetween {$x[2],$y[2],$z[2]} {$x[0],$y[0],$z[0]}`;
+	    float $area = .25* sqrt ( ($a+$b+$c) * ($b+$c-$a) *($c+$a-$b)*($a+$b-$c) );
+	    $totalArea += $area;
+  		}
+	}
+  undo;
+ }
+
+ return $totalArea;
+} 
+
+global proc float distanceBetween(float $loc1[], float $loc2[]) {
+ float $a = `pow ($loc2[0] - $loc1[0]) 2`;
+ float $b = `pow ($loc2[1] - $loc1[1]) 2`;
+ float $c = `pow ($loc2[2] - $loc1[2]) 2`;
+ float $distance = `sqrt ( $a+$b+$c )`;
+ return $distance;
+}
+
+
+global proc float getFaceArea(string $face)
+{
+    select -r $face;
+    float $area = polyFaceArea();
+    return $area;
+}
+
+
+global proc string getBiggestFace(string $faceList[])
+{
+    float $biggestArea = 0;
+    string $biggestFace = "";
+    for($Owner in $faceList)
+    {
+        //get the area of the face
+        float $area = getFaceArea($Owner);
+        if($area>$biggestArea)
+        {
+            $biggestArea = $area;
+            $biggestFace = $Owner;
+        }           
+    }
+    return $biggestFace;      
+}
+global proc vector getFaceNormal(string $face)
+{
+    vector $normal;
+    float $x, $y, $z;
+    select -r $face;
+    string $faceNormalInfo[] = `polyInfo -fn`;
+    string $tokens[];
+    int $numTokens = `tokenize $faceNormalInfo[0] " " $tokens`;
+    $x = ($tokens[$numTokens-3]);
+    $y = ($tokens[$numTokens-2]);
+    $z = ($tokens[$numTokens-1]);
+    $normal = <<$x, $y, $z>>;
+    $normal =`unit $normal`;
+    return $normal;
+}
+
+global proc string[] getOwnerFaces(string $vert)
+{
+    select -r $vert;
+    string $faces[]=`polyListComponentConversion -tf`;
+    string $reFaceArray[] = `filterExpand -sm 34 $faces`;
+    return $reFaceArray;
+}
+
+global proc FaceWeightedNormal()
+{
+    string $selected[] = `ls -sl`;
+        for($mesh in $selected)
+        {
+            //get vertex count
+            int $vertexEval[] = `polyEvaluate -v $mesh`;
+            int $vertexCount = $vertexEval[0];
+            
+            //loop through vertex
+            for($i=0; $i<$vertexCount; ++$i)
+            {
+                string $vertex = $mesh + ".vtx[" + $i + "]";
+                
+                string $faceArray[] = getOwnerFaces($vertex);
+                string $BiggestFace = getBiggestFace($faceArray);
+                
+                vector $vertexNormal = getFaceNormal($BiggestFace);
+                select -r ($mesh + ".vtx[" + $i + "]");
+                float $x = $vertexNormal.x;
+                float $y = $vertexNormal.y;
+                float $z = $vertexNormal.z;    
+                polyNormalPerVertex -xyz $x $y $z;
+            }
+        }
+}
+
+global proc alignNormalToFace()
+{
+    string $FaceSelected[] = `ls -sl`;
+    string $SelectedFaceArray[] = `filterExpand -sm 34 $FaceSelected`;
+    for($face in $SelectedFaceArray)
+    {
+        vector $vertexNormal = getFaceNormal($face);
+        
+        string $vertex[]=`polyListComponentConversion -tv`;
+        string $vertexArray[] = `filterExpand -sm 31 $vertex`;
+        
+        for($vert in $vertexArray)
+        {
+            select -r $vert;
+            float $x = $vertexNormal.x;
+            float $y = $vertexNormal.y;
+            float $z = $vertexNormal.z;    
+            polyNormalPerVertex -xyz $x $y $z;
+        }
+    }
+
+}
+
+global proc GS_NormalTools_UI(){
+	if (`window -ex NormaltoolsWin`)
+        deleteUI NormaltoolsWin ;
+
+	string $UI = (`getenv "GSTOOLS"`) + "scripts/tools/normal_tools/GS_NormalTools.ui" ;
+    $UI = substituteAllString($UI, "/", "\\");
+
+    string $gsNormalToolsVWin = `loadUI -uiFile  $UI` ;
+
+	windowPref -enableAll false;
+	showWindow $gsNormalToolsVWin ;
+    window -e -topLeftCorner 500 200 -wh 262 530 $gsNormalToolsVWin ;
+	windowPref -enableAll true;
+}

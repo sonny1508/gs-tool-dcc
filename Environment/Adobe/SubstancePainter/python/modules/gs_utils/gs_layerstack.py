@@ -255,8 +255,12 @@ class FilterManager:
             # Insert the filter effect
             layerstack.insert_filter_effect(insert_position, filter_resource.identifier())
 
-    def batch_gs_pbr_validator(self):
-        """Adds a new paint layer with Passthrough blending mode and GS_PBR_Validator filter effect to all texture sets."""
+    def batch_gs_pbr_validator(self, validator_type="GS_PBR_Validator"):
+        """Adds a new paint layer with Passthrough blending mode and specified PBR validator filter effect to all texture sets.
+        
+        Args:
+            validator_type (str): The type of validator to use. Options: "GS_PBR_Validator", "GS_PBR_Validator_HW3", "GS_PBR_Validator_MGP25"
+        """
         # Get all texture sets in the project
         all_texture_sets = textureset.all_texture_sets()
         
@@ -274,7 +278,7 @@ class FilterManager:
             # Create a new paint layer at the very top of the stack
             new_layer = self.layer_manager.add_layer(
                 layer_type='paint', 
-                layer_name="GS_PBR_Validator", 
+                layer_name=validator_type, 
                 layer_position="On Top"  # This ensures it's at the top, outside any folder
             )
             
@@ -286,8 +290,8 @@ class FilterManager:
                 for channel in new_layer.active_channels:
                     new_layer.set_blending_mode(passthrough_blending, channel)
                     
-                # Get the filter resource
-                filter_resource = resource.search("s:yourassets u:filter n:GS_PBR_Validator")[0]
+                # Get the filter resource - use the validator_type to find the correct filter
+                filter_resource = resource.search(f"s:yourassets u:filter n:{validator_type}")[0]
                 
                 # Create insertion position for the content of the new layer
                 insert_position = layerstack.InsertPosition.inside_node(new_layer, layerstack.NodeStack.Content)
@@ -295,10 +299,25 @@ class FilterManager:
                 # Insert the filter effect
                 layerstack.insert_filter_effect(insert_position, filter_resource.identifier())
             
-            logging.info(f"Added GS_PBR_Validator to texture set: {ts.name}")
+            logging.info(f"Added {validator_type} to texture set: {ts.name}")
+
+    def batch_gs_pbr_validator_r6(self):
+        """Adds GS_PBR_Validator_R3 filter layer to all texture sets in the project."""
+        self.batch_gs_pbr_validator("GS_PBR_Validator_R6")
+
+    def batch_gs_pbr_validator_hw3(self):
+        """Adds GS_PBR_Validator_HW3 filter layer to all texture sets in the project."""
+        self.batch_gs_pbr_validator("GS_PBR_Validator_HW3")
+
+    def batch_gs_pbr_validator_mgp25(self):
+        """Adds GS_PBR_Validator_MGP25 filter layer to all texture sets in the project."""
+        self.batch_gs_pbr_validator("GS_PBR_Validator_MGP25")
 
     def remove_gs_pbr_validator(self):
-        """Removes all fill layers named GS_PBR_Validator from all texture sets."""
+        """Removes all PBR validator layers from all texture sets."""
+        # Define all validator layer names to remove
+        validator_names = ["GS_PBR_Validator", "GS_PBR_Validator_R6","GS_PBR_Validator_HW3", "GS_PBR_Validator_MGP25"]
+        
         # Get all texture sets in the project
         all_texture_sets = textureset.all_texture_sets()
         
@@ -310,8 +329,9 @@ class FilterManager:
                 # Get all layers in the stack
                 root_layers = layerstack.get_root_layer_nodes(stack)
                 
-                # Find and delete any layer named "GS_PBR_Validator"
+                # Find and delete any layer with validator names
                 for layer in root_layers:
-                    if layer.get_name() == "GS_PBR_Validator":
+                    layer_name = layer.get_name()  # Get the name before deletion
+                    if layer_name in validator_names:
                         layerstack.delete_node(layer)
-                        logging.info(f"Removed GS_PBR_Validator from stack {stack}")
+                        logging.info(f"Removed {layer_name} from stack {stack}")  # Use stored name

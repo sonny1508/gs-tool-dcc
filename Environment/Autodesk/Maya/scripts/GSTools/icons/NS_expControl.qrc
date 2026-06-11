@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_expControl.png">NS_expControl_100.png</file>
+		<file>NS_expControl_150.png</file>
+		<file>NS_expControl_200.png</file>
+	</qresource>

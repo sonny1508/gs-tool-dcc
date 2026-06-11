@@ -1,0 +1,362 @@
+global string $m341_tbExporterVersion;
+$m341_tbExporterVersion = "Baking Exporter";
+
+//*******************************************************************************************************
+//* global procs
+//*******************************************************************************************************
+//***********************************************************************************************************************************************************
+//*******************************************************************************************************
+//Reset 
+global proc m341_tbExporter_reset()
+{
+	//triangulate high
+	checkBox -e -value 0 tbExporter_TriangulateHigh_CheckBoxName;
+	global int $m341_tbExporter_TriangulateHigh_userInput;
+	$m341_tbExporter_TriangulateHigh_userInput = `checkBox -q -value tbExporter_TriangulateHigh_CheckBoxName`;
+	optionVar -intValue "m341_tbExporter_TriangulateHighCheckBox_VarName" $m341_tbExporter_TriangulateHigh_userInput;
+	
+	//triangulate low
+	checkBox -e -value 1 tbExporter_TriangulateLow_CheckBoxName;
+	global int $m341_tbExporter_TriangulateLow_UserInput;
+	$m341_tbExporter_TriangulateLow_UserInput = `checkBox -q -value tbExporter_TriangulateLow_CheckBoxName`;
+	optionVar -intValue "m341_tbExporter_TriangulateLow_CheckBoxVarName" $m341_tbExporter_TriangulateLow_UserInput;	
+	print "tbExporter reset to default\n";
+}
+
+//*******************************************************************************************************
+//Update Triangulate High Checkbox Value
+global proc m341_tbExporter_TriangulateHigh_ValueChanged()
+{
+	//Query the value of the checkbox and store in variable
+	global int $m341_tbExporter_TriangulateHigh_userInput;
+	$m341_tbExporter_TriangulateHigh_userInput = `checkBox -q -value tbExporter_TriangulateHigh_CheckBoxName`;
+	optionVar -intValue "m341_tbExporter_TriangulateHighCheckBox_VarName" $m341_tbExporter_TriangulateHigh_userInput;
+	//Print value
+	if ($m341_tbExporter_TriangulateHigh_userInput == 0)
+	{
+		print "Triangulate high checkbox off\n";
+	}
+	else
+	{
+		print "Triangulate high checkbox on\n";
+	}
+}
+
+
+//*******************************************************************************************************
+//Update Triangulate Low Checkbox Value
+global proc m341_tbExporter_TriangulateLow_ValueChanged()
+{
+	//Query the value of the checkbox and store in variable
+	global int $m341_tbExporter_TriangulateLow_UserInput;
+	$m341_tbExporter_TriangulateLow_UserInput = `checkBox -q -value tbExporter_TriangulateLow_CheckBoxName`;
+	optionVar -intValue "m341_tbExporter_TriangulateLow_CheckBoxVarName" $m341_tbExporter_TriangulateLow_UserInput;
+	//Print value
+	if ($m341_tbExporter_TriangulateLow_UserInput == 0)
+	{
+		print "Triangulate low checkbox off\n";
+	}
+	else
+	{
+		print "Triangulate low checkbox on\n";
+	}
+}
+
+//***********************************************************************************************************************************************************
+//Export High
+global proc m341_tbExporter_ExportHigh()
+{
+    string $toolbagNumbObjectsSelected[] = `ls -sl`;
+    float $toolbagNumbObjectsSize = size($toolbagNumbObjectsSelected);
+	
+    if($toolbagNumbObjectsSize > 1)
+    {
+        error "Please place your objects in a group, then select only the group and click export high";
+    }
+    
+    //Duplicate with animaiton if checkbox turned on
+	global int $m341_tbExporter_ExportAnimation_userInput;
+	if ($m341_tbExporter_ExportAnimation_userInput == 1)
+	{
+		duplicatePreset(1,1,1,0,1,0,0,0,0,0,0,0,0,0,1,1,1);
+	}
+	else
+	{
+		duplicate -rr;
+	}
+	showHidden -a;
+
+	//Delete UVs unless checkbox turned on
+	global int $m341_tbExporter_ExportHighUVs_userInput;
+	if ($m341_tbExporter_ExportHighUVs_userInput == 0)
+	{
+		polyMapDel -ch 1;	
+	}
+
+    rename "m341_high_subdivided";
+    SelectHierarchy;
+    DeleteHistory;
+
+    string $tbSaveLocation[] = `fileDialog2 -ff "*.fbx"`;
+	if (size($tbSaveLocation) == 1)
+	{
+		FBXProperty Export|IncludeGrp|Geometry|SmoothingGroups -v false;
+		FBXProperty Export|IncludeGrp|Geometry|expHardEdges -v false;
+		global int $m341_tbExporter_ExportTangents_userInput;
+		if ($m341_tbExporter_ExportTangents_userInput == 1)
+		{
+			FBXProperty Export|IncludeGrp|Geometry|TangentsandBinormals -v true;
+		}
+		else
+		{
+			FBXProperty Export|IncludeGrp|Geometry|TangentsandBinormals -v false;
+		}
+		FBXProperty Export|IncludeGrp|Geometry|SmoothMesh -v false;
+		FBXProperty Export|IncludeGrp|Geometry|SelectionSet -v false;
+		FBXProperty Export|IncludeGrp|Geometry|BlindData -v false;
+		FBXProperty Export|IncludeGrp|Geometry|AnimationOnly -v false;
+		FBXProperty Export|IncludeGrp|Geometry|Instances -v false; 
+		FBXProperty Export|IncludeGrp|Geometry|ContainerObjects -v false;
+		global int $m341_tbExporter_TriangulateHigh_userInput;
+		$m341_tbExporter_TriangulateHigh_userInput = `checkBox -q -value tbExporter_TriangulateHigh_CheckBoxName`;
+		if ($m341_tbExporter_TriangulateHigh_userInput == 1)
+		{
+			FBXProperty Export|IncludeGrp|Geometry|Triangulate -v true;
+		}
+		else
+		{
+			FBXProperty Export|IncludeGrp|Geometry|Triangulate -v false;
+		}
+		FBXProperty Export|AdvOptGrp|Fbx|AsciiFbx -v "Binary";
+		FBXExport -f $tbSaveLocation -s;
+	}
+	Delete;
+
+	if (size($tbSaveLocation) == 1)
+	{
+		print "Exported .fbx high poly\n";
+	}
+	else
+	{
+		print "Export cancelled\n";
+	}
+    //deleteUI -window FbxWarningWindow;
+}
+
+//***********************************************************************************************************************************************************
+//Export Low
+global proc m341_tbExporter_ExportLow()
+{
+	string $toolbagNumbObjectsSelected[] = `ls -sl`;
+	float $toolbagNumbObjectsSize = size($toolbagNumbObjectsSelected);
+	
+	if($toolbagNumbObjectsSize > 1)
+	{
+        error "Please place your objects in a group, then select only the group and click export low";
+	}
+
+	$selectedObject = `ls -sl -long`;
+	SelectHierarchy;
+	
+	//Soften all and harden UV border edges if checkbox on
+	global int $m341_tbExporter_HardenUVBorders_userInput;
+	if ($m341_tbExporter_HardenUVBorders_userInput == 1)
+	{
+		//Soften all edges
+		polyPerformAction "polySoftEdge -a 180" e 0;
+		//Select UV border edges
+		SelectEdgeMask;
+		SelectUVBorderComponents;
+		polyPerformAction "polySoftEdge -a 0" e 0;	
+	}
+
+	select $selectedObject;
+	
+	//Duplicate with animaiton if checkbox turned on
+	global int $m341_tbExporter_ExportAnimation_userInput;
+	if ($m341_tbExporter_ExportAnimation_userInput == 1)
+	{
+		duplicatePreset(1,1,1,0,1,0,0,0,0,0,0,0,0,0,1,1,1);
+	}
+	else
+	{
+		duplicate -rr;
+	}
+	showHidden -a;
+	//Disable smooth mesh preview for low poly
+	setDisplaySmoothness 1;
+
+	global int $m341_tbExporter_TriangulateLow_UserInput;
+	if ($m341_tbExporter_TriangulateLow_UserInput == 0 && $m341_tbExporter_HardenUVBorders_userInput == 0)
+	{
+		rename "tbExport_low";
+	}
+
+	if ($m341_tbExporter_TriangulateLow_UserInput == 1 && $m341_tbExporter_HardenUVBorders_userInput == 0)
+	{
+		rename "tbExport_low_tris";
+	}
+
+	if ($m341_tbExporter_TriangulateLow_UserInput == 0 && $m341_tbExporter_HardenUVBorders_userInput == 1)
+	{
+		rename "tbExport_low_auto_normals";
+	}
+	
+	if ($m341_tbExporter_TriangulateLow_UserInput == 1 && $m341_tbExporter_HardenUVBorders_userInput == 1)
+	{
+		rename "tbExport_low_tris_auto_normals";
+	}
+	
+	string $temp_Obj[] = `ls -sl`;
+	SelectHierarchy;
+	
+	//Triangulate low if checkbox turned on
+	global int $m341_tbExporter_TriangulateLow_UserInput;
+	$m341_tbExporter_TriangulateLow_UserInput = `checkBox -q -value tbExporter_TriangulateLow_CheckBoxName`;
+	if ($m341_tbExporter_TriangulateLow_UserInput == 1)
+	{
+		polyPerformAction polyTriangulate f 0;		
+	}
+	select $temp_Obj;
+	SelectHierarchy;
+	DeleteHistory;
+
+	string $tbSaveLocation[] = `fileDialog2 -ff "*.fbx"`;
+	if (size($tbSaveLocation) == 1)
+	{
+		FBXProperty Export|IncludeGrp|Animation -v true;
+		FBXProperty Export|IncludeGrp|Geometry|SmoothingGroups -v true;
+		FBXProperty Export|IncludeGrp|Geometry|expHardEdges -v false;
+		global int $m341_tbExporter_ExportTangents_userInput;
+		if ($m341_tbExporter_ExportTangents_userInput == 1)
+		{
+			FBXProperty Export|IncludeGrp|Geometry|TangentsandBinormals -v true;
+		}
+		else
+		{
+			FBXProperty Export|IncludeGrp|Geometry|TangentsandBinormals -v false;
+		}
+		FBXProperty Export|IncludeGrp|Geometry|SmoothMesh -v false;
+		FBXProperty Export|IncludeGrp|Geometry|SelectionSet -v false;
+		FBXProperty Export|IncludeGrp|Geometry|BlindData -v false;
+		FBXProperty Export|IncludeGrp|Geometry|AnimationOnly -v false;
+		FBXProperty Export|IncludeGrp|Geometry|Instances -v false; 
+		FBXProperty Export|IncludeGrp|Geometry|ContainerObjects -v false;
+		FBXProperty Export|IncludeGrp|Geometry|Triangulate -v false;
+		if ($m341_tbExporter_ExportAnimation_userInput == 1)
+		{
+			FBXProperty Export|IncludeGrp|Animation -v true;
+		}
+		else
+		{
+			FBXProperty Export|IncludeGrp|Animation -v false;
+		}
+		FBXProperty Export|AdvOptGrp|Fbx|AsciiFbx -v "Binary";
+		//FBXProperty Export|AdvOptGrp|Fbx|AsciiFbx -v "Binary";
+		FBXExport -f $tbSaveLocation -s;
+	}
+
+	select $temp_Obj;
+	Delete;
+	toggleSelMode;
+	toggleSelMode;
+	selectMode -object;
+	
+	if (size($tbSaveLocation) == 1)
+	{
+		//Print
+		if ($m341_tbExporter_HardenUVBorders_userInput == 1)
+		{
+			print "Normals set to soft UV borders set to hard, exported .fbx low poly\n";	
+		}
+		else
+		{
+			print "Exported .fbx low poly\n";	
+		}	
+	}
+	else
+	{
+		print "Export cancelled\n";
+	}
+}
+
+
+//***********************************************************************************************************************************************************
+//Window and Buttons
+//***********************************************************************************************************************************************************
+global proc m341_tbExporter_launchWindow()
+{
+	if (`window -exists m341_tbExporter_windowName`)
+	{
+		deleteUI m341_tbExporter_windowName;
+	};
+	
+	global string $m341_tbExporterVersion;
+	window -title $m341_tbExporterVersion -toolbox true -sizeable true -resizeToFitChildren true m341_tbExporter_windowName;
+	columnLayout -adjustableColumn true;
+
+		//Save preferences triangulate high checkbox
+		int $triangulateHigh_checkBoxValue;
+		global int $m341_tbExporter_TriangulateHigh_userInput;
+		string $triangulateHigh_OptionVar = `optionVar -exists "m341_tbExporter_TriangulateHighCheckBox_VarName"`;
+		if ($triangulateHigh_OptionVar == 0)
+		{
+			//Set default value
+			optionVar -intValue "m341_tbExporter_TriangulateHighCheckBox_VarName" 0;
+			$triangulateHigh_checkBoxValue = `optionVar -q "m341_tbExporter_TriangulateHighCheckBox_VarName"`;
+		}
+		else
+		{
+			//Query from prefs file
+			$triangulateHigh_checkBoxValue = `optionVar -q "m341_tbExporter_TriangulateHighCheckBox_VarName"`;
+		}
+		
+		setParent ..;
+		rowColumnLayout -numberOfRows 1;
+		checkBox -label "triangulate high" -width 117 -height 15 -value $triangulateHigh_checkBoxValue -changeCommand "m341_tbExporter_TriangulateHigh_ValueChanged();" tbExporter_TriangulateHigh_CheckBoxName;
+		
+		
+		//Save preferences triangulate low checkbox
+		int $triangulateLow_CheckBoxValue;
+		global int $m341_tbExporter_TriangulateLow_UserInput;
+		string $triangulateLow_OptionVar = `optionVar -exists "m341_tbExporter_TriangulateLow_CheckBoxVarName"`;
+		if ($triangulateLow_OptionVar == 0)
+		{
+			//Set default value
+			optionVar -intValue "m341_tbExporter_TriangulateLow_CheckBoxVarName" 1;
+			$triangulateLow_CheckBoxValue = `optionVar -q "m341_tbExporter_TriangulateLow_CheckBoxVarName"`;
+		}
+		else
+		{
+			//Query from prefs file
+			$triangulateLow_CheckBoxValue = `optionVar -q "m341_tbExporter_TriangulateLow_CheckBoxVarName"`;
+		}
+		
+		setParent ..;
+		rowColumnLayout -numberOfRows 1;
+		checkBox -label "triangulate low" -width 117 -height 15 -value $triangulateLow_CheckBoxValue -changeCommand "m341_tbExporter_TriangulateLow_ValueChanged();" tbExporter_TriangulateLow_CheckBoxName;
+		
+		setParent ..;
+		rowColumnLayout -numberOfRows 1;
+		iconTextButton -style "textOnly"
+			-width 118
+			-label "export high"
+			-command "m341_tbExporter_ExportHigh;"
+			-commandRepeatable 1;
+		
+		setParent ..;
+		rowColumnLayout -numberOfRows 1;
+		iconTextButton -style "textOnly"
+			-width 118
+			-label "export low"
+			-command "m341_tbExporter_ExportLow;"
+			-commandRepeatable 1;
+			
+	showWindow;
+	
+	print ("Toolbox loaded " + $m341_tbExporterVersion + "\n");
+}
+
+//***********************************************************************************************************************************************************
+//*Launch Window
+//***********************************************************************************************************************************************************

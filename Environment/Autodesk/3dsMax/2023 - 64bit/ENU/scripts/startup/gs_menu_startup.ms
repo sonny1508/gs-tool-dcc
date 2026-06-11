@@ -31,13 +31,6 @@ fn checkGSToolsMenuExists =
             return true
         )
         
-        -- METHOD 2: Check global persistent flag via user properties
-        if getAppData rootNode 12345 == "GSToolsMenuInstalled" then
-        (
-            logMessage "Found flag indicating GSTools menu was previously installed"
-            return true
-        )
-        
         logMessage "GSTools menu not found by any method"
         return false
     )
@@ -117,7 +110,11 @@ fn createSubmenusWithMacros gsToolsMenu =
         -- Create a list of folders and associated scripts
         local folderStructure = #(
             -- #("FolderName", #("MacroName1", "MacroName2", ...))
-            #("Hotwheels3", #("HW3_File_Exporter"))
+            #("01 General", #("Material_ID_Remapper", "Poly_Smoother", "Texel_Density", "Material_Manager")),
+            #("02 UV", #("UV_Tools")),
+            #("03 Review", #("Scene_Checker")),
+            #("04 File I/O", #("GS_File_Exporter", "GS_File_Transfer")),
+            #("05 Projects", #("HW3_File_Exporter"))
             -- Add more folders here as needed
         )
         
@@ -161,14 +158,6 @@ fn createSubmenusWithMacros gsToolsMenu =
                 gsToolsMenu.addItem subMenuItem -1
                 logMessage ("Added " + folderName + " submenu to GSTools menu")
             )
-        )
-        
-        -- Add GS_File_Transfer directly to the main menu (if it exists)
-        local fileTransferItem = menuMan.createActionItem "GS_File_Transfer" "GSTools"
-        if fileTransferItem != undefined then
-        (
-            gsToolsMenu.addItem fileTransferItem -1
-            logMessage "Added GS_File_Transfer item to main GSTools menu"
         )
         
         return true

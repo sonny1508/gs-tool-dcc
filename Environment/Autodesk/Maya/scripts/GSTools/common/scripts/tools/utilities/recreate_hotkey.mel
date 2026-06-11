@@ -1,0 +1,17 @@
+// Re-create and assign the GSTools hotkey set from the bundled GSHotkey.mhk.
+$response = `confirmDialog -title "Confirm"
+              -message "Create and assign hotkey setting.."
+              -button "Yes"
+              -button "No"
+              -defaultButton "Yes"
+              -cancelButton "No"
+              -dismissString "No"`;
+
+if ( $response == "Yes" ) {
+    // GSTOOLS env points at .../GSTools/common/ ; the hotkey file ships under scripts/hotkeys/.
+    string $path = `getenv "GSTOOLS"` + "scripts/hotkeys/";
+    catchQuiet (`hotkeySet -e -ip ($path + "GSHotkey.mhk")`);
+    print("Hotkey created and assigned....\n");
+} else if ( $response == "No" ) {
+    print("Hotkey not created....\n");
+}

@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_distributeC.png">NS_distributeC_100.png</file>
+		<file>NS_distributeC_150.png</file>
+		<file>NS_distributeC_200.png</file>
+	</qresource>

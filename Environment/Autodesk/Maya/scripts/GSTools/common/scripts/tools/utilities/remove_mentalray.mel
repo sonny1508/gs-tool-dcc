@@ -1,0 +1,24 @@
+// Script to remove mental ray data from Maya scene files
+// Run this script while the scene is open in Maya, then save the file with a new name
+
+print("\n");
+print("\n");
+print("Working on:\n");
+
+string $mrNodes[] = `ls -typ "unknown"`;
+
+for ($each in $mrNodes){
+	if (`objExists $each` && `unknownNode -q -p $each` == "Mayatomr"){
+		print($each + "\n");
+		delete $each;
+	}
+}
+
+
+if (`objExists mentalrayIblShape1`){
+	delete mentalrayIblShape1;
+}
+
+unknownPlugin -remove "Mayatomr";
+print "\n";
+print "---> Done";

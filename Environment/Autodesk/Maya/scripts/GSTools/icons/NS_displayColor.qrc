@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_displayColor.png">NS_displayColor_100.png</file>
+		<file>NS_displayColor_150.png</file>
+		<file>NS_displayColor_200.png</file>
+	</qresource>

@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_selGrow.png">NS_selGrow_100.png</file>
+		<file>NS_selGrow_150.png</file>
+		<file>NS_selGrow_200.png</file>
+	</qresource>

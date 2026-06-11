@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_unpinUVs.png">NS_unpinUVs_100.png</file>
+		<file>NS_unpinUVs_150.png</file>
+		<file>NS_unpinUVs_200.png</file>
+	</qresource>

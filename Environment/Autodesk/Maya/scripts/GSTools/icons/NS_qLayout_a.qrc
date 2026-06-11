@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_qLayout_a.png">NS_qLayout_a_100.png</file>
+		<file>NS_qLayout_a_150.png</file>
+		<file>NS_qLayout_a_200.png</file>
+	</qresource>

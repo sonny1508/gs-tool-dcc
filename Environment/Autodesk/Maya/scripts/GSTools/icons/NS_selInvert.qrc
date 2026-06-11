@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_selInvert.png">NS_selInvert_100.png</file>
+		<file>NS_selInvert_150.png</file>
+		<file>NS_selInvert_200.png</file>
+	</qresource>

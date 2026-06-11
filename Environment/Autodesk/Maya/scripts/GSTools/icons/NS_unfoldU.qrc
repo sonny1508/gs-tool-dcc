@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_unfoldU.png">NS_unfoldU_100.png</file>
+		<file>NS_unfoldU_150.png</file>
+		<file>NS_unfoldU_200.png</file>
+	</qresource>

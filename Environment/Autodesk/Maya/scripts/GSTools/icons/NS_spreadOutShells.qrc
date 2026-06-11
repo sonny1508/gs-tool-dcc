@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_spreadOutShells.png">NS_spreadOutShells_100.png</file>
+		<file>NS_spreadOutShells_150.png</file>
+		<file>NS_spreadOutShells_200.png</file>
+	</qresource>

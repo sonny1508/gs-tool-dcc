@@ -1,0 +1,452 @@
+//AUTHOR : BAIDHIR HIDAIR © 2017.
+//don't modify , don't distribute.
+
+//PP
+
+if(!`polyCreaseCtx -ex "spWeightCtx"`){
+	polyCreaseCtx -es 1 -r 1 "spWeightCtx";
+}
+///////////////////////////////////////////////////// LOCAL REALM
+
+proc float spgetmaxf(float $valz[]){
+        
+    int $tmp2 = $valz[0];
+    
+    for($j = 0; $j < size($valz); $j++){
+        
+        if($tmp2 < $valz[$j]){
+            $tmp2 = $valz[$j];
+        }
+    }
+    
+    return $tmp2;
+}
+
+
+///////////////////////////////////////////////////// GLOBAL REALM /////////////////////////////////////
+
+global proc spSmartLvl(){
+
+string $edges[] = `filterExpand -ex 1 -sm 32`;
+	
+
+	if(!`size $edges`){error;}
+
+		polyOptions -dce 0;
+
+string $op[] = `listRelatives -p -f $edges`;
+
+		setAttr ($op[0] + ".osdSmoothTriangles") 1;
+
+				float $Wval[] = `polyCrease -q -v ($op[0] + ".e[*]")`;
+
+				float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+
+				if($smtLvl < 1){$smtLvl = 1;}
+
+				setAttr ($op[0] + ".smoothLevel") ($smtLvl + 1);
+
+}
+
+global proc spFastCrease(){
+
+    if(size(`filterExpand -ex 1 -sm 12`)){
+        polySelectConstraint -m 0 -dis; polySelectConstraint -m 3 -t 0x8000 -sm 1; polySelectConstraint -m 0 -dis;
+    }
+    
+	string $edges[] = `filterExpand -ex 1 -sm 32`;
+
+		if(!`size $edges`){ error "You must select edge components.\n";}
+
+	polyOptions -dce 0;
+
+string $op[] = `listRelatives -p -f $edges`;
+
+		
+setAttr ($op[0] + ".osdSmoothTriangles") 1;
+
+		setAttr ($op[0] + ".displaySmoothMesh") 2;
+
+	setToolTo "spWeightCtx";
+
+	scriptJob -cu 1 -ro 1 -e "PostToolChanged" "spSmartLvl";
+}
+
+
+global proc spNoCrease(){// Remove Crease / Weights
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+        
+	if(!`size $op`){ error "Select objects or components.\n"; }
+    
+    string $opShape[] = `listRelatives -c -f $op`;
+
+	if(size(`filterExpand -ex 1 -sm 12`)){
+    
+        polyOptions -dce 1;
+    
+		for($i in $op){
+			polyCrease -op 2 $i;
+			setAttr ($opShape[0] + ".displaySmoothMesh") 2;
+		}
+        
+		select -r $op;
+	}else{
+        
+        polyOptions -dce 0;
+    
+        polyCrease -op 1 `ls -sl -fl`;
+
+        setAttr ($opShape[0] + ".displaySmoothMesh") 2;
+
+    }
+
+}
+
+
+global proc spSmoothOs(){ // Final Smooth
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+if(!`size $op`){error "You must select Object(s).\n";}
+
+string $opShape[] = `listRelatives -c -f $op`;
+
+polyOptions -dce 0; LowQualityDisplay;
+
+	for($i in $op){
+
+
+		float $Wval[] = `polyCrease -q -v ($i + ".e[*]")`;
+
+float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+			if($smtLvl < 1 || $smtLvl > 5){$smtLvl = 1;}
+
+
+string $Node[0] =`polySmooth $i`;
+
+        
+        string $ud[] = `listAttr -ud $i`;
+        
+        for($j in $ud){
+            deleteAttr -at $j $i;
+        }
+
+
+		addAttr -k 1 -ln "smoothLevel" -at "short" -dv ($smtLvl+1) -hnv 1 -min 0 -max 5 $i;
+
+		connectAttr ($i + ".smoothLevel") ($Node[0] + ".divisions");
+
+	}
+
+	select -r $op;
+
+}
+
+global proc smoothSg(){ // Smooth Based on Smoothing Groups
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+if(!`size $op`){error "You must select Objects.\n";}
+
+
+LowQualityDisplay;
+
+
+	for($i in $op){
+
+        
+		polySelectConstraint -m 0 -dis; polySelectConstraint -m 3 -t 0x8000 -sm 1; polySelectConstraint -m 0 -dis;
+
+		if(size(`ls -sl -fl`)){polyCrease -op 2 $i; polyCrease -v 5.0 `ls -sl -fl`; }
+
+
+string $Node1[] = `polySmooth $i`;
+    //basediv
+    
+    polyCrease -op 2 $i;
+    
+       string $ud[] = `listAttr -ud $i`;
+        
+        for($j in $ud){
+            deleteAttr -at $j $i;
+        }
+
+
+		addAttr -k 1 -ln "baseDiv" -at "short" -dv 2 -hnv 1 -min 0 -max 5 $i;
+
+		connectAttr ($i + ".baseDiv") ($Node1[0] + ".divisions");
+
+string $Node2[] =`polySmooth $i`;
+		//smoothdiv
+
+
+				addAttr -k 1 -ln "smoothDiv" -at "short" -dv 1 -hnv 1 -min 0 -max 5 $i;
+
+		connectAttr ($i + ".smoothDiv") ($Node2[0] + ".divisions");
+}
+
+	select -r $op;
+}
+
+global proc spCreasePreset(int $power){// Prefab of the creasing command
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+	if(!`size $op`){error "Select Objects or components.\n"; }
+    
+	polyOptions -dce 0;
+
+
+	if(size(`filterExpand -ex 1 -sm 12`)){ // if objects are selected instead
+        
+		for($i in $op){
+            
+		polySelectConstraint -m 0 -dis; polySelectConstraint -m 3 -t 0x8000 -sm 1; polySelectConstraint -m 0 -dis;
+		
+        if(!size(`ls -sl -fl`)){continue;}
+          
+
+              if($power == 1){
+					polyCrease -op 2 $i;
+					polyCrease -v 2.0;
+				}else if($power == 2){
+						polyCrease -op 2 $i;
+						polyCrease -v 3.3;
+					}else if($power == 3){
+						polyCrease -op 2 $i;
+						polyCrease -v 4.0;
+					}else{
+						error ("argument " + $power + " has no behavior, use 1, 2, 3 instead.\n");
+					}
+        
+        string $shape[0] = `listRelatives -c -f $i`; 
+			
+			setAttr ($shape[0] + ".osdSmoothTriangles") 1;
+
+				float $Wval[] = `polyCrease -q -v ($i + ".e[*]")`;
+				
+                float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+
+				if($smtLvl < 1){$smtLvl = 1;}
+
+				setAttr ($shape[0] + ".smoothLevel") ($smtLvl + 1);
+		}
+		select -r $op; HighQualityDisplay;
+	}else{
+        //components
+        
+	if($power == 1){
+			polyCrease -v 2.0;
+		}else if($power == 2){
+				polyCrease -v 3.0;
+			}else if($power == 3){
+				polyCrease -v 4.0;
+			}else{
+				error ("argument " + $power + " has no behavior, use 1, 2, 3 instead.\n"); 
+			}
+
+        string $shape[0] = `listRelatives -c -f $op[0]`; 
+			
+			setAttr ($shape[0] + ".osdSmoothTriangles") 1;
+
+				float $Wval[] = `polyCrease -q -v ($op[0] + ".e[*]")`;
+
+                float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+				
+				if($smtLvl < 1){$smtLvl = 1;}
+
+				setAttr ($shape[0] + ".smoothLevel") ($smtLvl + 1);
+
+
+				hilite; HighQualityDisplay;
+    }
+}
+
+
+global proc spLevel(int $op){ //Utility for Levels of Weight and SubD
+
+string $ops[] = eval("listRelatives -p -f `polyListComponentConversion -tv`");
+
+	if(!`size $ops`){error;}
+    
+    string $edges[] = `filterExpand -ex 1 -sm 32`;
+    
+    int $itr;
+
+	polyOptions -dce 0;
+
+	if($op == 1){//Lower Rez
+
+for($i in $ops){
+
+	int $lvl = `getAttr ($i + ".smoothLevel")`;
+	
+	setAttr ($i + ".smoothLevel ") ($lvl-1);
+
+}
+
+select -r $ops; HighQualityDisplay;
+
+		}else if($op == 2){//Higher Rez
+
+for($i in $ops){
+
+		int $lvl = `getAttr ($i + ".smoothLevel")`;
+	
+	setAttr ($i + ".smoothLevel ") ($lvl+1);
+}
+
+select -r $ops; HighQualityDisplay;
+
+		}else if($op == 3){ //Lower Weight
+
+for($i in $ops){
+
+				setAttr ($i + ".osdSmoothTriangles") 1;
+
+				float $Wval[] = `polyCrease -q -v ($i + ".e[*]")`;
+				
+                float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+
+				if($smtLvl < 1){$smtLvl = 1;}
+
+
+
+
+
+	for($j in $edges){
+		polyCrease -v ($Wval[$itr] - 1) $j;
+		$itr++;
+	}
+    
+    setAttr ($i + ".smoothLevel") ($smtLvl);
+
+}
+
+select -r $ops; HighQualityDisplay;
+
+		}else if($op == 4){ // Higher Weight
+
+for($i in $ops){
+
+				setAttr ($i + ".osdSmoothTriangles") 1;
+
+				float $Wval[] = `polyCrease -q -v ($i + ".e[*]")`;
+				
+                float $higherW = `spgetmaxf $Wval`;
+
+				int $smtLvl = (int) `ceil $higherW`;
+
+				if($smtLvl < 1){$smtLvl = 1;}
+
+	
+
+	for($j in $edges){
+		polyCrease -v ($Wval[$itr] + 1) $j;
+		$itr++;
+	}
+    
+    setAttr ($i + ".smoothLevel") ($smtLvl + 2);
+}
+
+select -r $ops; HighQualityDisplay;
+
+		}else{
+			error ($op + " is not an option, Try with 1, 2, 3 , 4 instead.\n");
+		}
+
+}
+
+
+global proc spPhysicalCrease(){// physical Crease
+
+global int $cp_maya_v1;
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+  
+  string $ControlNode[];
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsBvlOp $op[0]`){
+		select -r $op[0]; cpAttrSwitch; return;
+	}
+}
+
+if(size(`filterExpand -ex 1 -sm 12`)){
+    
+    for($i in $op){
+        
+
+        select -r $i;
+        
+       polySelectConstraint -m 0 -dis; polySelectConstraint -m 3 -t 0x8000 -sm 1; polySelectConstraint -m 0 -dis;
+       
+       if($cp_maya_v1 > 2016){
+          	$ControlNode = `polyBevel3 -af 1 -oaf 0 -c 0 -sg 1 -sn 1 -sa 180 -o 0`;
+ 
+       }else{
+           	$ControlNode = `polyBevel3 -af 1 -oaf 0 -sg 1 -fn 1 -sa 180 -o 0`;
+
+       }
+       
+       
+       string $ud[] = `listAttr -ud $i`;
+       
+       for($j in $ud){
+           deleteAttr -at $j $i;
+       }
+       
+       addAttr -ln "hOffset" -k 1 -at "doubleLinear" -hnv 1 -min 0 -dv 0.1 $i;
+
+        connectAttr ($i + ".hOffset") ($ControlNode[0] + ".offset");
+
+        addAttr -ln "hDivisions" -k 1 -at "long" -hnv 1 -min 0 -dv 1 $i;
+
+        connectAttr ($i + ".hDivisions") ($ControlNode[0] + ".segments");
+
+    }
+    
+    select -r $op; cpAttrSwitch;
+        
+}else{
+       if($cp_maya_v1 > 2016){
+          	$ControlNode = `polyBevel3 -af 1 -oaf 0 -c 0 -sg 1 -sn 1 -sa 180 -o 0`;
+ 
+       }else{
+           	$ControlNode = `polyBevel3 -af 1 -oaf 0 -sg 1 -fn 1 -sa 180 -o 0`;
+
+       }
+              
+       string $ud[] = `listAttr -ud $op[0]`;
+       
+       for($j in $ud){
+           deleteAttr -at $j $op[0];
+       }
+       
+       addAttr -ln "hOffset" -k 1 -at "doubleLinear" -hnv 1 -min 0 -dv 0.1 $op[0];
+
+        connectAttr ($op[0] + ".hOffset") ($ControlNode[0] + ".offset");
+
+        addAttr -ln "hDivisions" -k 1 -at "long" -hnv 1 -min 0 -dv 1 $op[0];
+
+        connectAttr ($op[0] + ".hDivisions") ($ControlNode[0] + ".segments");
+        
+        select -r $op; cpAttrSwitch;
+}
+
+}
+
+global proc spShowCreaseEd(){
+    python "from maya.app.general import creaseSetEditor; creaseSetEditor.showCreaseSetEditor()";
+}

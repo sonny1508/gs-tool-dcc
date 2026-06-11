@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_transformToggleOff.png">NS_transformToggleOff_100.png</file>
+		<file>NS_transformToggleOff_150.png</file>
+		<file>NS_transformToggleOff_200.png</file>
+	</qresource>

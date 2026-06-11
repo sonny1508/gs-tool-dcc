@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NSUV_tricks.png">NSUV_tricks_100.png</file>
+		<file>NSUV_tricks_150.png</file>
+		<file>NSUV_tricks_200.png</file>
+	</qresource>

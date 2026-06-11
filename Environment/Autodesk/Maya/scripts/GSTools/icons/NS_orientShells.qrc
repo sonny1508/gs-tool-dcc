@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_orientShells.png">NS_orientShells_100.png</file>
+		<file>NS_orientShells_150.png</file>
+		<file>NS_orientShells_200.png</file>
+	</qresource>

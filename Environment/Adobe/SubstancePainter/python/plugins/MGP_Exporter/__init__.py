@@ -37,7 +37,7 @@ def openSettingsDialog():
 def createToolBar(): 
 	"""Creates the toolbar containing the action to open the Settings Dialog
 	"""    
-	Data.toolbar = sbsui.add_toolbar("Material Manager", "materialManager")
+	Data.toolbar = sbsui.add_toolbar("MGP Material Manager", "materialManagerMGP")
 	qicon = QtGui.QIcon()
 	qicon.addPixmap(icon.getIconAsQPixmap("GS_Mat_Manager_logo_idle.png"))
 	qicon.addPixmap(icon.getIconAsQPixmap("GS_Mat_Manager_logo.png"), QtGui.QIcon.Active)

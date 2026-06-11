@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_snapToGrid.png">NS_snapToGrid_100.png</file>
+		<file>NS_snapToGrid_150.png</file>
+		<file>NS_snapToGrid_200.png</file>
+	</qresource>

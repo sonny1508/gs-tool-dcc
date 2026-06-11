@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_optimizeUVTool.png">NS_optimizeUVTool_100.png</file>
+		<file>NS_optimizeUVTool_150.png</file>
+		<file>NS_optimizeUVTool_200.png</file>
+	</qresource>

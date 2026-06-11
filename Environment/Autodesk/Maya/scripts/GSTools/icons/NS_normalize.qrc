@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_normalize.png">NS_normalize_100.png</file>
+		<file>NS_normalize_150.png</file>
+		<file>NS_normalize_200.png</file>
+	</qresource>

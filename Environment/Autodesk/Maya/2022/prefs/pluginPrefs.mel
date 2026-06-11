@@ -22,6 +22,7 @@ evalDeferred("autoLoadPlugin(\"\", \"bifmeshio\", \"bifmeshio\")");
 evalDeferred("autoLoadPlugin(\"\", \"shaderFXPlugin\", \"shaderFXPlugin\")");
 evalDeferred("autoLoadPlugin(\"\", \"objExport\", \"objExport\")");
 evalDeferred("autoLoadPlugin(\"\", \"bifrostshellnode\", \"bifrostshellnode\")");
+evalDeferred("autoLoadPlugin(\"\", \"QuadRemesherPlugIn.py\", \"QuadRemesherPlugIn\")");
 evalDeferred("autoLoadPlugin(\"\", \"ufeSupport.py\", \"ufeSupport\")");
 evalDeferred("autoLoadPlugin(\"\", \"mayaVnnPlugin\", \"mayaVnnPlugin\")");
 evalDeferred("autoLoadPlugin(\"\", \"GamePipeline\", \"GamePipeline\")");

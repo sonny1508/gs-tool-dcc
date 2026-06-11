@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_updatePSD.png">NS_updatePSD_100.png</file>
+		<file>NS_updatePSD_150.png</file>
+		<file>NS_updatePSD_200.png</file>
+	</qresource>

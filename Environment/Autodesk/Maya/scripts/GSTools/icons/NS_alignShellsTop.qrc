@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_alignShellsTop.png">NS_alignShellsTop_100.png</file>
+		<file>NS_alignShellsTop_150.png</file>
+		<file>NS_alignShellsTop_200.png</file>
+	</qresource>

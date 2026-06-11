@@ -1,0 +1,1157 @@
+//AUTHOR : BAIDHIR HIDAIR © 2017.
+//don't modify , don't distribute.
+
+//preprocessors
+{//dumpster start
+global int $cp_maya_v1;
+string $cp_get_maya_v = `about  -v`;
+
+string $cp_token_array[];
+
+if(`tokenize $cp_get_maya_v "Extension Student" $cp_token_array`){
+    $cp_get_maya_v = `stringArrayToString  $cp_token_array ""`;
+}
+
+$cp_maya_v1 = (int) $cp_get_maya_v;
+
+}//dumpster end
+
+//
+if(!`namespace -ex ":cpB"`){
+    namespace -add "cpB";
+}
+
+if(!`dragAttrContext -ex "cpCtx"`)
+    dragAttrContext "cpCtx";
+
+  if(!`curveCVCtx -ex cpCurvectx`)
+  	curveCVCtx -d 1 -n "cpCurvectx";
+///////////////////////////////////////////////////// LOCAL REALM
+global proc string cpGetShade(string $Shape[]){
+
+string $sg;
+
+string $Sgs[] = `ls -typ "shadingEngine"`;
+
+for ( $i in $Sgs ){if ( `sets -isMember $i $Shape[0]` ){$sg = $i; break;}}
+
+return $sg;
+}
+
+proc int cpIsBoolOp(string $op){
+
+int $isop;
+
+string $opAttr[] = `listAttr -ud $op`;
+
+for($i in $opAttr){
+    if($i == "BoolOp"){
+        string $attrCo[] = `connectionInfo -dfs ($op + ".BoolOp")`;
+        if($attrCo[0] != ""){$isop = 1; break;}
+    }
+}
+return $isop;
+}
+
+
+global proc int cpIsBvlOp(string $op){
+
+int $isop;
+
+string $opAttr[] = `listAttr -ud $op`;
+
+for($i in $opAttr){
+    if($i == "hOffset"){
+        string $attrCo[] = `connectionInfo -dfs ($op + ".hOffset")`;
+        if($attrCo[0] != ""){$isop = 1; break;}
+    }
+}
+return $isop;
+}
+
+proc int cpIsMir(string $op){
+
+int $isop;
+
+string $opAttr[] = `listAttr -ud $op`;
+
+for($i in $opAttr){
+    if($i == "mAxis"){
+        string $attrCo[] = `connectionInfo -dfs ($op + ".mAxis")`;
+        if($attrCo[0] != ""){$isop = 1; break;}
+    }
+}
+return $isop;
+}
+
+proc string cpGetCamDir(){
+
+    string $activePanel = `getPanel -wf`;
+	
+	if(`getPanel -to $activePanel` != "modelPanel"){error "get In a modeling View!\n";}
+    
+	vector $camPos = eval("camera -q -p `modelEditor -q -cam " + $activePanel + "`");
+	
+	vector $camTarget = eval("camera -q -wci `modelEditor -q -cam " + $activePanel + "`");
+
+
+	vector $cameraDir = $camTarget - $camPos;
+
+	vector $normalizeDir = unit($cameraDir);
+	
+	$normalizeDir = abs($normalizeDir);
+
+	if (($normalizeDir.x) > ($normalizeDir.y) && ($normalizeDir.x) > ($normalizeDir.z)){
+		return "x";
+	}
+	else if (($normalizeDir.y) > ($normalizeDir.x) && ($normalizeDir.y) > ($normalizeDir.z)){
+		return "y";
+	}
+	else if (($normalizeDir.z) > ($normalizeDir.y) && ($normalizeDir.z) > ($normalizeDir.x)){
+		return "z";
+	}
+
+	return "";
+}
+
+proc float[] cpCoi(string $op){
+    
+    float $coi[];
+   float $coords1[] = `exactWorldBoundingBox $op`;
+    
+    $coi[0] = ($coords1[3] - $coords1[0]);
+        $coi[1] = ($coords1[4] - $coords1[1]);
+    $coi[2] = ($coords1[5] - $coords1[2]);
+    
+        $coi[3] = ($coords1[0] + $coords1[3]) * 0.5;
+    $coi[4] = ($coords1[1] + $coords1[4]) * 0.5;
+    $coi[5] = ($coords1[2] + $coords1[5]) * 0.5;
+    
+    
+    return $coi;
+}
+
+proc cpGetGoz(){
+	if(`about -win`){
+	//For Windows
+		int $gozTest = `filetest -f "C:/Users/Public/Pixologic/GoZApps/Maya/GoZBrushFromMaya.mel"`;
+		string $sGoz = "source " + "\"C:/Users/Public/Pixologic/GoZApps/Maya/GoZBrushFromMaya.mel\"";
+		if($gozTest == 0){
+			warning "To use this feature you need Goz script from Pixologic Zbrush.\n";
+			return;
+		}
+			eval($sGoz);
+	}else{
+	//For Mac
+		int $gozTest = `filetest -f "/Users/Shared/Pixologic/GoZApps/Maya/GoZBrushFromMaya.mel"`;
+		string $sGoz = "source " + "\"/Users/Shared/Pixologic/GoZApps/Maya/GoZBrushFromMaya.mel\"";
+		if($gozTest == 0){
+			warning "To use this feature you need Goz script from Pixologic Zbrush.\n";
+			return;
+		}
+			eval($sGoz);
+	}
+}
+
+proc cpNodBaker(string $nod){
+
+	string $toPlug[] = `listConnections - p 1 - d 1 - s 0 $nod`;
+	if (size($toPlug) < 1) {
+		error "Boolean is not connected directly to the mesh. Simply delete your history";
+	}
+
+	string $fromPlug[] = `listConnections - p 1 - d 0 - s 1 $toPlug[0]`;
+	if (size($fromPlug) < 1) {
+		error "Boolean is not connected directly to the mesh. Simply delete your history";
+	}
+
+
+	string $inTheFuture[] = `listHistory - f 1 $nod`;
+	if (size($fromPlug) < 1) {
+		error "Impossible: there is future.";
+	}
+
+	string $shape;
+	int $foundIt = false;
+	for ($shape in $inTheFuture) {
+		if ("mesh" == `nodeType $shape`) {
+			$foundIt = true;
+			break;
+		}
+	}
+
+	if (!$foundIt) {
+		error "Cannot find the polygon shape in the future of this node.";
+	}
+
+	string $trans[0] = `listRelatives - p $shape`;
+	if (size($trans) < 1) {
+		error "Impossible: there must be a parent transform";
+	}
+
+	string $newShapeName = $shape + "Baked#";
+	string $newShape = `createNode mesh - n $newShapeName - p $trans[0]`;
+
+	disconnectAttr $fromPlug[0] $toPlug[0];
+	connectAttr $fromPlug[0]($newShape + ".i");
+	connectAttr($newShape + ".o") $toPlug[0];
+
+	delete - ch $newShape;
+
+	setAttr($newShape + ".io") 1;
+}
+///////////////////////////////////////////////////// GLOBAL REALM /////////////////////////////////////
+
+global proc cpAttrSwitch(){
+
+global int $cp_maya_v1;
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+global int $iterator;
+
+if(`currentCtx` != "cpCtx"){
+    $iterator = 0;
+}  
+
+if(`cpIsBoolOp $op[0]` == 1){
+    dragAttrContext -e -r "cpCtx";
+    setToolTo "cpCtx";
+
+      switch($iterator){
+        case 0:
+            setAttr ($op[0] + ".BoolOp") 2;
+            break;
+        case 1:
+            setAttr ($op[0] + ".BoolOp") 1;
+            break;
+        case 2:
+            setAttr ($op[0] + ".BoolOp") 3;
+            break;
+        default:
+            setAttr ($op[0] + ".BoolOp") 2;
+            $iterator = 0;
+            break;
+    }
+      $iterator++;
+}else if(`cpIsBvlOp $op[0]` == 1){
+    dragAttrContext -e -r "cpCtx";
+    setToolTo "cpCtx";
+    
+          switch($iterator){
+        case 0:
+            dragAttrContext -e -ct ($op[0] + ".hOffset") "cpCtx"; print "Switch to H Offset";
+            break;
+        case 1:
+            dragAttrContext -e -ct ($op[0] + ".hDivisions") "cpCtx"; print "Switch to H Divisions";
+            break;
+        default:
+            dragAttrContext -e -ct ($op[0] + ".hOffset") "cpCtx"; print "Switch to H Offset";
+            $iterator = 0;
+            break;
+    }
+      $iterator++;
+}else if(`cpIsMir $op[0]` == 1){
+    
+        dragAttrContext -e -r "cpCtx";
+    setToolTo "cpCtx";
+
+    if($cp_maya_v1 > 2016){
+	      switch($iterator){
+	        case 0:
+	            setAttr ($op[0] + ".mirrorSide") 0; print "Switch to Positive Side Symmetry";
+	            break;
+	        case 1:
+	            setAttr ($op[0] + ".mirrorSide") 1; print "Switch to Negative Side Symmetry";
+	            break;
+	        default:
+	            setAttr ($op[0] + ".mirrorSide") 0;
+	            $iterator = 0;
+	            break;
+	    }
+    }else{
+	      switch($iterator){
+	        case 0:
+	            setAttr ($op[0] + ".mAxis") 0;
+	            break;
+	        case 1:
+	            setAttr ($op[0] + ".mAxis") 1; print "Switch to -X";
+	            break;
+	        case 2:
+	            setAttr ($op[0] + ".mAxis") 2;
+	            break;
+	        case 3:
+	            setAttr ($op[0] + ".mAxis") 3; print "Switch to -Y";
+	            break;
+	        case 4:
+	            setAttr ($op[0] + ".mAxis") 4;
+	            break;
+	        case 5:
+	            setAttr ($op[0] + ".mAxis") 5; print "Switch to -Z";
+	            break;
+	        default:
+	            setAttr ($op[0] + ".mAxis") 0;
+	            $iterator = 0;
+	            break;
+	    }
+    }
+	$iterator++;
+}else{
+    setToolTo moveSuperContext; warning "There's no attributes to 'cycle' on the Object.\n"; 
+}
+  
+}
+
+global proc cpDisplayBool(){
+
+//standard bool function here
+string $buf[] = `ls -o -fl -l -sl`;
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsBoolOp $buf[0]`){
+		select -r $buf[0]; cpAttrSwitch; return;
+	}
+}
+
+if(`size $buf` < 2){error;}
+
+//get first mesh out of the namespace no matter what :
+
+string $sg = eval("cpGetShade `listRelatives -c -f " + $buf[0] + "`");
+
+string $opA = `rename $buf[0] "operand_A#"`;
+
+stringArrayRemoveAtIndex(0, $buf);
+
+// bool:
+string $opC[] = `polyCBoolOp -op 2 -pcr 0 -cls 1 -ucb 1 $opA $buf`;
+
+string $below1[] = `listRelatives -c -f $buf`;
+string $below2[] = `listRelatives -c -f $below1`;
+
+for($i in $below2){
+    setAttr ($i + ".intermediateObject") 0;
+        setAttr ($i + ".overrideEnabled") 1;
+
+    setAttr ($i + ".overrideShading") 0;
+    setAttr ($i + ".overrideColor") 1;
+
+}
+
+showHidden -a $below2;
+
+for($i in $below1){
+    
+    xform -cp $i; rename $i ("cpB:" + "op#");
+
+}
+
+addAttr -ln "BoolOp" -k 1 -at "enum" -en "Union=1:Difference=2:Intersection=3" -dv 2 $opC[0];
+connectAttr ($opC[0] + ".BoolOp") ($opC[1] + ".operation");
+
+if($sg != ""){
+    sets -e -fe $sg $opC[0];
+}
+select -r $opC[0]; cpAttrSwitch;
+
+}
+
+global proc cpKeepBool(){
+
+//standard bool function here
+string $buf[] = `ls -o -fl -l -sl`;
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsBoolOp $buf[0]`){
+		select -r $buf[0]; cpAttrSwitch; return;
+	}
+}
+
+if(`size $buf` < 2){error;}
+
+//get first mesh out of the namespace no matter what :
+
+string $sg = eval("cpGetShade `listRelatives -c -f " + $buf[0] + "`");
+
+string $opA = `rename $buf[0] "operand_A#"`;
+
+stringArrayRemoveAtIndex(0, $buf);
+
+string $opCopy[] = `duplicate $buf`;
+
+// bool:
+string $opC[] = `polyCBoolOp -op 2 -pcr 0 -cls 1 -ucb 1 $opA $opCopy`;
+
+string $below1[] = `listRelatives -c -f $opCopy`;
+string $below2[] = `listRelatives -c -f $below1`;
+
+for($i in $below2){
+    setAttr ($i + ".intermediateObject") 0;
+        setAttr ($i + ".overrideEnabled") 1;
+
+    setAttr ($i + ".overrideShading") 0;
+    setAttr ($i + ".overrideColor") 1;
+
+}
+
+showHidden -a $below2;
+
+for($i in $below1){
+    
+    xform -cp $i; rename $i ("cpB:" + "op#");
+
+}
+
+addAttr -ln "BoolOp" -k 1 -at "enum" -en "Union=1:Difference=2:Intersection=3" -dv 2 $opC[0];
+connectAttr ($opC[0] + ".BoolOp") ($opC[1] + ".operation");
+
+if($sg != ""){
+    sets -e -fe $sg $opC[0];
+}
+select -r $opC[0]; cpAttrSwitch;
+
+}
+
+global proc cpHbevel(){
+
+global int $cp_maya_v1;
+
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+string $ControlNode[];
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsBvlOp $op[0]`){
+		select -r $op[0]; cpAttrSwitch; return;
+	}
+}
+
+if(size(`filterExpand -ex 1 -sm 34`)){
+    
+    select -r `polyListComponentConversion -te`;
+  invertSelection;
+
+string $invId[] = `ls -sl -fl`;
+
+polySelectConstraint -m 0 -dis;
+polySelectConstraint -m 3 -t 0x8000 -sm 1;
+polySelectConstraint -m 0 -dis;
+
+string $HeId[] = `ls -sl -fl`;
+
+string $finalId[] = `stringArrayRemove $invId $HeId`;
+
+if(!`size $finalId`){error "No Hard edges where detected.\n";}
+
+$op = eval("listRelatives -p -f `listRelatives -p -f`");
+
+if($cp_maya_v1 > 2016){
+	$ControlNode = `polyBevel3 -af 1 -oaf 0 -c 1 -sg 1 -sn 1 -sa 180 -o 0 -n "HBevel" $finalId`;
+}else{
+	$ControlNode = `polyBevel3 -af 1 -oaf 0 -sg 1 -fn 1 -sa 180 -o 0 -n "HBevel" $finalId`;
+}
+
+string $ud[] = `listAttr -ud $op[0]`;
+
+if(`size $ud`){
+    for($i in $ud){
+        deleteAttr -at $i $op[0];
+    }
+}
+
+addAttr -ln "hOffset" -k 1 -at "doubleLinear" -hnv 1 -min 0 -dv 0.15 $op[0];
+
+connectAttr ($op[0] + ".hOffset") ($ControlNode[0] + ".offset");
+
+addAttr -ln "hDivisions" -k 1 -at "long" -hnv 1 -min 0 -dv 1 $op[0];
+
+connectAttr ($op[0] + ".hDivisions") ($ControlNode[0] + ".segments");
+
+if($cp_maya_v1 > 2016){
+
+	addAttr -ln "hMitering" -k 1 -at "enum" -en "Auto=0:Star=2:Round=3" -dv 0 $op[0];
+
+	connectAttr ($op[0] + ".hMitering") ($ControlNode[0] + ".mitering");
+}
+
+select -r $op[0]; cpAttrSwitch;
+
+}else{
+
+if(!`size $op`){error "Select at least one Object.\n";}
+
+for($i in $op){
+
+select -r $i;
+
+polySelectConstraint -m 0 -dis;
+polySelectConstraint -m 3 -t 0x8000 -sm 1;
+polySelectConstraint -m 0 -dis;
+
+
+if($cp_maya_v1 > 2016){
+	$ControlNode = `polyBevel3 -af 1 -oaf 0 -c 1 -sg 1 -sn 1 -sa 180 -o 0 -n "HBevel"`;
+}else{
+	$ControlNode = `polyBevel3 -af 1 -oaf 0 -sg 1 -fn 1 -sa 180 -o 0 -n "HBevel"`;
+}
+
+string $ud[] = `listAttr -ud $i`;
+
+if(`size $ud`){
+    for($j in $ud){
+        deleteAttr -at $j $i;
+    }
+}
+
+addAttr -ln "hOffset" -k 1 -at "doubleLinear" -hnv 1 -min 0 -dv 0.15 $i;
+
+connectAttr ($i + ".hOffset") ($ControlNode[0] + ".offset");
+
+addAttr -ln "hDivisions" -k 1 -at "long" -hnv 1 -min 0 -dv 1 $i;
+
+connectAttr ($i + ".hDivisions") ($ControlNode[0] + ".segments");
+
+	if($cp_maya_v1 > 2016){
+
+		addAttr -ln "hMitering" -k 1 -at "enum" -en "Auto=0:Round=3:Uniform=1:Star=2:None=4" -dv 0 $i;
+
+		connectAttr ($i + ".hMitering") ($ControlNode[0] + ".mitering");
+	}
+
+}
+
+select -r $op; cpAttrSwitch;
+    
+}
+
+}
+
+global proc cpMirror(){
+
+	global int $cp_maya_v1;
+
+string $ControlMesh[] = eval("listRelatives -p -f `filterExpand -ex 1 -fp 1 -sm 12`");
+
+if(!`size $ControlMesh`){error "Select at least one Object.\n";}
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsMir $ControlMesh[0]`){
+		select -r $ControlMesh[0]; cpAttrSwitch; return;
+	}
+}
+
+for($i in $ControlMesh){
+
+string $ControlNode[] = `polyMirrorFace $i`;
+
+polyMergeVertex -d 0.015 -am 1 $i;
+
+string $ud[] = `listAttr -ud $i`;
+
+if(`size $ud`){
+    for($j in $ud){
+    	if($j == "BoolOp"){continue;}
+        deleteAttr -at $j $i;
+    }
+}
+
+if($cp_maya_v1 > 2016){
+
+	addAttr -ln "mirrorSide" -k 1 -at "enum" -en "+=0:-=1" -dv 0 $i;
+
+	connectAttr ($i + ".mirrorSide") ($ControlNode[0] + ".axisDirection");
+
+
+	addAttr -ln "mPosition" -k 1 -at "floatLinear" -dv `getAttr ($ControlNode[0] + ".mirrorPosition")` $i;
+
+	connectAttr ($i + ".mPosition") ($ControlNode[0] + ".mirrorPosition");
+
+
+	addAttr -ln "mAxis" -k 1 -at "enum" -en "X=0:Y=1:Z=2" -dv 0 $i;
+
+	connectAttr ($i + ".mAxis") ($ControlNode[0] + ".axis");
+}else{
+
+	addAttr -ln "mdX" -k 1 -at "doubleLinear" -dv `getAttr ($ControlNode[0] + ".pivotX")` $i;
+
+	connectAttr ($i + ".mdX") ($ControlNode[0] + ".pivotX");
+
+	addAttr -ln "mdY" -k 1 -at "doubleLinear" -dv `getAttr ($ControlNode[0] + ".pivotY")` $i;
+
+	connectAttr ($i + ".mdY") ($ControlNode[0] + ".pivotY");
+
+	addAttr -ln "mdZ" -k 1 -at "doubleLinear" -dv `getAttr ($ControlNode[0] + ".pivotZ")` $i;
+
+	connectAttr ($i + ".mdZ") ($ControlNode[0] + ".pivotZ");
+
+	addAttr -ln "mAxis" -k 1 -at "enum" -en "+X=0:-X=1:+Y=2:-Y=3:+Z=4:-Z=5" -dv 0 $i;
+
+	connectAttr ($i + ".mAxis") ($ControlNode[0] + ".direction");
+
+}
+
+}   
+
+select -r $ControlMesh; cpAttrSwitch;
+
+}
+
+global proc cpPanelBool(){
+            
+string $buf[] = `ls -o -fl -l -sl`;
+
+if(`size $buf` < 2){error;}
+
+//get first mesh out of the namespace no matter what :
+
+string $sg = eval("cpGetShade `listRelatives -c -f " + $buf[0] + "`");
+
+string $opA = `rename $buf[0] "operand_A#"`;
+
+stringArrayRemoveAtIndex(0, $buf);
+
+string $opCopy[] = `duplicate $opA $buf`;
+
+string $opC[] = `polyCBoolOp -op 2 -pcr 0 -cls 1 -ucb 1 $opA $buf`;
+
+string $opD[] = `polyCBoolOp -op 3 -pcr 0 -cls 1 -ucb 1 $opCopy`;
+
+delete -ch $opC[0] $opD[0]; xform -cp $opC[0] $opD[0];
+
+sets -e -fe $sg $opC[0] $opD[0];
+
+select -r  $opC[0] $opD[0];
+
+}
+
+global proc cpMeshSlicer(){
+
+string $buf[] = `filterExpand -ex 1 -sm 12`;
+string $curve[] = `filterExpand -ex 1 -sm 9`;
+
+if(`size $buf` != 1){error;}
+if(`size $curve` != 1){error;}
+
+makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 -pn 1 $curve[0];
+
+string $dir = `cpGetCamDir`;
+
+int $exd;
+int $cI;
+string $d;
+
+if($dir == "x"){
+        $exd = 0;
+        $cI = 3;
+    $d = "-d 1 0 0";
+}else if($dir == "y"){
+        $exd = 1;
+                $cI = 4;
+    $d = "-d 0 1 0";
+}else if($dir == "z"){
+        $exd = 2;
+                $cI = 5;
+    $d = "-d 0 0 1";
+}else{
+    error;
+}
+
+float $len[] = `cpCoi $buf[0]`;
+
+nurbsToPolygonsPref -f 3 -ucr 0 -uch 0 -pt 0 -m 0 -mt 0.1 -mrt 0;
+
+optionVar -iv "extrudeDirectionType" $exd;
+
+optionVar -fv "extrudeLength" ($len[$exd] + 1);
+
+string $opB[] = eval("extrude -ch 0 -rn 0 -po 1 -et 0 -upn 0 " + $d + " -l " + ($len[$exd] + 1.0) + " -ro 0 -sc 1 -dl 1 " + $curve[0]);
+
+string $curveShape[] = `listRelatives -c -f $curve[0]`;
+	
+if(`getAttr ($curveShape[0] + ".form")` == 1){
+    polyCloseBorder -ch 0 $opB;
+}
+
+xform -cp $opB; delete -ch $opB;
+
+eval("move -" + $dir + " -rpr " + $len[$cI]);
+
+select -r $buf[0] $opB[0];
+
+cpPanelBool;
+
+}
+
+global proc cpTglBox(){
+    
+    string $ops[] = eval("listRelatives`ls -o -v \"cpB:*\"`");
+
+for($i in $ops){
+    
+    if(`getAttr ($i + ".overrideLevelOfDetail")`){
+        
+ 
+        setAttr ($i + ".overrideLevelOfDetail") 0;
+        
+    }else{
+       setAttr ($i + ".overrideLevelOfDetail") 1; 
+    }
+    
+}
+    
+}
+
+global proc cpTglBoolv(){
+        
+    
+        string $vOps[] = `ls -o -v "cpB:*"`;
+	string $ivOps[] = `ls -o -iv "cpB:*"`;
+
+	if (size($vOps))
+			hide $vOps;
+	else if(size($ivOps))
+		showHidden $ivOps;
+}
+
+global proc cpHedgeSel(){
+
+    polySelectConstraint -m 0 -dis;
+			polySelectConstraint -m 3 -t 0x8000 -sm 1;
+			polySelectConstraint -m 0 -dis;
+			
+            hilite `ls -sl -o`;
+            
+            if(!size(`ls -sl -fl`)){error;}
+  
+}
+
+global proc cpShapeShifter() {
+
+		string $PrefsDir = (`internalVar -usd`) + "/AMTools/AMTScripts/StartShapeShifter.mel";
+        int $IsValidDir = `filetest -f $PrefsDir`;
+
+    
+    if($IsValidDir == 0){
+      warning "Unable to start ShapeShifter,you have to purchase or update ShapeShifter for CREASE+ support.\n";
+	  return;
+    }
+		
+	eval("source " + "\""  + $PrefsDir + "\"");
+}
+
+global proc cpGoz(){
+    
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+	if(`size $op` == 0){error "There's No Selection.\n";}
+
+	for ($i in $op){
+		select -r $i;
+		polyCleanupArgList 4 { "0","2","0","0","1","0","0","0","0","1e-005","0","1e-005","0","1e-005","0","-1","0","0" };
+		if(size(`ls -sl -fl`)){
+		polyCleanupArgList 4 { "0","1","0","0","1","0","0","0","0","1e-005","0","1e-005","0","1e-005","0","-1","0","0" };
+		}
+	}
+
+	select -r $op;
+
+	cpGetGoz();
+
+}
+
+global proc cpQsmooth(){
+    
+    string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+    
+	if(!`size $op`){ error "You must select Object(s) or component(s).\n"; return;}
+
+	if(size(`filterExpand -ex 1 -sm 12`)){
+		
+		for($i in $op){
+			polySoftEdge -angle 30 -ch 1 $i;
+		}	
+	}else{
+        	polySoftEdge -angle 30 -ch 1;
+
+    }
+}
+
+global proc cpHardDisplay(){
+	int $g_cond[1]=`polyOptions -q -ae`; if ($g_cond[0]) polyOptions -hec; else polyOptions -ae;
+}
+
+global proc cpmakeUV(){
+
+	global int $cp_maya_v1;
+
+	string $op[] = `filterExpand -ex 1 -sm 12`;
+
+    {//
+    string $listPlug[] = `pluginInfo -q -ls`;
+    
+    int $isload  = stringArrayCount("Unfold3D", $listPlug);
+    
+    if($isload == 0){
+        error " ' Unfold3D ' Plugin has to be loaded in order to continue.\n";
+    }
+}//
+    
+    for($i in $op){
+        
+  		string $opId[] = `polyListComponentConversion -tf $i`;
+        polyProjection -ch 1 -t "planar" -ibd on -kir  -md "c" $opId;
+        
+        select -r $i;
+
+		polySelectConstraint -m 0 -dis; polySelectConstraint -m 3 -t 0x8000 -sm 1; polySelectConstraint -m 0 -dis;
+
+		if(!size(`ls -sl -fl`)){error ($i + "Your mesh as no hard edges, UV generation failed.\n");}
+
+		polyMapCut -ch 1;
+
+		$opId = `polyListComponentConversion -tuv $i`;
+ 	
+ 		if($cp_maya_v1 > 2016){
+ 			u3dUnfold -ite 10 -p 1 -bi 1 -tf 1 -ms 1024 -rs 0 $i;
+ 		}else{
+ 			Unfold3D -u -ite 10 -p 1 -bi 1 -tf 1 -ms 1024 -rs 0 $i;
+ 		}
+        //u3dUnfold -ite 10 -p 1 -bi 1 -tf 1 -ms 1024 -rs 0 $i;//>2016 version
+ 
+    }
+
+select -r $op;
+print "DONE!.\n";
+
+}
+
+global proc cpCurveCham(){
+
+	string $cpnt[] = `ls -sl -fl`;
+	string $op[] = eval("listRelatives -p -f `ls -sl -o`");
+	string $Ctrl[];
+   
+        if(`size $op` != 1){
+            error "Possible only on one curve.\n";
+        }
+
+        if(size(`filterExpand -ex 1 -sm 39 $cpnt`) != 2){
+            error "Drag 2 Curve Points (using Shift).\n";
+        }
+
+        string $newCurve[] = `detachCurve -ch 0 -cos 1 -rpo 1`;
+
+        if (size($newCurve) == 2){
+            $Ctrl = `filletCurve -ch 1 -rpo 1 -t 1 -jn 1 -cir 1 -r 0.5 -bc 1 -d 0 -b 0 $newCurve[1] $newCurve[0]`;
+	
+        }else{
+            $Ctrl = `filletCurve -ch on -rpo on -t true -jn true -cir true -r 0.5 -bc true -d 0 -b 0 $newCurve[2] $newCurve[1]`;
+
+        }
+        
+        dragAttrContext -e -ct ($Ctrl[size($Ctrl)-1] + ".depth") "cpCtx";
+        setToolTo "cpCtx";
+       
+
+}
+
+global proc cpTransferBevel(){
+	global int $cp_maya_v1;
+        string $op[] = `filterExpand -ex 1 -sm 12`;
+
+    if(!`size $op`){error;}
+
+    for($i = 0; $i < size($op); $i++){
+        if(!`cpIsBvlOp $op[$i]`)
+            stringArrayRemoveAtIndex($i, $op);
+    }
+
+    if(`size $op` < 2){error "TransferBevel only work for Hbevel Meshes";}
+
+    if($cp_maya_v1 > 2016){
+	    float $data1 = `getAttr ($op[0] + ".hOffset")`;
+	    int $data2 = `getAttr ($op[0] + ".hDivisions")`;
+	    int $data3 = `getAttr ($op[0] + ".hMitering")`;
+
+	    for($i = 1; $i < size($op); $i++){
+	        setAttr ($op[$i] + ".hOffset") $data1;
+	        setAttr ($op[$i] + ".hDivisions") $data2;
+	        setAttr ($op[$i] + ".hMitering") $data3;
+	    }
+
+	}else{
+	    float $data1 = `getAttr ($op[0] + ".hOffset")`;
+	    int $data2 = `getAttr ($op[0] + ".hDivisions")`;
+
+	    for($i = 1; $i < size($op); $i++){
+	        setAttr ($op[$i] + ".hOffset") $data1;
+	        setAttr ($op[$i] + ".hDivisions") $data2;
+	    }
+    }
+
+}
+
+global proc cpCleanAttrs(){
+string $op[] = eval("listRelatives -p -f `eval(\"listRelatives -p -f `polyListComponentConversion -tv`\")`");
+
+
+	for($i in $op){
+		string $cusAttrs[] = `listAttr -ud $i`;
+
+		for($j in $cusAttrs){
+			deleteAttr -at $j $i;
+		}
+	}
+
+}
+
+global proc cpBakThatNod(){
+
+	string $usel[] = `ls -sl -fl`;
+
+	string $Selection[] = `filterExpand -ex 1 -sm 12`;
+
+	if(`size $Selection` != 1){error "Select a mesh and a Node from ChannelBox(modeling Operation).\n";}
+
+	nodBaker $usel[0];
+	error "Nothing happened. You must select a mesh, then a node from the channelBox\n";
+}
+
+global proc cpInstanceBool(){
+
+//standard bool function here
+string $buf[] = `ls -o -fl -l -sl`;
+
+if(`currentCtx` == "cpCtx"){
+	if(`cpIsBoolOp $buf[0]`){
+		select -r $buf[0]; cpAttrSwitch; return;
+	}
+}
+
+if(`size $buf` < 2){error;}
+
+//get first mesh out of the namespace no matter what :
+
+string $sg = eval("cpGetShade `listRelatives -c -f " + $buf[0] + "`");
+
+string $opA = `rename $buf[0] "operand_A#"`;
+
+stringArrayRemoveAtIndex(0, $buf);
+
+string $opCopy[] = `instance $buf`;
+
+// bool:
+string $opC[] = `polyCBoolOp -op 2 -pcr 0 -cls 1 -ucb 1 $opA $buf`;
+
+string $below1[] = `listRelatives -c -f $buf`;
+string $below2[] = `listRelatives -c -f $below1`;
+
+for($i in $below2){
+    setAttr ($i + ".intermediateObject") 0;
+
+}
+
+
+addAttr -ln "BoolOp" -k 1 -at "enum" -en "Union=1:Difference=2:Intersection=3" -dv 2 $opC[0];
+connectAttr ($opC[0] + ".BoolOp") ($opC[1] + ".operation");
+
+if($sg != ""){
+    sets -e -fe $sg $opC[0];
+}
+select -r $opC[0]; cpAttrSwitch;
+
+}
+
+global proc cpAttachCurve(){
+  
+
+	string $curve[] = `filterExpand -ex 1 -fp 1 -sm 9`;
+
+	if(!`size $curve`){error "You must select nurbsCurve(s).\n";}
+    
+		string $op[] = `attachCurve - ch 0 - rpo 1 - kmk 1 - m 0 - bb 0.5 - bki 0 - p 0.1`;
+		delete -ch $op[0];
+		select -r $op[0];
+}
+
+global proc cpCurveBool(){
+    
+	string $curve[] = `filterExpand -ex 1 -fp 1 -sm 9`;
+
+	if(`size $curve` != 2){error "You must select exactly two nurbs curves object.\n";}
+    
+		cutCurvePreset(0,1,0.01,6,0,1,0,1,2); select -cl;
+}
+
+global proc cpCloseCurve(){
+
+	string $curve[] = `filterExpand -ex 1 -fp 1 -sm 9`;
+	
+	if(!`size $curve`){error "You must select nurbs curves.\n";}
+    
+    for($i in $curve){
+        
+
+        if(`getAttr ($i + ".degree")` == 3){
+
+            if (`getAttr ($i + ".form")` == 0){
+                closeCurve -ch 0 -ps 0 -rpo 1 -bb 0.5 -bki 1 -p 0.1 $i;
+            }else{
+                continue;
+            }
+        }else{
+            
+            if(`getAttr ($i + ".form")` == 0){ 
+                closeCurve -ch 0 -ps 1 -rpo 1 -bb 0.5 -bki 0 -p 0.1 $i;
+            }else{
+                continue;
+            }   
+        }
+    }
+}
+
+global proc cpCurveMultiply(){
+
+			string $curve[] = `filterExpand -ex 1 - sm 9`;
+
+			if(!`size $curve`){error "You must select at least one nurbs curve.\n";}
+
+			for($i in $curve){
+            
+            select -r $i;
+            selectCurveCV all;
+			int $numSpan  = (size(`ls -sl -fl`) * 2);
+			select -r `eval("listRelatives -p -pa -f `ls -sl -o`")`;
+			rebuildCurve -ch 0 -rpo 1 -rt 0 -end 1 -kr 1 -kcp 0 -kep 1 -kt 1 -s $numSpan -d 1 -tol 0.01 $i;
+		}
+            select -r $curve;
+}
+
+global proc cpAbout(){
+	showHelp -a "http://polycount.com/discussion/173981/maya-crease-tool-for-hard-surface#latest";	
+}
+
+global proc cpUi(){
+if(`window -ex cpWin`){
+    deleteUI cpWin;
+}
+
+// Get the XBMLANGPATH value
+string $xbm = `getenv "XBMLANGPATH"`;
+
+// Split it into individual paths using ';'
+string $paths[] = stringToStringArray($xbm, ";");
+
+// Take the first entry (your 192.168... path)
+string $basePath = $paths[0];
+
+// Normalize slashes (optional but recommended)
+$basePath = substituteAllString($basePath, "\\", "/");
+
+// Append your CP_Icons folder
+string $imgs = ($basePath + "/CP_Icons/");
+
+window -t "CREASE+ v 1" -tbm 1 -tlb 1 -rtf 1 -mxb 0 -bgc 0.1 0.1 0.1 cpWin;
+
+window -e -wh 265 300 cpWin;
+
+menuBarLayout -w 110 cpMenu;
+   menu -p cpMenu -l "Edit" -to 1 cpEdit;
+        menuItem -p cpEdit -l "Instance Bool" -c "cpInstanceBool";
+        menuItem -p cpEdit -l "Transfer Bevel" -c "cpTransferBevel";
+        menuItem -p cpEdit -l "Toggle Last" -c "cpAttrSwitch";
+        menuItem -p cpEdit -l "Bake Selected Node (Channel Box)" -c "cpBakThatNod";
+        menuItem -p cpEdit -l "Clean Attributes" -c "cpCleanAttrs";
+
+
+    menu -p cpMenu -l "UV" -to 1 cpUVmenu;
+        menuItem -p cpUVmenu -l "Make UV" -c "cpmakeUV";
+
+    menu -p cpMenu -l "Help" -to 1 cpAbout;
+        menuItem -p cpAbout -l "About" -c "cpAbout";
+
+tabLayout -p cpWin -tv 1 -tc 0 -iv 0 -cr 1 -bs "none" cpTab1;
+
+scrollLayout -p cpTab1 -cr 1 -bv 1 -h 235 cpMainScroll;
+    scrollLayout -e -pe 1 cpMainScroll;
+
+rowColumnLayout -p cpMainScroll -rs  1 7 -nr 3 cpmodCol;
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_eye.png") -st "iconAndTextVertical" -fn "obliqueLabelFont" -dcc "cpTglBox" -c "cpTglBoolv" -ann "Toggle visibility of Bool Objects. Double-Click to Toggle Boxes.\n" ;
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_bool.png") -l "Bool" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpDisplayBool" -ann "Performs boolean operation with Bool Object Display.\n"; 
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_keep_bool.png") -l "Keep Bool" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpKeepBool" -ann "Performs boolean operation with Bool Object Display While preserving the Operands.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_bevel.png") -l "HBevel" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpHbevel" -ann "Performs HBevel based on Object or Face Selection.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_panelbool.png") -l "Panel Bool" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpPanelBool" -ann "Creates Panels out of the Operands.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_mirror.png") -l "Mirror" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpMirror" -ann "Mirrors Selected Objects.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_sel_hard.png") -l "Get HardEdge" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpHedgeSel" -ann "Select The Hard Edges of the Selected Meshes.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_ss.png") -l "ShapeShifter" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpShapeShifter" -ann "ShapeShifter support, behaves like ShapeShifter of AMTScripts.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_goz.png") -l "Zbrush" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpGoz" -ann "Sends Selected Meshes to Zbrush, fixing nGons automatically.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_quicksmooth.png") -l "30 smooth" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpQsmooth" -ann "Apply a 30° Smooth Based on Selected Meshes or component Selection.\n";
+
+iconTextButton -p cpmodCol -i ($imgs + "cp_hard_display.png") -l "Hard Display" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpHardDisplay" -ann "Allow realtime display for Hard Edges.\n";
+
+    iconTextButton -p cpmodCol -i ($imgs + "cp_mesh_slicer.png") -l "Mesh Slicer" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpMeshSlicer" -ann "Performs Mesh Slicer (Select a curve and a Mesh).\n";
+
+     menuBarLayout -p cpTab1 -w 110 spMenu;
+    menu -p spMenu -l "SubD" -to 1 spSubD;
+        menuItem -p spSubD -l "Lower Res" -c "spLevel 1" ;
+        menuItem -p spSubD -l "Higher Res" -c "spLevel 2" ;
+        menuItem -p spSubD -l "Lower Weight" -c "spLevel 3" ;
+        menuItem -p spSubD -l "Higher Weight" -c "spLevel 4" ;
+
+scrollLayout -cr 1 -bv 1 -h 235 spMainScroll;
+    scrollLayout -e -pe 1 spMainScroll;
+
+rowColumnLayout -p spMainScroll -rs  1 7 -nr 3 spmodCol;
+
+iconTextButton -p spmodCol -i ($imgs + "sp_crease.png") -l "Crease1" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spCreasePreset 1" -ann "Apply Crease Preset of a 1 arbitrary entensity.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_crease.png") -l "Crease2" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spCreasePreset 2" -ann "Apply Crease Preset of a 2 arbitrary entensity.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_crease.png") -l "Crease3" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spCreasePreset 3" -ann "Apply Crease Preset of a 3 arbitrary entensity.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_weight_tool.png") -l "Weight Tool" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spFastCrease" -ann "Weight tool alows interactive creasing with update right after.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_crease_editor.png") -l "Crease Set" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spShowCreaseEd" -ann "Opens Crease Set Editor.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_physical_crease.png") -l "Physical Crease" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spPhysicalCrease" -ann "Draw Loops around hard edges or component Selection.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_nocrease.png") -l "No Crease" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spNoCrease" -ann "Remove Creases/Weights.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_smooth.png") -l "SmoothSG" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "smoothSg" -ann "Smooth By Smoothing Groups.\n";
+
+iconTextButton -p spmodCol -i ($imgs + "sp_smooth.png") -l "SmoothOS" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "spSmoothOs" -ann "Smooth the Mesh.\n";
+
+scrollLayout -p cpTab1 -cr 1 -bv 1 -h 235 cpSecScroll;
+    scrollLayout -e -pe 1 cpSecScroll;
+    
+    rowColumnLayout -p cpSecScroll -rs  1 7 -nr 3 cpsecCol;
+        
+    iconTextButton -p cpsecCol -i ($imgs + "cp_curve_draw.png") -l "Draw Curve" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "setToolTo cpCurvectx" -ann "Enters the Draw curve context (1 degree curve).\n";
+
+    iconTextButton -p cpsecCol -i ($imgs + "cp_curve_bevel.png") -l "Curve Chamfer" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpCurveCham" -ann "Performs curve Chamfer.\n";
+    
+    iconTextButton -p cpsecCol -i ($imgs + "cp_curve_attach.png") -l "Attach Curve" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpAttachCurve" -ann "Attach seleted Curves.\n";
+    
+    iconTextButton -p cpsecCol -i ($imgs + "cp_curve_close.png") -l "Close Curve" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpCloseCurve" -ann "Close selected Curves.\n";
+    
+        iconTextButton -p cpsecCol -i ($imgs + "cp_curve_bool.png") -l "Curve Intersection" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpCurveBool" -ann "Intersecs selected Curves.\n";
+        
+     iconTextButton -p cpsecCol -i ($imgs + "cp_multiply_curve.png") -l "Multiply Curve" -st "iconAndTextVertical" -fn "obliqueLabelFont" -c "cpCurveMultiply" -ann "Multiply Curve resolution by 2.\n";
+
+
+
+tabLayout -e -tl "cpMainScroll" " " -tl "spMenu" " " -tl "cpSecScroll" " " cpTab1;
+
+showWindow cpWin;
+}
+source "CreasePlus_Extension1.mel";
+cpUi;

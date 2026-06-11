@@ -1,0 +1,103 @@
+global proc Detach(){
+
+string $Faces[];
+clear $Faces;
+string $Faces[] = `ls -sl`;
+string $buffer[];
+$numTokens = `tokenize $Faces[0] "." $buffer`;
+string $ObjectOG = $buffer[0];
+select $ObjectOG;
+duplicate -rr;
+
+string $Temp[] = `ls -sl`;
+string $ObjectDup = $Temp[0];
+string $Temp[] = `ls -sl`;
+string $ObjectDup = $Temp[0];
+int $i = 0;
+string $FacesDup[];
+clear $FacesDup;
+for ($i = 0; $i < size($Faces); $i++ )
+    {
+    $FacesDup[$i] = `substitute $ObjectOG $Faces[$i] $ObjectDup`;
+    }
+PolySelectConvert 1;
+select -add $Faces;
+select -d $FacesDup;
+delete;
+
+select -cl;
+select $ObjectDup;
+select -r;
+
+}
+
+global proc Clone(){
+   
+string $Faces[];
+clear $Faces;
+string $Faces[] = `ls -sl`;
+string $buffer[];
+$numTokens = `tokenize $Faces[0] "." $buffer`;
+string $ObjectOG = $buffer[0];
+select $ObjectOG;
+duplicate -rr;
+string $Temp[] = `ls -sl`;
+string $ObjectDup = $Temp[0];
+string $Temp[] = `ls -sl`;
+string $ObjectDup = $Temp[0];
+int $i = 0;
+string $FacesDup[];
+clear $FacesDup;
+for ($i = 0; $i < size($Faces); $i++ )
+    {
+    $FacesDup[$i] = `substitute $ObjectOG $Faces[$i] $ObjectDup`;
+    }
+PolySelectConvert 1;
+select -d $FacesDup;
+delete;
+
+select -cl;
+select $ObjectDup;
+CenterPivot $ObjectDup;
+select -r;
+
+}
+global proc Element(){
+    
+    string $Faces[] = `ls -sl`;
+    polyChipOff -ch 1 -kft 1 -dup 1 -off 0;
+    select -r $Faces;
+    delete $Faces;
+}
+
+
+global proc Extract(){
+
+if (`window -exists "windowExtract"`) 
+    deleteUI -window "windowExtract";
+    string $windowExtract = `window   -title "Detach"
+                                      -widthHeight 200 100
+                                      -mnb false
+                                      -mxb false
+                                      -sizeable false
+                                      windowExtract`;    
+columnLayout -w 200 -h 25;    
+separator;
+setParent ..;           
+rowLayout -nc 3   
+          -co3 5 5 5
+          -columnWidth3 50 50 50
+          -ct3 "left"  "left" "left"
+          -cl3 "center" "center" "center";          
+button  -label "Detach"
+        -w 50
+        -c Detach; 
+button  -label "Clone"
+        -w 50
+        -c Clone;          
+button  -label "Element"                   
+        -w 50
+        -c Element; 
+setParent ..;   
+showWindow $windowExtract;
+}

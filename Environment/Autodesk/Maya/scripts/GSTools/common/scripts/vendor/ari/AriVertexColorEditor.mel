@@ -1,0 +1,1858 @@
+//--------------------------------------------------------------------------
+//
+// ScriptName : AriVertexColorEditor
+// Contents   : 頂点カラー編集をしやすくします。
+// Author     : Ari
+// Help       : http://cgjishu.net/blog-entry-19.html
+// Update     : 2020/10/25 HSV追加などUI変更
+//              2018/10/21 複数頂点カラー選択をしやすくしたり、カラーセット強制変更等機能追加。
+//              2017/11/08 頂点アルファ塗りつぶしにフェースとエッジが対応していないバグ修正。
+//              2017/08/06 カラーセット選択UI追加
+//                         Vertex/VertexFaceモード切替機能追加 など
+//                         バグ修正
+//              2014/08/28 塗りつぶし加算乗算高速化
+//              2014/07    公開
+//
+//--------------------------------------------------------------------------
+
+
+
+proc int AriFloatArrayContains(int $item,int $list[]){
+	int $true=false;
+	for($one in $list){
+		if($one == $item){
+			$true=true;
+			break;
+		}
+	}
+	return $true;
+}
+
+proc float[] rgb255_to_rgb1 (int $r_255,int $g_255,int $b_255){
+	
+	float $rgb[];
+	
+	$rgb[0] = $r_255/255.0;
+	$rgb[1] = $g_255/255.0;
+	$rgb[2] = $b_255/255.0;
+	return $rgb;
+}
+proc float [] rgb255_to_hsv (int $r_255,int $g_255,int $b_255){
+	float $hsvfl[];
+	vector $rgb=<<$r_255/255.0,$g_255/255.0,$b_255/255.0>>;
+	vector $hsv = rgb_to_hsv($rgb);
+	$hsvfl[0] = $hsv.x*360;
+	$hsvfl[1] = $hsv.y;
+	$hsvfl[2] = $hsv.z;
+	return $hsvfl;
+}
+proc AriVertexColorEditor_Painting(string $verList[], vector $colorList[], float $alphaList[],int $mode){
+	int $processingIntList[];
+	int $roundingList[];
+	int $roundingValue=255;
+	int $i=0;
+	if($mode!=3){
+		for($i=0; $i<size($colorList); $i++){
+			vector $colorVec = $colorList[$i];
+			float $colorOne;
+			if($mode==0) $colorOne = $colorVec.x;
+			if($mode==1) $colorOne = $colorVec.y;
+			if($mode==2) $colorOne = $colorVec.z;
+			$roundingList[$i] = $colorOne * $roundingValue + 0.5;
+		}
+	}
+	else{
+		for($i=0; $i<size($alphaList); $i++){
+			$colorOne = $alphaList[$i];
+			$roundingList[$i] = $colorOne * $roundingValue + 0.5;
+		}
+	}
+	for($i=0; $i<size($roundingList); $i++){
+		int $colorOneInt = $roundingList[$i];
+		if(AriFloatArrayContains($colorOneInt, $processingIntList))continue;
+		int $proSize = size($processingIntList);
+		$processingIntList[$proSize] = $colorOneInt;
+		int $j=0;
+		int $k=0;
+		string $paintVerList[];
+		int    $paintColorList[];
+		clear $paintVerList;
+		clear $paintColorList;
+		for($j=0; $j < size($roundingList); $j++){
+			if($colorOneInt == $roundingList[$j]){
+				$paintVerList[$k] = $verList[$j];
+				$k++;
+			}
+		}
+		float $colorOneFloat = $colorOneInt/255.0;
+		if($mode==0)polyColorPerVertex -cla 1 -r $colorOneFloat $paintVerList;
+		if($mode==1)polyColorPerVertex -cla 1 -g $colorOneFloat $paintVerList;
+		if($mode==2)polyColorPerVertex -cla 1 -b $colorOneFloat $paintVerList;
+		if($mode==3)polyColorPerVertex -cla 1 -a $colorOneFloat $paintVerList;
+	}
+}
+proc brushModeColorChange(float $r, float $g, float $b){
+	global string $AriVerColorEdUICheckBoxBrush;
+	int $brushTrue = `checkBox -q -v $AriVerColorEdUICheckBoxBrush`;
+	if($brushTrue){
+		PaintVertexColorTool;
+		$paintTool=`currentCtx`;
+		artAttrPaintVertexCtx -e -pc 1 -selectedattroper "absolute" $paintTool;
+		artAttrPaintVertexCtx -e -colorRGBValue $r $g $b $paintTool;
+	}
+}
+global proc AriVertexColorEditor_GetFixSet(int $mode){
+	global string $AriVerColorEd_UI_FixSetTextF;
+	global string $AriVerColorEdTextScrollList;
+	string $colorSet[] = `textScrollList -q -si $AriVerColorEdTextScrollList`;
+	if($mode == 1)	textField -e -text $colorSet[0] $AriVerColorEd_UI_FixSetTextF;
+	if($mode == 0)	textField -e -text ""           $AriVerColorEd_UI_FixSetTextF;
+}
+global proc AriVertexColorEditor_ColorSetChange(){
+	global string $AriVerColorEdTextScrollList;
+	string $selectList[] = `textScrollList -q -si $AriVerColorEdTextScrollList`;
+	string $selectObj[] = `ls -sl`;
+	polyColorSet -e -ccs -colorSet $selectList[0] $selectObj;
+	AriVertexColorEditor_ChangeSelect();
+}
+proc AriVertexColorEditor_GetColorSet(){
+	global string $AriVerColorEdTextScrollList;
+	global string $AriVerColorEd_UI_FixSetTextF;
+	string $fixColorSet = `textField -q -text $AriVerColorEd_UI_FixSetTextF`;
+	string $selectObj[] = `ls -sl`;
+	string $colorSetList[]        = `polyColorSet -q -acs $selectObj`;
+	textScrollList -e -ra $AriVerColorEdTextScrollList;
+	$colorSetList = stringArrayRemoveDuplicates($colorSetList);
+	string $evalString="textScrollList -e ";
+	for($colorSet in $colorSetList){
+		$evalString += ("-a "+$colorSet+" ");
+	}
+	$evalString += $AriVerColorEdTextScrollList;
+	eval $evalString;
+	textField -e -bgc 0.2 0.2 0.2 $AriVerColorEd_UI_FixSetTextF;
+	if(size($colorSetList)==0)return;
+	for($obj in $selectObj){
+		string $objColorSetList[] = `polyColorSet -q -acs $obj`;
+		if($fixColorSet==""){
+			string $currentColorSetList[] = `polyColorSet -q -ccs $obj`;
+			textScrollList -e -si $currentColorSetList[0] $AriVerColorEdTextScrollList;
+		}
+		else{
+			if(stringArrayContains($fixColorSet,$objColorSetList)){
+				textScrollList -e -si $fixColorSet $AriVerColorEdTextScrollList;
+				polyColorSet -e -ccs -colorSet $fixColorSet $obj;
+			}
+			else{
+				string $currentColorSetList[] = `polyColorSet -q -ccs $obj`;
+				textScrollList -e -si $currentColorSetList[0] $AriVerColorEdTextScrollList;
+				textField -e -bgc 1 0 0 $AriVerColorEd_UI_FixSetTextF;
+			}
+		}
+	}
+}
+global proc AriVerColorE_Copy(){
+	global vector $AriVerColorEdColorEditor_CopyColorVal[];
+	global int    $AriVerColorEdColorEditor_CopyVertexVal[]; 
+	global int    $AriVerColorEdColorEditor_CopyFaceVal[];   
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	int $verFaceMode = true;
+	$verFaceMode = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	string $selectObj[] = `ls -sl`;
+	string $faceVertexList[];
+	if($verFaceMode){
+		$faceVertexList = `polyListComponentConversion  -tvf  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 70 $faceVertexList`;
+	}
+	else{
+		$faceVertexList = `polyListComponentConversion  -tv  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 31 $faceVertexList`;
+	}
+	float $verColorList[];
+	float $verAlphaList[];
+	$verColorList = `polyColorPerVertex -q -nun -rgb $faceVertexList`;
+	$verAlphaList = `polyColorPerVertex -q -nun -a $faceVertexList`;
+	clear $AriVerColorEdColorEditor_CopyColorVal;
+	clear $AriVerColorEdColorEditor_CopyVertexVal;
+	for($i=0; $i<size($faceVertexList);$i++){
+		string $sepa[];
+		tokenize $faceVertexList[$i] ".[]" $sepa;
+		$AriVerColorEdColorEditor_CopyVertexVal[$i] = $sepa[2];
+		if($verFaceMode) $AriVerColorEdColorEditor_CopyFaceVal[$i] = $sepa[3];
+		$AriVerColorEdColorEditor_CopyColorVal[$i] = <<$verColorList[$i*3+0],$verColorList[$i*3+1],$verColorList[$i*3+2]>>;
+	}
+}
+global proc AriVerColorE_Paste(){
+	global vector $AriVerColorEdColorEditor_CopyColorVal[];
+	global int    $AriVerColorEdColorEditor_CopyVertexVal[]; 
+	global int    $AriVerColorEdColorEditor_CopyFaceVal[];   
+	global string $AriVerColorEdColorEditor_CopyString[];    
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	int $verFaceMode = true;
+	$verFaceMode = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	string $selectObj[] = `ls -sl`;
+	string $faceVertexList[];
+	if($verFaceMode){
+		$faceVertexList = `polyListComponentConversion  -tvf  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 70 $faceVertexList`;
+	}
+	else{
+		$faceVertexList = `polyListComponentConversion  -tv  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 31 $faceVertexList`;
+	}
+	string $sepa[];
+	tokenize $faceVertexList[0] "." $sepa;
+	string $polyName = $sepa[0];
+	for($i=0;$i<size($faceVertexList);$i++){
+		tokenize $faceVertexList[$i] "." $sepa;
+		if($polyName != $sepa[0]){
+			break;
+		}
+	}
+	string $verNameList[];
+	clear $verNameList;
+	string $verName;
+	if($verFaceMode)	$verName = ($polyName+".vtxFace");
+	else				$verName = ($polyName+".vtx");
+	vector $copyColor[];
+	$copyColor = $AriVerColorEdColorEditor_CopyColorVal;
+	for($i=0; $i<size($AriVerColorEdColorEditor_CopyVertexVal);$i++){
+		string $verNumberName;
+		if($verFaceMode)	$verNumberName = $verName+"["+$AriVerColorEdColorEditor_CopyVertexVal[$i]+"]["+$AriVerColorEdColorEditor_CopyFaceVal[$i]+"]";
+		else				$verNumberName = $verName+"["+$AriVerColorEdColorEditor_CopyVertexVal[$i]+"]";
+		$verNameList[$i] = $verNumberName;
+	}
+	float $alphaList[];
+	AriVertexColorEditor_Painting($verNameList, $copyColor, $alphaList, 0);
+	AriVertexColorEditor_Painting($verNameList, $copyColor, $alphaList, 1);
+	AriVertexColorEditor_Painting($verNameList, $copyColor, $alphaList, 2);
+}
+global proc AriVerColorE_leapPaint(string $varNameList[], vector $baseColorList[], vector $afterColorList[],float $leapVal){
+	vector $paintColorList[];
+	clear $paintColorList;
+	for($i=0; $i<size($varNameList); $i++){
+		$paintColorList[$i] = ($baseColorList[$i]*(1-$leapVal)) + ($afterColorList[$i] * $leapVal);
+	}
+	float $alphaList[];
+	AriVertexColorEditor_Painting($varNameList, $paintColorList, $alphaList, 0);
+	AriVertexColorEditor_Painting($varNameList, $paintColorList, $alphaList, 1);
+	AriVertexColorEditor_Painting($varNameList, $paintColorList, $alphaList, 2);
+}
+global proc AriVertexColorEditor_ChangeHSVSlider(){
+	AriVertexColorEditor_HSVVal();
+	AriVertexColorEditor_List(0);
+}
+global proc AriVertexColorEditor_AddPalet(){
+	global string $AriVerColorEdColumnPalet;
+	global string $AriVerColorEdPaletButton[];
+	global vector $AriVerColorEdPaletButton_color[];
+	int $w=26;
+	int $paletCount=0;
+	for ($j=0;$j<5;$j++){
+		rowLayout  -nc 20 	-cw  1 $w -cw  2 $w -cw  3 $w -cw  4 $w -cw  5 $w -cw  6 $w -cw  7 $w -cw  8 $w -cw  9 $w -cw 10 $w
+												-cw 11 $w -cw 12 $w -cw 13 $w -cw 14 $w -cw 15 $w -cw 16 $w -cw 17 $w -cw 18 $w -cw 19 $w -cw 20 $w;
+		for ($i=0;$i<10;$i++){
+			vector $rgb=$AriVerColorEdPaletButton_color[$paletCount];
+			$AriVerColorEdPaletButton[$paletCount] = `canvas -w $w -h 16 -rgb ($rgb.x) ($rgb.y) ($rgb.z) -pc ("AriVertexColorEditor_PaletGo("+$paletCount+")")`;
+			$paletCount++;
+		}
+		setParent..;
+	}
+}
+global proc AriVertexColorEditor_PaletGo(int $paletCount){
+	global string $AriVerColorEdPaletButton[];
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global vector $AriVerColorEdPaletButton_color[];
+	vector $rgb;
+	$rgb = $AriVerColorEdPaletButton_color[$paletCount];
+	colorSliderButtonGrp -e -rgb ($rgb.x) ($rgb.y) ($rgb.z) $AriVerColorEd_UI_MainColorSlider;
+	AriVertexColorEditor_ReroadInputField(0);
+}
+global proc AriVertexColorEditor_Save_UI(){
+	global string $AriVerColorEdUI_VerFaceModeRadio[2];
+	global string $AriVerColorEdEditFloatF[20];
+	int $verFaceModeTrue = true;
+	float $addValue[];
+	float $scaleValue[];
+	float $clampValue[];
+	$verFaceModeTrue = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	$addValue[0] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[0]`;
+	$addValue[1] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[1]`;
+	$addValue[2] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[2]`;
+	$addValue[3] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[3]`;
+	$addValue[4] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[4]`;
+	$scaleValue[0] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[10]`;
+	$scaleValue[1] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[11]`;
+	$scaleValue[2] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[12]`;
+	$scaleValue[3] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[13]`;
+	$scaleValue[4] = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[14]`;
+	$clampValue[0] = `floatField -q -v  $AriVerColorEdEditFloatF[5]`;
+	$clampValue[1] = `floatField -q -v  $AriVerColorEdEditFloatF[6]`;
+	optionVar -intValue "AriVertexColorEditer_verFaceMode"   $verFaceModeTrue;
+	optionVar -floatValue "AriVertexColorEditer_AddRGB"   $addValue[0];
+	optionVar -floatValue "AriVertexColorEditer_AddR"     $addValue[1];
+	optionVar -floatValue "AriVertexColorEditer_AddG"     $addValue[2];
+	optionVar -floatValue "AriVertexColorEditer_AddB"     $addValue[3];
+	optionVar -floatValue "AriVertexColorEditer_AddA"     $addValue[4];
+	optionVar -floatValue "AriVertexColorEditer_ScaleRGB" $scaleValue[0];
+	optionVar -floatValue "AriVertexColorEditer_ScaleR"   $scaleValue[1];
+	optionVar -floatValue "AriVertexColorEditer_ScaleG"   $scaleValue[2];
+	optionVar -floatValue "AriVertexColorEditer_ScaleB"   $scaleValue[3];
+	optionVar -floatValue "AriVertexColorEditer_ScaleA"   $scaleValue[4];
+	optionVar -floatValue "AriVertexColorEditer_clampMin" $clampValue[0];
+	optionVar -floatValue "AriVertexColorEditer_clampMax" $clampValue[1];
+}
+global proc AriVertexColorEditor_Edit(int $colorNum,int $mode){
+	global string $AriVerColorEdEditFloatF[20];
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	string $attroperMode;
+	float $colorVal;
+	if($colorNum<10){
+		if($mode==2||$mode==3){
+			$colorVal = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[$colorNum+10]`;
+		}
+		else{
+			$colorVal = `floatSliderGrp -q -v  $AriVerColorEdEditFloatF[$colorNum]`;
+		}
+	}
+	int $verFaceMode = true;
+	$verFaceMode = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	string $selectObj[] = `ls -sl`;
+	string $selectTr[]  = `ls -sl -tr`;
+	string $toVertexList[];
+	if($verFaceMode) $toVertexList = `polyListComponentConversion -tvf $selectObj`;
+	else			 $toVertexList = `polyListComponentConversion -tv $selectObj`;
+	float $rgba[];
+	if($mode==0 || $mode==1){
+		$attroperMode = "additive";
+		$rgba[1] = 0;
+		$rgba[2] = 0;
+		$rgba[3] = 0;
+		$rgba[4] = 0;
+	}
+	if($mode==2 || $mode==3){
+		$attroperMode = "scale";
+		$rgba[1] = 1;
+		$rgba[2] = 1;
+		$rgba[3] = 1;
+		$rgba[4] = 1;
+	}
+	$rgba[$colorNum]=$colorVal;
+	if($colorNum!=0){
+		if($mode==1)$rgba[$colorNum]=$rgba[$colorNum]*(-1);
+		if($mode==3)$rgba[$colorNum]=1.0/$rgba[$colorNum];
+	}
+	if($colorNum==0){
+		$rgba[1]=$rgba[$colorNum];
+		$rgba[2]=$rgba[$colorNum];
+		$rgba[3]=$rgba[$colorNum];
+		if($mode==1){
+			$rgba[1]=$rgba[1]*(-1);
+			$rgba[2]=$rgba[2]*(-1);
+			$rgba[3]=$rgba[3]*(-1);	
+		}
+		if($mode==3){
+			$rgba[1]=1.0/$rgba[1];
+			$rgba[2]=1.0/$rgba[2];
+			$rgba[3]=1.0/$rgba[3];
+		}
+	}
+	string $currentTool=`currentCtx`;
+	PaintVertexColorTool;
+	string $paintTool    = `currentCtx`;
+	string $selectedattr = (`artAttrPaintVertexCtx -q  -selectedattroper  $paintTool`);
+	artAttrPaintVertexCtx -e -selectedattroper $attroperMode $paintTool;
+	string $beforeClamp;
+	string $beforeAlphaClamp;
+	float $beforeMaxMin[4];
+	if($colorNum==10 || $colorNum==11){
+		$beforeClamp = `artAttrPaintVertexCtx -q -clamp $paintTool`;
+		$beforeAlphaClamp = `artAttrPaintVertexCtx -q -alphaclamp $paintTool`;
+		$beforeMaxMin[0]=`artAttrPaintVertexCtx -q -cll $paintTool`;
+		$beforeMaxMin[1]=`artAttrPaintVertexCtx -q -clu $paintTool`;
+		$beforeMaxMin[2]=`artAttrPaintVertexCtx -q -acl $paintTool`;
+		$beforeMaxMin[3]=`artAttrPaintVertexCtx -q -acu $paintTool`;
+		float $min=`floatField -q -v $AriVerColorEdEditFloatF[5]`;
+		float $max=`floatField -q -v $AriVerColorEdEditFloatF[6]`;
+		if($colorNum==10)artAttrPaintVertexCtx -e -clamp "both" -cll $min -clu $max  -alphaclamp "none"                     $paintTool;
+		if($colorNum==11)artAttrPaintVertexCtx -e -clamp "none"                      -alphaclamp "both" -acl $min -acu $max $paintTool;
+	}
+	int $beforePc=`artAttrPaintVertexCtx -q -pc $paintTool`;
+	artAttrPaintVertexCtx -e -colorRGBAValue $rgba[1] $rgba[2] $rgba[3] $rgba[4] `currentCtx`;
+	if($verFaceMode){
+		select $toVertexList;
+		artAttrPaintVertexCtx -e -pc 2 `currentCtx`;
+		artAttrPaintVertexCtx -e -clear `currentCtx`;
+	}
+	else{
+		select $toVertexList;
+		artAttrPaintVertexCtx -e -pc 1 `currentCtx`;
+		artAttrPaintVertexCtx -e -clear `currentCtx`;
+	}
+	select $selectObj;
+	artAttrPaintVertexCtx -e -pc $beforePc -selectedattroper $selectedattr $paintTool;
+	if($colorNum==10 || $colorNum==11){
+		artAttrPaintVertexCtx -e -clamp $beforeClamp -cll $beforeMaxMin[0] -clu $beforeMaxMin[1]  -alphaclamp $beforeAlphaClamp -acl $beforeMaxMin[2] -acu $beforeMaxMin[3] $paintTool;
+	}
+	setToolTo $currentTool;
+	AriVertexColorEditor_Save_UI();
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_Select(int $mode){
+	AriVertexColorEditor_HSVVal();
+	global string $AriVerColorEdE_checkBox[];	
+	global string $AriVerColorEdColorString_255[];
+	global string $AriVerColorEdNewHsvColorString_255[];
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	global string $AriVerColorEdUIrgbTrueCheckBox[4];
+	global string $AriVerColorEdEditer_AllSelectList[];
+	global int $AriVerColorEdChangeTrue;
+	int $selectR[];
+	int $selectG[];
+	int $selectB[];
+	int $selectA[];
+	int $rTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[0]`;
+	int $gTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[1]`;
+	int $bTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[2]`;
+	int $aTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[3]`;
+	int $selectTotal=0;
+	int $allOff=1;
+	int $i=0;
+	int $j=0;	
+	for($checkBox in $AriVerColorEdE_checkBox){
+		if(`checkBox -q -value $AriVerColorEdE_checkBox[$i]`){
+			$allOff=0;
+			break;
+		}
+		$i++;
+	}
+	$i=0;
+	if($allOff==0){
+		for($checkBox in $AriVerColorEdE_checkBox){
+			if(`checkBox -q -value $AriVerColorEdE_checkBox[$i]`){
+				string $sepa[];
+				string $colors = $AriVerColorEdColorString_255[$i];
+				tokenize $colors "," $sepa;
+				$selectR[$j] = int($sepa[0]);
+				$selectG[$j] = int($sepa[1]);
+				$selectB[$j] = int($sepa[2]);
+				$selectA[$j] = int($sepa[3]);
+				$j++;
+			}
+			$i++;
+		}
+	}
+	else{
+		for($varSt in $AriVerColorEdColorString_255){
+			string $sepa[];
+			string $colors = $AriVerColorEdColorString_255[$i];
+			tokenize $colors "," $sepa;
+			$selectR[$j] = int($sepa[0]);
+			$selectG[$j] = int($sepa[1]);
+			$selectB[$j] = int($sepa[2]);
+			$selectA[$j] = int($sepa[3]);
+			$j++;
+			$i++;
+		}
+	}
+	int $verFaceMode = true;
+	$verFaceMode = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	string $selectObj[] = $AriVerColorEdEditer_AllSelectList;
+	string $vertexList[];
+	if($verFaceMode){
+		$vertexList = `polyListComponentConversion  -tvf  $selectObj`;
+		$vertexList = `filterExpand -selectionMask 70 $vertexList`;
+	}
+	else{
+		$vertexList = `polyListComponentConversion  -tv  $selectObj`;
+		$vertexList = `filterExpand -selectionMask 31 $vertexList`;
+	}
+	if(size($vertexList)<=0) return;
+	float $verColorList[]= `polyColorPerVertex -q -nun -rgb $vertexList`;
+	float $verAlphaList[]= `polyColorPerVertex -q -nun -a $vertexList`;
+	string $verColorString[];
+	vector $decisionColorList[];
+	string $selectList[];
+	$i = 0;
+	$j = 0;
+	int $k = 0;
+	for($ver in $vertexList){
+		float $verColor[];
+		$verColor[0] = trunc($verColorList[$i*3]  *255+0.5);
+		$verColor[1] = trunc($verColorList[$i*3+1]*255+0.5);
+		$verColor[2] = trunc($verColorList[$i*3+2]*255+0.5);
+		$verColor[3] = trunc($verAlphaList[$i]    *255+0.5);
+		for($j=0;$j<size($selectR);$j++){
+			if($verColor[0] != $selectR[$j] && $rTrue)continue;
+			if($verColor[1] != $selectG[$j] && $gTrue)continue;
+			if($verColor[2] != $selectB[$j] && $bTrue)continue;
+			if($verColor[3] != $selectA[$j] && $aTrue)continue;
+			if($mode==1){
+				string $color = $AriVerColorEdNewHsvColorString_255[$j];
+				string $sepa[];
+				float $listColor255[];
+				float $listColor1[];
+				tokenize $color "," $sepa;
+				$listColor255[0] = float($sepa[0]);
+				$listColor255[1] = float($sepa[1]);
+				$listColor255[2] = float($sepa[2]);
+				$listColor1[0] = $listColor255[0]/255;
+				$listColor1[1] = $listColor255[1]/255;
+				$listColor1[2] = $listColor255[2]/255;
+				$decisionColorList[$i] = <<$listColor1[0],$listColor1[1],$listColor1[2]>>;
+			}
+			$selectList[$k] = $ver;
+			$k++;
+		}
+		$i++;
+	}
+	if($mode == 0){
+		$AriVerColorEdChangeTrue = false;
+	}
+	select $selectList;
+	float $alphaList[];
+	if($mode==1){
+		AriVertexColorEditor_Painting($vertexList,$decisionColorList,$alphaList,0);
+		AriVertexColorEditor_Painting($vertexList,$decisionColorList,$alphaList,1);
+		AriVertexColorEditor_Painting($vertexList,$decisionColorList,$alphaList,2);
+	}
+}
+global proc AriVertexColorEditor_SelButton(int $num){
+	global string $AriVerColorEdE_checkBox[];
+	for($i=0; $i<size($AriVerColorEdE_checkBox); $i++){
+		checkBox -e -v false $AriVerColorEdE_checkBox[$i];
+	}
+	checkBox -e -v true $AriVerColorEdE_checkBox[$num];
+	AriVertexColorEditor_Select(0);
+}
+global proc AriVerColorEditor_checkBoxFalse(int $mode){
+	global string $AriVerColorEdE_checkBox[];
+	for($checkBox in $AriVerColorEdE_checkBox){
+		checkBox -e -value $mode $checkBox;
+	}
+	AriVertexColorEditor_Select(0);
+}
+global proc AriVertexColorEditor_List(int $startNum){
+	int $maxView=50;
+	global string $AriVerColorEdColorString_255[];	
+	global int $AriVerColorEdColorString_Count[];
+	global string $AriVerColorEdNewHsvColorString_255[];
+	global string $AriVerColorEdEscrollLay;
+	global string $AriVerColorEdColumnLayout;
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	global string $AriVerColorEdE_checkBox[];
+	global string $AriVerColorEdColorAddButton;
+	global string $AriVerColorEdUIrgbTrueCheckBox[4];
+	int $columnHeight = ($startNum/$maxView+1)*30*$maxView;
+	int $rTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[0]`;
+	int $gTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[1]`;
+	int $bTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[2]`;
+	int $aTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[3]`;
+	if($startNum==0){
+		deleteUI $AriVerColorEdColumnLayout;
+		$AriVerColorEdColumnLayout = `columnLayout -p $AriVerColorEdEscrollLay -adj true`;
+	}
+	if(`button -ex $AriVerColorEdColorAddButton`)	deleteUI $AriVerColorEdColorAddButton;
+	int $total=$startNum+$maxView-1;
+	for ($i=$startNum; $i<=$total; $i++){
+		if($i >= size($AriVerColorEdColorString_255))break;
+		string $color = $AriVerColorEdColorString_255[$i];
+		string $sepa[];
+		string $valString[4];
+		float $listColor255[];
+		float $listColor1[];
+		tokenize $color "," $sepa;
+		$valString[0] = $sepa[0];
+		$valString[1] = $sepa[1];
+		$valString[2] = $sepa[2];
+		$valString[3] = $sepa[3];
+		$listColor255[0] = float($sepa[0]);
+		$listColor255[1] = float($sepa[1]);
+		$listColor255[2] = float($sepa[2]);
+		$listColor255[3] = float($sepa[3]);
+		$listColor1[0] = $listColor255[0]/255;
+		$listColor1[1] = $listColor255[1]/255;
+		$listColor1[2] = $listColor255[2]/255;
+		$listColor1[3] = $listColor255[3]/255;
+		float $colMax = 0;
+		if($listColor1[0]>$colMax)$colMax = $listColor1[0];
+		if($listColor1[1]>$colMax)$colMax = $listColor1[1];
+		if($listColor1[2]>$colMax)$colMax = $listColor1[2];
+		float $visR=$listColor1[0];
+		float $visG=$listColor1[1];
+		float $visB=$listColor1[2];
+		if(1 < $colMax){
+			$visR = $listColor1[0] / $colMax;
+			$visG = $listColor1[1] / $colMax;
+			$visB = $listColor1[2] / $colMax;
+		}
+		$colMax = trunc($colMax*10)/10;
+		$color = $AriVerColorEdNewHsvColorString_255[$i];
+		float $listnewColor1[];
+		tokenize $color "," $sepa;
+		$listColor255[0] = float($sepa[0]);
+		$listColor255[1] = float($sepa[1]);
+		$listColor255[2] = float($sepa[2]);
+		$listColor255[3] = float($sepa[3]);
+		$listnewColor1[0] = $listColor255[0]/255;
+		$listnewColor1[1] = $listColor255[1]/255;
+		$listnewColor1[2] = $listColor255[2]/255;
+		$listnewColor1[3] = $listColor255[3]/255;
+		int $count = 0;
+		rowLayout  -h 30 -p $AriVerColorEdColumnLayout -nc 6  -adj 4 ;
+			button -w 28 -l ($i+1) -c ("AriVertexColorEditor_SelButton("+$i+")");
+			$AriVerColorEdE_checkBox[$i] = `checkBox -h 24 -bgc 0.2 0.2 0.2 -w 50 -l ($AriVerColorEdColorString_Count[$i]+"")  -v true -cc ("AriVertexColorEditor_Select(0)")`;
+			rowLayout -nc 2 ;
+				columnLayout -adj true ;
+				if($colMax > 1){
+					button -w 25 -h 18 -bgc $listColor1[0] $listColor1[1] $listColor1[2] -l $colMax -c ("AriVertexColorEditor_Picup("+ $listColor1[0]+","+ $listColor1[1] +","+$listColor1[2]+","+0+")");
+					button -w 25 -h 6  -bgc $visR $visG $visB                            -l "" -c ("AriVertexColorEditor_Picup("+ $listColor1[0]+","+ $listColor1[1] +","+$listColor1[2]+","+0+")");
+				}
+				else{
+					button -w 25 -h 24 -bgc $listColor1[0] $listColor1[1] $listColor1[2] -l"" -c ("AriVertexColorEditor_Picup("+ $listColor1[0]+","+ $listColor1[1] +","+$listColor1[2]+","+0+")");
+				}
+				setParent..;
+				button -w 15 -h 24 -bgc $listColor1[3] $listColor1[3] $listColor1[3] -l"" -c ("AriVertexColorEditor_Picup("+ $listColor1[3]+","+ $listColor1[3] +","+$listColor1[3]+","+1+")");
+			setParent..;
+				string $rgbaForm = `formLayout`;
+					int $berSize = 28;
+					int $hrgb[];
+					$hrgb[0] = trunc($listColor1[0])*2;
+					$hrgb[1] = trunc($listColor1[1])*2;
+					$hrgb[2] = trunc($listColor1[2])*2;
+					$hrgb[3] = trunc($listColor1[3])*2;
+					int $wrgb[];
+					$wrgb[0] = ($listColor1[0]-trunc($listColor1[0]))*100;
+					$wrgb[1] = ($listColor1[1]-trunc($listColor1[1]))*100;
+					$wrgb[2] = ($listColor1[2]-trunc($listColor1[2]))*100;
+					$wrgb[3] = ($listColor1[3]-trunc($listColor1[3]))*100;
+					if($hrgb[0]<=0) $hrgb[0]=0;
+					if($hrgb[1]<=0) $hrgb[1]=0;
+					if($hrgb[2]<=0) $hrgb[2]=0;
+					if($hrgb[3]<=0) $hrgb[3]=0;
+					if($wrgb[0]<=0) $wrgb[0]=0;
+					if($wrgb[1]<=0) $wrgb[1]=0;
+					if($wrgb[2]<=0) $wrgb[2]=0;
+					if($wrgb[3]<=0) $wrgb[3]=0;
+					string $canvasList[];
+					string $colmR = `columnLayout -en $rTrue -adj true `;
+						text -l $valString[0] -h 12;
+						columnLayout -h 10 -adj true -bgc 0 0 0;
+						$canvasList[0] = `canvas -w $berSize -rgb 1 0 0`;
+						string $formR  = `formLayout -w 30 `;
+						$canvasList[1] = `canvas -w 1 -rgb 1 0 0`;
+						setParent..;
+						if($hrgb[0]!=0)	canvas -e -h $hrgb[0] $canvasList[0];
+						else			canvas -e -vis false  $canvasList[0];
+						if($wrgb[0]!=0){
+							canvas -e -h 2 $canvasList[1];
+							formLayout -e
+							-af $canvasList[1] "left"  0
+							-ap $canvasList[1] "right" 0 $wrgb[0]
+							$formR;
+						}
+						else			canvas -e -vis false $canvasList[1];
+						setParent..;
+					setParent..;
+					string $colmG = `columnLayout -en $gTrue -adj true`;
+						text -l $valString[1] -h 12;
+						columnLayout -h 10 -adj true -bgc 0 0 0;
+						$canvasList[2] = `canvas -w $berSize -rgb 0 1 0`;
+						string $formG  = `formLayout -w 30 -bgc 0 0 0`;
+						$canvasList[3] = `canvas -w 1 -rgb 0 1 0`;
+						setParent..;
+						if($hrgb[1]!=0)	canvas -e -h $hrgb[1] $canvasList[2];
+						else			canvas -e -vis false  $canvasList[2];
+						if($wrgb[1]!=0){
+							canvas -e -h 2 $canvasList[3];
+							formLayout -e
+							-af $canvasList[3] "left"  0
+							-ap $canvasList[3] "right" 0 $wrgb[1]
+							$formG;
+						}
+						else			canvas -e -vis false $canvasList[3];
+						setParent..;
+					setParent..;
+					string $colmB = `columnLayout -en $bTrue -adj true`;
+						text -l $valString[2] -h 12;
+						columnLayout -h 10 -adj true -bgc 0 0 0;
+						$canvasList[4] = `canvas -rgb 0 0 1`;
+						string $formB  = `formLayout -w 30 -bgc 0 0 0`;
+						$canvasList[5] = `canvas -w 1 -rgb 0 0 1`;
+						setParent..;
+						if($hrgb[2]!=0)	canvas -e -h $hrgb[2] $canvasList[4];
+						else			canvas -e -vis false  $canvasList[4];
+						if($wrgb[2]!=0){
+							canvas -e -h 2 $canvasList[5];
+							formLayout -e
+							-af $canvasList[5] "left"  0
+							-ap $canvasList[5] "right" 0 $wrgb[2]
+							$formB;
+						}
+						else			canvas -e -vis false $canvasList[5];
+						setParent..;
+					setParent..;
+					string $colmA = `columnLayout -en $aTrue -adj true`;
+						text -l $valString[3]- h 12;
+						columnLayout -h 10  -adj true -bgc 0 0 0;
+						$canvasList[6] = `canvas -rgb 1 1 1`;
+						string $formA  = `formLayout -w 30 -bgc 0 0 0`;
+						$canvasList[7] = `canvas -w 1 -rgb 1 1 1`;
+						setParent..;
+						if($hrgb[3]!=0)	canvas -e -h $hrgb[3] $canvasList[6];
+						else			canvas -e -vis false  $canvasList[6];
+						if($wrgb[3]!=0){
+							canvas -e -h 2 $canvasList[7];
+							formLayout -e
+							-af $canvasList[7] "left"  0
+							-ap $canvasList[7] "right" 0 $wrgb[3]
+							$formA;
+						}
+						else			canvas -e -vis false $canvasList[7];
+						setParent..;
+					setParent..;
+				setParent..;
+				formLayout -e
+					-af $colmR "left"  0
+					-ap $colmR "right" 0 25
+					-ac $colmG "left"  0 $colmR
+					-ap $colmG "right" 0 50
+					-ac $colmB "left"  0 $colmG
+					-ap $colmB "right" 0 75
+					-ac $colmA "left"  0 $colmB
+					-af $colmA "right" 0
+				$rgbaForm;
+			button -w 1 -vis 0 -bgc $listnewColor1[0] $listnewColor1[1] $listnewColor1[2] -l"" -c ("AriVertexColorEditor_Picup("+ $listColor1[0]+","+ $listColor1[1] +","+$listColor1[2]+","+0+")");
+		setParent..;
+		if($i>=$total){
+			$AriVerColorEdColorAddButton = `button -w 300 -p $AriVerColorEdColumnLayout -l (($i+1)+"以降を表示") -c ("AriVertexColorEditor_List( "+($i+1)+  ")")`;
+			break;
+		}
+	}
+	setParent..;
+}
+global proc AriVertexColorEditor_ChangeSelect(){
+	global string $AriVerColorEdEscrollLay;
+	global string $AriVerColorEdColumnLayout;
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	global string $AriVerColorEdE_checkBox[];
+	global string $AriVerColorEdHSVSlider[];
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	global string $AriVerColorEdUIrgbTrueCheckBox[4];
+	global string $AriVerColorEdColorString_255[];
+	global string $AriVerColorEdNewHsvColorString_255[];
+	global int $AriVerColorEdColorString_Count[];
+	global string $AriVerColorEdEditIntMax;
+	global string $AriVerColorEdEditer_AllSelectList[];
+	global int $AriVerColorEdChangeTrue;
+	if($AriVerColorEdChangeTrue==false){
+		$AriVerColorEdChangeTrue = true;
+		return;
+	}
+	AriVertexColorEditor_GetColorSet();
+	int $maxVartex = 2000;
+	$maxVartex=`intField -q -v $AriVerColorEdEditIntMax`;
+	int $verFaceMode = true;
+	$verFaceMode = `radioButton -q -sl $AriVerColorEdUI_VerFaceModeRadio[1]`;
+	string $selectObj[] = `ls -sl`;
+	$AriVerColorEdEditer_AllSelectList = $selectObj;
+	/*
+	string $test_ver[]    = `filterExpand -selectionMask 31 $selectObj`;
+	string $test_edge[]   = `filterExpand -selectionMask 32 $selectObj`;
+	string $test_face[]   = `filterExpand -selectionMask 34 $selectObj`;
+	string $test_uv[]     = `filterExpand -selectionMask 35 $selectObj`;
+	string $test_faceVer[]= `filterExpand -selectionMask 70 $selectObj`;
+	if((size($test_ver)+size($test_edge)+size($test_face)+size($test_uv)+size($test_faceVer))==0){
+		deleteUI $AriVerColorEdColumnLayout;
+		$AriVerColorEdColumnLayout =`columnLayout  -p $AriVerColorEdEscrollLay`;
+		return;
+	}
+	*/
+	string $faceVertexList[];
+	clear $faceVertexList;
+	if($verFaceMode){
+		$faceVertexList = `polyListComponentConversion  -tvf  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 70 $faceVertexList`;
+	}
+	else{
+		$faceVertexList = `polyListComponentConversion  -tv  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 31 $faceVertexList`;	
+	}
+	clear $AriVerColorEdE_checkBox;
+	clear $AriVerColorEdColorString_255;
+	clear $AriVerColorEdNewHsvColorString_255;
+	if( $maxVartex <= size($faceVertexList)){
+		deleteUI $AriVerColorEdColumnLayout;
+		$AriVerColorEdColumnLayout =`columnLayout  -p $AriVerColorEdEscrollLay`;
+		text -p $AriVerColorEdColumnLayout -l ("選択数"+size($faceVertexList)+"  ("+$maxVartex+"超なので非表示)");
+		return;
+	}
+	if( 0 >= size($faceVertexList)){
+		deleteUI $AriVerColorEdColumnLayout;
+		$AriVerColorEdColumnLayout =`columnLayout  -p $AriVerColorEdEscrollLay`;
+		return;
+	}
+	if(!size($faceVertexList))return;
+	if(size(`polyColorSet -q -acs $faceVertexList`)==0){
+		deleteUI $AriVerColorEdColumnLayout;
+		$AriVerColorEdColumnLayout = `columnLayout  -p $AriVerColorEdEscrollLay -adj true`;
+		text -p $AriVerColorEdColumnLayout -l "No Color Set";
+		return;
+	}
+	int $rTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[0]`;
+	int $gTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[1]`;
+	int $bTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[2]`;
+	int $aTrue = `checkBox -q -v $AriVerColorEdUIrgbTrueCheckBox[3]`;
+	float $verColorList[]= `polyColorPerVertex -q -nun -rgb $faceVertexList`;
+	float $verAlphaList[]= `polyColorPerVertex -q -nun -a $faceVertexList`;
+	string $verColorString[];
+	int $i=0;
+	int $j=0;
+	for($ver in $faceVertexList){
+		float $verColor[];
+		$verColor[0] = $verColorList[$i*3]   * 255;
+		$verColor[1] = $verColorList[$i*3+1] * 255;
+		$verColor[2] = $verColorList[$i*3+2] * 255;
+		$verColor[3] = $verAlphaList[$i]     * 255;
+		if(!$rTrue)$verColor[0]=0;
+		if(!$gTrue)$verColor[1]=0;
+		if(!$bTrue)$verColor[2]=0;
+		if(!$aTrue)$verColor[3]=0;
+		$verColor[0] = trunc($verColor[0]+0.5);
+		$verColor[1] = trunc($verColor[1]+0.5);
+		$verColor[2] = trunc($verColor[2]+0.5);
+		$verColor[3] = trunc($verColor[3]+0.5);
+		string $verColor3[];
+		$verColor3[0] = AriIntToString($verColor[0]);
+		$verColor3[1] = AriIntToString($verColor[1]);
+		$verColor3[2] = AriIntToString($verColor[2]);
+		$verColor3[3] = AriIntToString($verColor[3]);
+		string $colorString=($verColor3[0]+","+$verColor3[1]+","+$verColor3[2]+","+$verColor3[3]);
+			$verColorString[$j]=$colorString;
+			$j++;
+		$i++;
+	}
+	$AriVerColorEdColorString_255 = stringArrayRemoveDuplicates($verColorString);
+	for($i=0;$i<size($AriVerColorEdColorString_255);$i++){
+		$AriVerColorEdColorString_Count[$i]=stringArrayCount($AriVerColorEdColorString_255[$i], $verColorString);
+	}
+	AriVertexColorEditor_HSVVal();
+	AriVertexColorEditor_ViewSoat(0);
+	AriVertexColorEditor_List(0);
+}
+global proc AriVertexColorEditor_Picup_AddHistory(float $r, float $g, float $b){
+	global string $AriVerColorEdPaletButton[];
+	global vector $AriVerColorEdPaletButton_color[];
+	int $paletTotal = 50;
+	int $blackNum=0;
+	for($i=0;$i<($paletTotal-1);$i++){
+		vector $rgb = $AriVerColorEdPaletButton_color[$paletTotal-2-$i];
+		if($rgb.x==0 && $rgb.y==0 && $rgb.z==0){	
+		}
+		else{
+			$AriVerColorEdPaletButton_color[$paletTotal-1-$i]=$rgb;
+			canvas -e -rgb ($rgb.x) ($rgb.y) ($rgb.z) $AriVerColorEdPaletButton[$paletTotal-1-$i];
+		}
+	}
+	canvas -e -rgb $r $g $b $AriVerColorEdPaletButton[0];
+	$AriVerColorEdPaletButton_color[0]=<<$r,$g,$b>>;
+}
+global proc AriVertexColorEditor_Picup(float $r, float $g, float $b, int $mode){
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	if($mode==0){
+		colorSliderButtonGrp -e -rgb $r $g $b $AriVerColorEd_UI_MainColorSlider;
+	}
+	else{
+		colorSliderButtonGrp -e -rgb $r $g $b $AriVerColorEd_UI_MainAlpha;
+	}
+	brushModeColorChange($r,$g,$b);
+	AriVertexColorEditor_ReroadInputField(0);
+}
+global proc AriVertexColorEditor_ReroadInputField(int $mode){
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	global string $AriVerColorEd_UI_colorFS[4];
+	global string $AriVerColorEd_UI_colorIF[4];
+	global string $AriVerColorEd_UI_colorPalet[4];
+	float $rgb[];
+	float $a[];
+	float $hsv[];
+	if($mode==11){
+		int $newRGB255[4];
+		$newRGB255[0] = `intField -q -v $AriVerColorEd_UI_colorIF[0]`;
+		$newRGB255[1] = `intField -q -v $AriVerColorEd_UI_colorIF[1]`;
+		$newRGB255[2] = `intField -q -v $AriVerColorEd_UI_colorIF[2]`;
+		$newRGB255[3] = `intField -q -v $AriVerColorEd_UI_colorIF[3]`;
+		$rgb = rgb255_to_rgb1($newRGB255[0], $newRGB255[1], $newRGB255[2]);
+		$a   = rgb255_to_rgb1($newRGB255[3], 0, 0);
+		$rgb[3] = $a[0];
+		colorSliderButtonGrp -e -rgb $rgb[0] $rgb[1] $rgb[2] $AriVerColorEd_UI_MainColorSlider;
+		colorSliderButtonGrp -e -rgb $a[0]   $a[0]   $a[0]   $AriVerColorEd_UI_MainAlpha;
+	}
+	if($mode==12){
+		$hsv[0] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[4]`;
+		$hsv[1] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[5]`;
+		$maxRGB = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[6]`;
+		$rgb = `hsv_to_rgb <<$hsv[0], $hsv[1], 1>>`;
+		$rgb[3] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[3]`;
+		$rgb[0] = $rgb[0] * $maxRGB;
+		$rgb[1] = $rgb[1] * $maxRGB;
+		$rgb[2] = $rgb[2] * $maxRGB;
+	}
+	if($mode==0 || $mode==11){
+		$rgb = `colorSliderButtonGrp -q -rgb $AriVerColorEd_UI_MainColorSlider`;
+		$a   = `colorSliderButtonGrp -q -rgb $AriVerColorEd_UI_MainAlpha`;
+		$rgb[3] = $a[0];
+	}
+	if($mode!=10){
+		floatSliderGrp -e -v $rgb[0] $AriVerColorEd_UI_colorFS[0];
+		floatSliderGrp -e -v $rgb[1] $AriVerColorEd_UI_colorFS[1];
+		floatSliderGrp -e -v $rgb[2] $AriVerColorEd_UI_colorFS[2];
+		floatSliderGrp -e -v $rgb[3] $AriVerColorEd_UI_colorFS[3];
+	}
+	if($mode==1){
+		$rgb=`colorSliderButtonGrp -q -rgb $AriVerColorEd_UI_MainAlpha`;
+	}
+	if($mode==10){
+		$rgb[0] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[0]`;
+		$rgb[1] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[1]`;
+		$rgb[2] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[2]`;
+		$rgb[3] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[3]`;
+		colorSliderButtonGrp -e -rgb $rgb[3] $rgb[3] $rgb[3] $AriVerColorEd_UI_MainAlpha;
+	}
+	if($mode!=0){
+		colorSliderButtonGrp -e -rgb $rgb[0] $rgb[1] $rgb[2] $AriVerColorEd_UI_MainColorSlider;
+	}
+	if($mode!=11){	
+		int $newRGB255[4];
+		$newRGB255[0] = trunc(($rgb[0])*255+0.5);
+		$newRGB255[1] = trunc(($rgb[1])*255+0.5);
+		$newRGB255[2] = trunc(($rgb[2])*255+0.5);
+		$newRGB255[3] = trunc(($rgb[3])*255+0.5);
+		intField -e -v $newRGB255[0] $AriVerColorEd_UI_colorIF[0];
+		intField -e -v $newRGB255[1] $AriVerColorEd_UI_colorIF[1];
+		intField -e -v $newRGB255[2] $AriVerColorEd_UI_colorIF[2];
+		intField -e -v $newRGB255[3] $AriVerColorEd_UI_colorIF[3];
+	}
+	float $color[] = $rgb;
+	if($color[0]<0)$color[0]=0;
+	if($color[0]>1)$color[0]=1;
+	if($color[1]<0)$color[1]=0;
+	if($color[1]>1)$color[1]=1;
+	if($color[2]<0)$color[2]=0;
+	if($color[2]>1)$color[2]=1;
+	if($color[3]<0)$color[3]=0;
+	if($color[3]>1)$color[3]=1;
+	text -e -bgc $color[0] 0 0 $AriVerColorEd_UI_colorPalet[0];
+	text -e -bgc 0 $color[1] 0 $AriVerColorEd_UI_colorPalet[1];
+	text -e -bgc 0 0 $color[2] $AriVerColorEd_UI_colorPalet[2];
+	text -e -bgc $color[3] $color[3] $color[3] $AriVerColorEd_UI_colorPalet[3];
+	if($mode!=12){
+		vector $flatRGB;
+		$flatRGB = <<$rgb[0], $rgb[1], $rgb[2]>>;
+		float $maxRGB = $rgb[0];
+		if($maxRGB < $rgb[1]) $maxRGB = $rgb[1];
+		if($maxRGB < $rgb[2]) $maxRGB = $rgb[2];
+		if($maxRGB>0){
+			$flatRGB = $flatRGB/$maxRGB;
+		}
+		$hsv = `rgb_to_hsv $flatRGB`;
+		floatSliderGrp -e -v $hsv[0] $AriVerColorEd_UI_colorFS[4];
+		floatSliderGrp -e -v $hsv[1] $AriVerColorEd_UI_colorFS[5];
+		floatSliderGrp -e -v ($maxRGB) $AriVerColorEd_UI_colorFS[6];
+	}
+	vector $hColor = `hsv_to_rgb <<$hsv[0], 1, 1>>`;
+	text -e -bgc ($hColor.x) ($hColor.y) ($hColor.z) $AriVerColorEd_UI_colorPalet[4];
+	brushModeColorChange($rgb[0],$rgb[1],$rgb[2]);
+}
+global proc AriVertexColorEditor_SelView(){
+	string $selects[]=`ls -sl`;
+	string $selectVers[]=`polyListComponentConversion -tv $selects`;
+	select $selectVers;
+}
+global proc AriVertexColorEditor_ButtonOn(int $mode){
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	global string $AriVerColorEdDirectCheckB;
+	global string $AriVerColorEd_UI_colorFS[4];
+	string $selectList[]=`ls -sl`;
+	string $edgeList[] = `filterExpand -selectionMask 32 $selectList`;
+	string $vertexFaceList[];
+	if(size($edgeList)!=0){
+		$vertexFaceList = `polyListComponentConversion -tvf $edgeList`;
+	}
+	else{
+		$vertexFaceList = $selectList;
+	}
+	if($mode==0){
+		float $rgb[] = `colorSliderButtonGrp -q -rgb $AriVerColorEd_UI_MainColorSlider`;
+		polyColorPerVertex -cla 1 -r $rgb[0] $vertexFaceList;
+		polyColorPerVertex -cla 1 -g $rgb[1] $vertexFaceList;
+		polyColorPerVertex -cla 1 -b $rgb[2] $vertexFaceList;
+		AriVertexColorEditor_Picup_AddHistory($rgb[0],$rgb[1],$rgb[2]);
+	}
+	if($mode==5){
+		float $rgb[]= `colorSliderButtonGrp -q -rgb $AriVerColorEd_UI_MainAlpha`;
+		polyColorPerVertex -cla 1 -a $rgb[0] $vertexFaceList;
+	}
+	float $rgb[];
+	$rgb[0] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[0]`;
+	$rgb[1] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[1]`;
+	$rgb[2] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[2]`;
+	$rgb[3] = `floatSliderGrp -q -v $AriVerColorEd_UI_colorFS[3]`;
+	if($mode==1){
+		polyColorPerVertex -cla 1 -r $rgb[0] $vertexFaceList;
+		AriVertexColorEditor_Picup_AddHistory($rgb[0], 0, 0);
+	}
+	if($mode==2){
+		polyColorPerVertex -cla 1 -g $rgb[1] $vertexFaceList;
+		AriVertexColorEditor_Picup_AddHistory(0, $rgb[1], 0);
+	}
+	if($mode==3){
+		polyColorPerVertex -cla 1 -b $rgb[2] $vertexFaceList;
+		AriVertexColorEditor_Picup_AddHistory(0, 0, $rgb[2]);
+	}
+	if($mode==4){
+		polyColorPerVertex -cla 1 -a $rgb[3] $vertexFaceList;
+	}
+	if($mode==10){
+		int $i=0;
+		int $true[];
+		$true[0]=`checkBoxGrp -q -v1 $AriVerColorEdDirectCheckB`;
+		$true[1]=`checkBoxGrp -q -v2 $AriVerColorEdDirectCheckB`;
+		$true[2]=`checkBoxGrp -q -v3 $AriVerColorEdDirectCheckB`;
+		$true[3]=`checkBoxGrp -q -v4 $AriVerColorEdDirectCheckB`;
+		if($true[0]){
+			polyColorPerVertex -cla 1 -r $rgb[0] $vertexFaceList;
+			AriVertexColorEditor_Picup_AddHistory($rgb[0], 0, 0);
+		}
+		if($true[1]){
+			polyColorPerVertex -cla 1 -g $rgb[1] $vertexFaceList;
+			AriVertexColorEditor_Picup_AddHistory(0, $rgb[1], 0);
+		}
+		if($true[2]){
+			polyColorPerVertex -cla 1 -b $rgb[2] $vertexFaceList;
+			AriVertexColorEditor_Picup_AddHistory(0, 0, $rgb[2]);
+		}
+		if($true[3]){
+			polyColorPerVertex -cla 1 -a $rgb[3] $vertexFaceList;
+		}
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_ViewONOFF(int $vis){
+	global string $AriVerColorEdUICheckBoxColorVis;
+	int $allTrue = `checkBox -q -v $AriVerColorEdUICheckBoxColorVis`;
+	string $selectObj[] = `ls -sl -tr`;
+	if($allTrue)  $selectObj = `ls -tr`;
+	string $shapeList[] = `listRelatives -c -pa -type "mesh" $selectObj`;
+	string $object[];
+	if(!$allTrue) $object = `polyListComponentConversion`;
+	for($obj in $object){
+		if(attributeExists("displayColors",$obj)){
+			setAttr ($obj+".displayColors") $vis;
+		}
+	}
+	for($obj in $shapeList){
+		if(attributeExists("displayColors",$obj)){
+			setAttr ($obj+".displayColors") $vis;
+		}
+	}
+}
+proc AriVertexColorEditor_Smooth_GO(){
+	PolySelectConvert 3;
+	string $currentTool = `currentCtx`;
+	string $paintTool;
+	PaintVertexColorTool;
+	$paintTool=`currentCtx`;
+	string $selectedattr= (`artAttrPaintVertexCtx -q  -selectedattroper  $paintTool`);
+	artAttrPaintVertexCtx -e -pc 1 -selectedattroper "smooth" $paintTool;
+	artAttrPaintVertexCtx -e -clear `currentCtx`;
+	artAttrPaintVertexCtx -e -pc 1 -selectedattroper $selectedattr $paintTool;
+	setToolTo $currentTool;
+}
+global proc AriVertexColorEditor_Smooth(int $mode){
+	global string $AriVerColorEd_UI_SmoothFloatS;
+	float $leapVal = 1;
+	$leapVal = `floatSliderGrp -q -v $AriVerColorEd_UI_SmoothFloatS`;
+	int $peastTrue = true;
+	if($leapVal==1 && $mode==0){
+		$peastTrue = false;
+	}
+	string $selectObj[];
+	string $faceVertexList[];
+	vector $verColorVectorList[];
+	float  $verAlphaList[];
+	if($peastTrue){
+		$selectObj = `ls -sl`;
+		$faceVertexList = `polyListComponentConversion  -tv  $selectObj`;
+		$faceVertexList = `filterExpand -selectionMask 31 $faceVertexList`;
+		float $verColorList[] = `polyColorPerVertex -q -nun -rgb $faceVertexList`;
+		$verAlphaList = `polyColorPerVertex -q -nun -a   $faceVertexList`;
+		for($i=0; $i<size($faceVertexList);$i++){
+			$verColorVectorList[$i] = <<$verColorList[$i*3+0],$verColorList[$i*3+1],$verColorList[$i*3+2]>>;
+		}
+	}
+	AriVertexColorEditor_Smooth_GO();
+	if($leapVal != 1.0){
+		vector $verColorAfterList[];
+		float  $verAlphaAfterList[];
+		float $verColorList[] = `polyColorPerVertex -q -nun -rgb $faceVertexList`;
+		float $afterAlpha[]   = `polyColorPerVertex -q -nun -a   $faceVertexList`;
+		for($i=0; $i<size($verColorVectorList);$i++){
+			vector $afterColor  = <<$verColorList[$i*3+0],$verColorList[$i*3+1],$verColorList[$i*3+2]>>;
+			vector $beforeColor = $verColorVectorList[$i];
+			float $r = ($afterColor.x * ($leapVal)) + ($beforeColor.x * (1-$leapVal));
+			float $g = ($afterColor.y * ($leapVal)) + ($beforeColor.y * (1-$leapVal));
+			float $b = ($afterColor.z * ($leapVal)) + ($beforeColor.z * (1-$leapVal));
+			float $a = ($afterAlpha[$i] * ($leapVal)) + ($verAlphaList[$i] * (1-$leapVal));
+			$verColorAfterList[$i] = <<$r, $g, $b>>;
+			$verAlphaAfterList[$i] = $a;
+		}
+		if($mode!=2){
+			AriVertexColorEditor_Painting($faceVertexList, $verColorAfterList, $verAlphaAfterList, 0);
+			AriVertexColorEditor_Painting($faceVertexList, $verColorAfterList, $verAlphaAfterList, 1);
+			AriVertexColorEditor_Painting($faceVertexList, $verColorAfterList, $verAlphaAfterList, 2);
+		}
+		if($mode!=1){
+			AriVertexColorEditor_Painting($faceVertexList, $verColorVectorList, $verAlphaAfterList, 3);
+		}
+	}
+	if($peastTrue){
+		if($mode==2){
+			AriVertexColorEditor_Painting($faceVertexList, $verColorVectorList, $verAlphaList, 0);
+			AriVertexColorEditor_Painting($faceVertexList, $verColorVectorList, $verAlphaList, 1);
+			AriVertexColorEditor_Painting($faceVertexList, $verColorVectorList, $verAlphaList, 2);
+		}
+		if($mode==1){
+			AriVertexColorEditor_Painting($faceVertexList, $verColorVectorList, $verAlphaList, 3);
+		}
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_ViewSoat(int $mode){
+	global string $AriVerColorEdColorString_255[];	
+	global int $AriVerColorEdColorString_Count[];
+	int $r_255[];
+	int $g_255[];
+	int $b_255[];
+	int $a_255[];
+	for($i=0;$i<size($AriVerColorEdColorString_255);$i++){
+		string $sepa[];
+		string $colors=$AriVerColorEdColorString_255[$i];
+		tokenize $colors "," $sepa;
+		$r_255[$i]=int($sepa[0]);
+		$g_255[$i]=int($sepa[1]);
+		$b_255[$i]=int($sepa[2]);
+		$a_255[$i]=int($sepa[3]);
+		float $hsv[]=rgb255_to_hsv($r_255[$i],$g_255[$i],$b_255[$i]);
+	}
+}
+global proc AriVertexColorEditor_HSVVal(){
+	global string $AriVerColorEdHSVSlider[];
+	global string $AriVerColorEdE_checkBox[];	
+	global string $AriVerColorEdColorString_255[];
+	global string $AriVerColorEdNewHsvColorString_255[];
+	float $h=`floatSliderGrp -q -v $AriVerColorEdHSVSlider[0]`;
+	float $s=`floatSliderGrp -q -v $AriVerColorEdHSVSlider[1]`;
+	float $v=`floatSliderGrp -q -v $AriVerColorEdHSVSlider[2]`;
+	for($i=0;$i<size($AriVerColorEdColorString_255);$i++){
+		string $sepa[];
+		string $colors=$AriVerColorEdColorString_255[$i];
+		tokenize $colors "," $sepa;
+		$r_255[$i]=int($sepa[0]);
+		$g_255[$i]=int($sepa[1]);
+		$b_255[$i]=int($sepa[2]);
+		$a_255[$i]=int($sepa[3]);
+		float $hsv[]=rgb255_to_hsv($r_255[$i],$g_255[$i],$b_255[$i]);
+		float $newhsv[];
+		$newhsv[0]=$hsv[0]+$h;
+		$newhsv[0]=($newhsv[0]+360)%360;
+		$newhsv[1]=$hsv[1]+$s;
+		if($newhsv[1]<0)$newhsv[1]=0;
+		if($newhsv[1]>1)$newhsv[1]=1;
+		$newhsv[2]=$hsv[2]+$v;
+		if($newhsv[2]<0)$newhsv[2]=0;
+		if($newhsv[2]>1)$newhsv[2]=1;
+		vector $newrgb=(hsv_to_rgb(<<($newhsv[0]/360),$newhsv[1],$newhsv[2] >>));
+		$newrgb = $newrgb;
+		int $newRGB255[4];
+		$newRGB255[0]=trunc(($newrgb.x)*255+0.5);
+		$newRGB255[1]=trunc(($newrgb.y)*255+0.5);
+		$newRGB255[2]=trunc(($newrgb.z)*255+0.5);
+		$newRGB255[3]=0;
+		$AriVerColorEdNewHsvColorString_255[$i]=($newRGB255[0]+","+$newRGB255[1]+","+$newRGB255[2]+","+$newRGB255[3]);
+	}
+}
+global proc AriVertexColorEditor_GradationVerGet(int $mode){
+	global string $AriVerColorEdGradationInput[];
+	string $selectObj[] = `ls -sl`;
+	string $vertexList[] = `polyListComponentConversion -tv $selectObj`;
+	$vertexList = `filterExpand -selectionMask 31 $vertexList`;
+	float $vertexPos[];
+	float $verColor[];
+	$vertexPos=`pointPosition $vertexList[0]`;
+	floatFieldGrp -e -v1 $vertexPos[0] -v2 $vertexPos[1] -v3 $vertexPos[2] $AriVerColorEdGradationInput[0];
+	string $fvertexList[] = `polyListComponentConversion -tvf $vertexList[0]`;
+	$fvertexList = `filterExpand -selectionMask 70 $fvertexList[0]`;
+	$verColor= `polyColorPerVertex -q -nun -rgb $fvertexList[0]`;
+	colorSliderGrp  -e -rgb $verColor[0] $verColor[1] $verColor[2] $AriVerColorEdGradationInput[1];
+	$vertexPos=`pointPosition $vertexList[1]`;
+	floatFieldGrp -e -v1 $vertexPos[0] -v2 $vertexPos[1] -v3 $vertexPos[2] $AriVerColorEdGradationInput[2];
+	$fvertexList = `polyListComponentConversion -tvf $vertexList[1]`;
+	$fvertexList = `filterExpand -selectionMask 70 $fvertexList[0]`;
+	$verColor= `polyColorPerVertex -q -nun -rgb $fvertexList[0]`;
+	colorSliderGrp  -e -rgb $verColor[0] $verColor[1] $verColor[2] $AriVerColorEdGradationInput[3];
+}
+global proc AriVerColorE_Rand(int $mode){
+	global string $AriVerColorEd_UI_MainColorSliderRand[4];
+	string $selectObj[] = `ls -sl`;
+	string $vertexList[] = `polyListComponentConversion -tv $selectObj`;
+	$vertexList = `filterExpand -selectionMask 31 $vertexList`;
+	float $rgb1[] =`colorSliderGrp -q -rgb $AriVerColorEd_UI_MainColorSliderRand[0]`;
+	float $rgb2[] =`colorSliderGrp -q -rgb $AriVerColorEd_UI_MainColorSliderRand[1]`;
+	for($ver in $vertexList){
+		float $rand=`rand $rgb1[0] $rgb2[0]`;
+		if($mode==0)	polyColorPerVertex -r $rand -g $rand -b $rand $ver ;
+		if($mode==1)	polyColorPerVertex -a $rand $ver;
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_GradationGo(){
+	global string $AriVerColorEdGradationInput[];
+	string $selectObj[] = `ls -sl`;
+	string $vertexList[] = `polyListComponentConversion -tv $selectObj`;
+	$vertexList = `filterExpand -selectionMask 31 $vertexList`;
+	float $position1[];
+	$position1[0]=`floatFieldGrp -q -v1 $AriVerColorEdGradationInput[0]`;
+	$position1[1]=`floatFieldGrp -q -v2 $AriVerColorEdGradationInput[0]`;
+	$position1[2]=`floatFieldGrp -q -v3 $AriVerColorEdGradationInput[0]`;
+	float $position2[];
+	$position2[0]=`floatFieldGrp -q -v1 $AriVerColorEdGradationInput[2]`;
+	$position2[1]=`floatFieldGrp -q -v2 $AriVerColorEdGradationInput[2]`;
+	$position2[2]=`floatFieldGrp -q -v3 $AriVerColorEdGradationInput[2]`;
+	float $color1[] =`colorSliderGrp  -q -rgb  $AriVerColorEdGradationInput[1]`;
+	float $color2[] =`colorSliderGrp  -q -rgb  $AriVerColorEdGradationInput[3]`;
+	float $colorSun[];
+	$colorSub[0]=$color2[0]-$color1[0];
+	$colorSub[1]=$color2[1]-$color1[1];
+	$colorSub[2]=$color2[2]-$color1[2];
+	for($ver in $vertexList){
+		float $verPos[]=`pointPosition $ver`;
+		float $dis1= ($verPos[0]-$position1[0])*($verPos[0]-$position1[0])
+					+($verPos[1]-$position1[1])*($verPos[1]-$position1[1])
+					+($verPos[2]-$position1[2])*($verPos[2]-$position1[2]);
+		float $dis2= ($verPos[0]-$position2[0])*($verPos[0]-$position2[0])
+					+($verPos[1]-$position2[1])*($verPos[1]-$position2[1])
+					+($verPos[2]-$position2[2])*($verPos[2]-$position2[2]);
+		$dis1=sqrt($dis1);
+		$dis2=sqrt($dis2);
+		float $newColor[];
+		$newColor[0]=$color1[0]+($colorSub[0]*($dis1/($dis1+$dis2)));
+		$newColor[1]=$color1[1]+($colorSub[1]*($dis1/($dis1+$dis2)));
+		$newColor[2]=$color1[2]+($colorSub[2]*($dis1/($dis1+$dis2)));
+		polyColorPerVertex  -nun -rgb $newColor[0] $newColor[1] $newColor[2] $ver;
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_VectorGet(){
+	global string $AriVerColorEdVectorColorSlider[];
+	string $selectVer[] = `ls -sl`;
+	string $vertexList[] = `filterExpand -selectionMask 31 $selectVer`;
+	float $nor[]=`polyNormalPerVertex -q -xyz $vertexList[0]`;
+	floatFieldGrp -e -v1 ($nor[0]) -v2 ($nor[1]) -v3 ($nor[2])  $AriVerColorEdVectorColorSlider[5];
+}
+global proc AriVertexColorEditor_CreateRamp(){
+	global string $AriVerColorEdRampColorPort;
+	global string $AriVerColorEdRampColorSlider;
+	global string $AriVerColorEdRampFieldSlider;
+	global string $AriVerColorEdRampColorTextF;
+	string $ramp = `createNode "ramp" -n "AriVertexColorEditorRamp"`;
+	rampColorPort -e -node $ramp -sc $AriVerColorEdRampColorSlider -sp $AriVerColorEdRampFieldSlider $AriVerColorEdRampColorPort;
+	textField -e -text $ramp $AriVerColorEdRampColorTextF;
+}
+global proc AriVertexColorEditor_ConnectRamp(){
+	global string $AriVerColorEdRampColorPort;
+	global string $AriVerColorEdRampColorSlider;
+	global string $AriVerColorEdRampFieldSlider;
+	global string $AriVerColorEdRampColorTextF;
+	string $ramp =`textField -q -text $AriVerColorEdRampColorTextF`;
+	rampColorPort -e -node $ramp -sc $AriVerColorEdRampColorSlider -sp $AriVerColorEdRampFieldSlider $AriVerColorEdRampColorPort;
+}
+proc vector AriVertexColorEditor_GetRampColor(float $pos){
+	global string $AriVerColorEdRampColorTextF;
+	string $ramp =`textField -q -text $AriVerColorEdRampColorTextF`;
+	float  $positionList[];
+	vector $colorList[];
+	string $posColor[];
+	int $size = `getAttr -size ($ramp+".colorEntryList")`;
+	for($i=0;$i<$size;$i++){
+		float  $pos =`getAttr ($ramp+".colorEntryList["+$i+"].position")`;
+		vector $color =`getAttr ($ramp+".colorEntryList["+$i+"].color")`;
+		$posColor[$i] = ($pos+" : "+$color.x+","+$color.y+","+$color.z);
+	}
+	string $sortPosColor[] = `sort $posColor`;
+	float  $sortPositionList[];
+	vector $sortColorList[];
+	for($i=0; $i<size($sortPosColor); $i++){
+		string $sepa[];
+		tokenize $sortPosColor[$i] ":" $sepa;
+		$sortPositionList[$i] = float($sepa[0]);
+		string $sepaColor[];
+		tokenize $sepa[1] "," $sepaColor;
+		$sortColorList[$i]=<<float($sepaColor[0]), float($sepaColor[1]), float($sepaColor[2])>>;
+	}
+	int $posArray;
+	for($i=0; $i<size($sortPositionList); $i++){
+		if($pos < $sortPositionList[$i]){
+			$posArray = $i;
+			break;
+		}
+	}
+	float $startPos = $sortPositionList[$posArray-1];
+	float $endPos   = $sortPositionList[$posArray];
+	float $par = ($pos - $startPos)/($endPos - $startPos);
+	vector $startColor = $sortColorList[$posArray-1];
+	vector $endColor   = $sortColorList[$posArray];
+	vector $parColor = ($endColor-$startColor) * $par + $startColor;
+	return $parColor;
+}
+global proc AriVertexColorEditor_GetRamp(){
+	AriVertexColorEditor_GetRampColor(0.5);
+}
+global proc AriVertexColorEditor_VectorSet(){
+	global string $AriVerColorEdVectorColorSlider[];
+	string $selectObj[] = `ls -sl`;
+	string $vertexList[] = `polyListComponentConversion -tvf $selectObj`;
+	$vertexList = `filterExpand -selectionMask 70 $vertexList`;
+	vector $verVector;
+	vector $lightVector;
+	float $minColor[] = `colorSliderGrp -q -rgb  $AriVerColorEdVectorColorSlider[0]`;
+	float $maxColor[] = `colorSliderGrp -q -rgb  $AriVerColorEdVectorColorSlider[1]`;
+	float $minAngle   = `floatSliderGrp -q -v    $AriVerColorEdVectorColorSlider[3]`;
+	float $maxAngle   = `floatSliderButtonGrp -q -v $AriVerColorEdVectorColorSlider[4]`;
+	if($minAngle!=0)$minAngle = $minAngle*3.14159/180;
+	if($maxAngle!=0)$maxAngle = $maxAngle*3.14159/180;
+	float $lightVec[];
+	$lightVec[0] = `floatFieldGrp -q -v1 $AriVerColorEdVectorColorSlider[5]`;
+	$lightVec[1] = `floatFieldGrp -q -v2 $AriVerColorEdVectorColorSlider[5]`;
+	$lightVec[2] = `floatFieldGrp -q -v3 $AriVerColorEdVectorColorSlider[5]`;
+	$lightVector=<<$lightVec[0],$lightVec[1],$lightVec[2]>>;
+	for($ver in $vertexList){
+		float $nor[]=`polyNormalPerVertex -q -xyz $ver`;
+		$verVector=<<$nor[0],$nor[1],$nor[2]>>;
+		float $verAngle=angle ($lightVector,$verVector);
+		/*
+		float $a=1/($maxAngle-$minAngle);
+		float $b=0-$minAngle*$a;
+		float $colorPower = 1-($a*$verAngle+$b);
+		if($colorPower>1)$colorPower=1;
+		if($colorPower<0)$colorPower=0;
+		float $makeColor[];
+		$makeColor[0]= $minColor[0]+(($maxColor[0]-$minColor[0])*$colorPower);
+		$makeColor[1]= $minColor[1]+(($maxColor[1]-$minColor[1])*$colorPower);
+		$makeColor[2]= $minColor[2]+(($maxColor[2]-$minColor[2])*$colorPower);
+		*/
+		float $anglePer = -1*($verAngle/3.141592)+1;
+		vector $perColor = AriVertexColorEditor_GetRampColor($anglePer);
+		polyColorPerVertex -cla 0 -r ($perColor.x) $ver;
+		polyColorPerVertex -cla 0 -g ($perColor.y) $ver;
+		polyColorPerVertex -cla 0 -b ($perColor.z) $ver;
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc AriVertexColorEditor_MathSet(){
+	global string $AriVerColorEdMathTextField;
+	string $text=`textField -q $AriVerColorEdMathTextField`;
+	string $selectObj[] = `ls -sl`;
+	string $vertexList[] = `polyListComponentConversion -tvf $selectObj`;
+	$vertexList = `filterExpand -selectionMask 70 $vertexList`;
+	for($ver in $vertexList){
+		float $nor[]=`polyColorPerVertex -q -rgb $ver`;
+		float $makeColor[];
+		int $i=0;
+		for($input in $nor){
+			$makeColor[$i]=pow(0.5+$input,1.2)-0.5;
+			if($makeColor[$i]>2)$makeColor[$i]=2;
+			if($makeColor[$i]<0)$makeColor[$i]=0;
+			$i++;
+		}
+		polyColorPerVertex -cla 0 -r $makeColor[0] $ver;
+		polyColorPerVertex -cla 0 -g $makeColor[1] $ver;
+		polyColorPerVertex -cla 0 -b $makeColor[2] $ver;
+	}
+	AriVertexColorEditor_ChangeSelect();
+}
+global proc string AriIntToString(int $int){
+	string $string=(" "+$int);
+	if($int>=1000)$string=($int);
+	if($int<100)$string=(" 0"+$int);
+	if($int<10)	$string=(" 00"+$int);
+	if($int<0)	$string=($int);
+	return $string;
+}
+global proc AriVertexColorEditor_save(){
+	global string $AriVerColorEdEditFileMode;
+	global string $AriVerColorEdEditFileSize[2];
+	string $fileType=`optionMenu -q -v $AriVerColorEdEditFileMode`;
+	string $fileEx;
+	if($fileType=="GIF")	$fileEx="gif";
+	if($fileType=="SoftImage")	$fileEx="";
+	if($fileType=="RLA")	$fileEx="";
+	if($fileType=="TIFF")	$fileEx="tiff";
+	if($fileType=="SGI")	$fileEx="";
+	if($fileType=="Alias")	$fileEx="";
+	if($fileType=="IFF")	$fileEx="";
+	if($fileType=="JPEG")	$fileEx="jpg";
+	if($fileType=="EPS")	$fileEx="";
+	int $Xsize=`intField -q -v $AriVerColorEdEditFileSize[0]`;
+	int $Ysize=`intField -q -v $AriVerColorEdEditFileSize[1]`;
+	string $currentTool=`currentCtx`;
+	PaintVertexColorTool;
+	string $paintTool=`currentCtx`;
+	string $currentFileType=`artAttrPaintVertexCtx -q -exportfiletype $paintTool`;
+	int $currentXSize=`artAttrPaintVertexCtx -q -exportfilesizex $paintTool`;
+	int $currentYSize=`artAttrPaintVertexCtx -q -exportfilesizey $paintTool`;
+	artAttrPaintVertexCtx -e -exportfiletype $fileType $paintTool;
+	artAttrPaintVertexCtx -e -exportfilesizex $Xsize $paintTool;
+	artAttrPaintVertexCtx -e -exportfilesizey $Ysize $paintTool;
+	string $worksp = `workspace -q -rd`;
+	string $filePath[]= `fileDialog2 -dir $worksp`;
+	artAttrPaintVertexCtx -e -exportfiletype $currentFileType $paintTool;
+	artAttrPaintVertexCtx -e -exportfilesizex $currentXSize $paintTool;
+	artAttrPaintVertexCtx -e -exportfilesizey $currentYSize $paintTool;
+	setToolTo $currentTool;
+}
+global proc AriVertexColorEditor()
+{
+	string $ariCommand[];
+	string $ariButton[];
+	int $i=0;
+	global string $AriVerColorEdEscrollLay;
+	global string $AriVerColorEdColumnLayout;
+	global string $AriVerColorEdColumnPalet;
+	global string $AriVerColorEd_UI_MainColorSlider;
+	global string $AriVerColorEd_UI_MainAlpha;
+	global string $AriVerColorEd_UI_MainColorSliderRand[4];
+	global string $AriVerColorEdHSVSlider[];
+	global string $AriVerColorEdDirectCheckB;
+	global string $AriVerColorEdVectorColorSlider[];
+	global string $AriVerColorEdMathTextField;
+	global string $AriVerColorEdGradationInput[];
+	global string $AriVerColorEdEditFloatF[20];
+	global string $AriVerColorEdEditIntMax;
+	global string $AriVerColorEdRampColorPort;
+	global string $AriVerColorEdRampColorSlider;
+	global string $AriVerColorEdRampFieldSlider;
+	global string $AriVerColorEdRampColorTextF;
+	global string $AriVerColorEdTextScrollList;
+	global string $AriVerColorEd_UI_SmoothFloatS;
+	global string $AriVerColorEd_UI_FixSetTextF;
+	global string $AriVerColorEd_UI_colorFS[4];
+	global string $AriVerColorEd_UI_colorIF[4];
+	global string $AriVerColorEd_UI_colorPalet[4];
+	global string $AriVerColorEdUIrgbTrueCheckBox[4];
+	global string $AriVerColorEdUI_VerFaceModeRadio[3];
+	global string $AriVerColorEdUICheckBoxColorVis;
+	global string $AriVerColorEdUICheckBoxBrush;
+	global string $AriVerColorEdEditFileMode;
+	global string $AriVerColorEdEditFileSize[2];
+	global int $AriVerColorEdChangeTrue;
+	$AriVerColorEdChangeTrue = true;
+	int $jpTrue = false;
+	if(`about -uil`=="ja_JP")$jpTrue = true;
+	$jpTrue = false;
+	string $label_Fill      = "Fill";
+	string $label_Smooth    = "Smooth";
+	string $label_SmoothRGB = "Smooth RGB";
+	string $label_SmoothA   = "Smooth Alpha";
+	string $label_AddMul    = "Add Mul";
+	string $label_Clamp     = "Clamp";
+	string $label_ClampRGB  = "Clamp RGB";
+	string $label_ClampA    = "Clamp Alpha";
+	string $label_Historyp  = "History";
+	string $label_ColorOn   = "Color On";
+	string $label_ColorOFF  = "Color OFF";
+	string $label_MaxVertex = "Max Vertex";
+	if($jpTrue){
+		$label_Fill      = "塗りつぶし";
+		$label_Smooth    = "スムーズ";
+		$label_SmoothRGB = "スムーズ RGB";
+		$label_SmoothA   = "スムーズ Alpha";
+		$label_AddMul    = "加算乗算";
+		$label_Clamp     = "クランプ";
+		$label_ClampRGB  = "クランプ RGB";
+		$label_ClampA    = "クランプ Alpha";
+		$label_Historyp  = "履歴";
+		$label_MaxVertex = "Max 頂点数";
+	}
+	int $verFaceModeTrue = true;
+	float $addValue[];
+	float $scaleValue[];
+	float $clampValue[];
+	$addValue[0] = 0.1;
+	$addValue[1] = 0.1;
+	$addValue[2] = 0.1;
+	$addValue[3] = 0.1;
+	$addValue[4] = 0.1;
+	$scaleValue[0] = 1.1;
+	$scaleValue[1] = 1.1;
+	$scaleValue[2] = 1.1;
+	$scaleValue[3] = 1.1;
+	$scaleValue[4] = 1.1;
+	$clampValue[0] = 0;
+	$clampValue[1] = 1;
+	if(`optionVar -exists "AriVertexColorEditer_verFaceMode"`)	$verFaceModeTrue = `optionVar -q "AriVertexColorEditer_verFaceMode"`;
+	if(`optionVar -exists "AriVertexColorEditer_AddRGB"`)	$addValue[0] = `optionVar -q "AriVertexColorEditer_AddRGB"`;
+	if(`optionVar -exists "AriVertexColorEditer_AddR"`)		$addValue[1] = `optionVar -q "AriVertexColorEditer_AddR"`;
+	if(`optionVar -exists "AriVertexColorEditer_AddG"`)		$addValue[2] = `optionVar -q "AriVertexColorEditer_AddG"`;
+	if(`optionVar -exists "AriVertexColorEditer_AddB"`)		$addValue[3] = `optionVar -q "AriVertexColorEditer_AddB"`;
+	if(`optionVar -exists "AriVertexColorEditer_AddA"`)		$addValue[4] = `optionVar -q "AriVertexColorEditer_AddA"`;
+	if(`optionVar -exists "AriVertexColorEditer_ScaleRGB"`)	$scaleValue[0] = `optionVar -q "AriVertexColorEditer_ScaleRGB"`;
+	if(`optionVar -exists "AriVertexColorEditer_ScaleR"`)	$scaleValue[1] = `optionVar -q "AriVertexColorEditer_ScaleR"`;
+	if(`optionVar -exists "AriVertexColorEditer_ScaleG"`)	$scaleValue[2] = `optionVar -q "AriVertexColorEditer_ScaleG"`;
+	if(`optionVar -exists "AriVertexColorEditer_ScaleB"`)	$scaleValue[3] = `optionVar -q "AriVertexColorEditer_ScaleB"`;
+	if(`optionVar -exists "AriVertexColorEditer_ScaleA"`)	$scaleValue[4] = `optionVar -q "AriVertexColorEditer_ScaleA"`;
+	if(`optionVar -exists "AriVertexColorEditer_clampMin"`)	$clampValue[0] = `optionVar -q "AriVertexColorEditer_clampMin"`;
+	if(`optionVar -exists "AriVertexColorEditer_clampMax"`)	$clampValue[1] = `optionVar -q "AriVertexColorEditer_clampMax"`;
+	if ( (`window -ex AriVertexColorEditorW`) == true ) deleteUI AriVertexColorEditorW;
+	window -title "AriVertexColorEditor" -menuBar true -w 300 -h 300   AriVertexColorEditorW;
+		paneLayout -cn "horizontal2";
+		string $form = `formLayout `;
+		$AriVerColorEdEscrollLay = `scrollLayout -cr true `;
+			$AriVerColorEdColumnLayout = `columnLayout -adj true `;
+			setParent..;
+		setParent..;
+		string $verfaceModeColumn = `columnLayout -adj true`;
+			rowLayout -nc 2 -ad2 1;
+			$AriVerColorEdTextScrollList = `textScrollList -w 30 -h 60 -ams true -sc "AriVertexColorEditor_ColorSetChange()"`;
+			columnLayout;
+			iconTextButton -i "polyColorSetEditor.png" -c "colorSetEditor";
+			button -w 36 -l "CpEd" -c "ComponentEditor";
+			setParent..;
+			setParent..;
+			rowLayout -nc 3 -ad3 1;
+			$AriVerColorEd_UI_FixSetTextF = `textField -ed false`;
+			button -w 40 -l "GetFix" -c "AriVertexColorEditor_GetFixSet(1)";
+			button -w 40 -l "Clear"  -c "AriVertexColorEditor_GetFixSet(0)";
+			setParent..;
+			rowLayout -nc 3 ;
+			button -w 60 -l "Reload" -bgc 0.5 1 0.7 -c "AriVertexColorEditor_ChangeSelect()";
+			radioCollection;
+			$AriVerColorEdUI_VerFaceModeRadio[0] = `radioButton -label "Vertex"      -onc "AriVertexColorEditor_ChangeSelect(); AriVertexColorEditor_Save_UI();" `;
+			$AriVerColorEdUI_VerFaceModeRadio[1] = `radioButton -label "VertexFace"  -onc "AriVertexColorEditor_ChangeSelect(); AriVertexColorEditor_Save_UI();" -sl`;
+			setParent..;
+			rowLayout -nc 3 -adj 2;
+			text -w 126 -l "";
+			string $chckBoxRGB = `formLayout`;
+			$AriVerColorEdUIrgbTrueCheckBox[0] = `checkBox -h 12 -bgc 1 0 0 -l "R" -v true -cc "AriVertexColorEditor_ChangeSelect()"`;
+			$AriVerColorEdUIrgbTrueCheckBox[1] = `checkBox -h 12 -bgc 0 1 0 -l "G" -v true -cc "AriVertexColorEditor_ChangeSelect()"`;
+			$AriVerColorEdUIrgbTrueCheckBox[2] = `checkBox -h 12 -bgc 0 0 1 -l "B" -v true -cc "AriVertexColorEditor_ChangeSelect()"`;
+			$AriVerColorEdUIrgbTrueCheckBox[3] = `checkBox -h 12 -bgc 0 0 0 -l "A" -v true -cc "AriVertexColorEditor_ChangeSelect()"`;
+			setParent..;
+			formLayout -e
+			-af $AriVerColorEdUIrgbTrueCheckBox[0] "left"  0
+			-ap $AriVerColorEdUIrgbTrueCheckBox[0] "right" 0 25
+			-ac $AriVerColorEdUIrgbTrueCheckBox[1] "left"  0 $AriVerColorEdUIrgbTrueCheckBox[0]
+			-ap $AriVerColorEdUIrgbTrueCheckBox[1] "right" 0 50
+			-ac $AriVerColorEdUIrgbTrueCheckBox[2] "left"  0 $AriVerColorEdUIrgbTrueCheckBox[1]
+			-ap $AriVerColorEdUIrgbTrueCheckBox[2] "right" 0 75
+			-ac $AriVerColorEdUIrgbTrueCheckBox[3] "left"  0 $AriVerColorEdUIrgbTrueCheckBox[2]
+			-af $AriVerColorEdUIrgbTrueCheckBox[3] "right" 0
+			$chckBoxRGB;
+			text -w 10 -l "";
+			setParent..;
+			setParent..;
+		if($verFaceModeTrue==false){
+			radioButton -e -sl $AriVerColorEdUI_VerFaceModeRadio[0];
+		}
+		string $selectButton = `columnLayout`;
+			rowLayout -nc 4;
+			button -w 60 -l ("ALL ON" )  -c ("AriVerColorEditor_checkBoxFalse(1)");
+			button -w 60 -l ("ALL OFF" ) -c ("AriVerColorEditor_checkBoxFalse(0)");
+			text -l $label_MaxVertex;
+			$AriVerColorEdEditIntMax=`intField -w 50 -v 2000`;
+			setParent..;
+		setParent..;
+		setParent..;
+		formLayout -edit
+		-af $selectButton "left"   0
+		-af $selectButton "bottom" 0
+		-af $selectButton "right"  0
+		-af $verfaceModeColumn "top" 0
+		-af $verfaceModeColumn "left" 0
+		-af $verfaceModeColumn "right" 0
+		-ac $AriVerColorEdEscrollLay "bottom" 0 $selectButton
+		-ac $AriVerColorEdEscrollLay "top"   0 $verfaceModeColumn
+		-af $AriVerColorEdEscrollLay "left"   0
+		-af $AriVerColorEdEscrollLay "right"  0
+		$form;
+		string $scrollLayout = `scrollLayout -cr true -h 100 `;
+		columnLayout -adj true;
+		string $rgba = `frameLayout -l $label_Fill -cll 1 -cl 0  `;
+			columnLayout -adj true -w 30;
+				$AriVerColorEd_UI_MainColorSlider = `colorSliderButtonGrp -w 30 -bl "RGB" -rgb 0.5 0.5 0.5 -buttonCommand "AriVertexColorEditor_ButtonOn(0)" -cc "AriVertexColorEditor_ReroadInputField(0)"`;
+				frameLayout -l "RGB" -cll 1 -cl 1 -w 30 -bgc 0.2 0.2 0.2;
+				rowLayout -bgc 0.4 0.2 0.2 -nc 10 -adj 3 -w 30;
+				$AriVerColorEd_UI_colorPalet[0] = `text -h 16 -w 20 -bgc 1 0 0 -l "" `;
+				$AriVerColorEd_UI_colorIF[0] = `intField -w 38 -cc "AriVertexColorEditor_ReroadInputField(11)"`;
+				$AriVerColorEd_UI_colorFS[0] = `floatSliderGrp -field true -pre 3 -w 30 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(10)"`;
+				button -h 16 -w 40 -l "R" -bgc 1 0 0 -c "AriVertexColorEditor_ButtonOn(1)";
+				setParent..;
+				rowLayout -bgc 0.2 0.4 0.2 -nc 10 -adj 3;
+				$AriVerColorEd_UI_colorPalet[1] = `text -h 16 -w 20 -bgc 0 1 0 -l "" `;
+				$AriVerColorEd_UI_colorIF[1] = `intField -w 38 -cc "AriVertexColorEditor_ReroadInputField(11)"`;
+				$AriVerColorEd_UI_colorFS[1] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(10)"`;
+				button -h 16 -w 40 -l "G" -bgc 0 1 0 -c "AriVertexColorEditor_ButtonOn(2)";
+				setParent..;
+				rowLayout -bgc 0.2 0.2 0.4 -nc 10 -adj 3;
+				$AriVerColorEd_UI_colorPalet[2] = `text -h 16 -w 20 -bgc 0 0 1 -l "" `;
+				$AriVerColorEd_UI_colorIF[2] = `intField -w 38 -cc "AriVertexColorEditor_ReroadInputField(11)"`;
+				$AriVerColorEd_UI_colorFS[2] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(10)"`;
+				button -h 16 -w 40 -l "B" -bgc 0 0 1 -c "AriVertexColorEditor_ButtonOn(3)";
+				setParent..;
+				setParent..;
+				frameLayout -l "HSV" -cll 1 -cl 1 -bgc 0.2 0.2 0.2;;
+				columnLayout -adj true;
+				rowLayout -nc 2 -adj 1;
+				columnLayout -adj true;
+				rowLayout -nc 10 -adj 3;
+				text -l "H";
+				$AriVerColorEd_UI_colorPalet[4] = `text -h 16 -bgc 0 0 0 -l "" -vis false`;
+				$AriVerColorEd_UI_colorFS[4] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(12)"`;
+				setParent..;
+				rowLayout -nc 10 -adj 3;
+				text -l "S";
+				$AriVerColorEd_UI_colorPalet[5] = `text -h 16 -bgc 0 0 0 -l "" -vis false`;
+				$AriVerColorEd_UI_colorFS[5] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(12)"`;
+				setParent..;
+				rowLayout -nc 10 -adj 3;
+				text -l "V";
+				$AriVerColorEd_UI_colorPalet[6] = `text -h 16 -bgc 0 0 0 -l "" -vis false`;
+				$AriVerColorEd_UI_colorFS[6] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(12)"`;
+				setParent..;
+				setParent..;
+				button -h 60 -l "HSV" -c "AriVertexColorEditor_ButtonOn(0)";
+				setParent..;
+				setParent..;
+				setParent..;
+				separator;
+				rowLayout -nc 10 -adj 3;
+				$AriVerColorEd_UI_colorPalet[3] = `text -h 16 -w 20 -bgc 0 0 0 -l "" `;
+				$AriVerColorEd_UI_colorIF[3] = `intField -w 38 -cc "AriVertexColorEditor_ReroadInputField(11)"`;
+				$AriVerColorEd_UI_colorFS[3] = `floatSliderGrp -field true -pre 3 -cw 1 48 -min 0 -max 1 -fmn -100 -fmx 100 -cc "AriVertexColorEditor_ReroadInputField(10)"`;
+				button -h 30-w 40 -l "A" -bgc 0 0 0 -c "AriVertexColorEditor_ButtonOn(4)";
+				setParent..;
+				$AriVerColorEd_UI_MainAlpha = `colorSliderButtonGrp -bl "  A  " -rgb 1 1 1  -vis false -buttonCommand "AriVertexColorEditor_ButtonOn(5)" -cc "AriVertexColorEditor_ReroadInputField(1)"`;
+				setParent..;
+			setParent..;
+			frameLayout -l $label_Smooth -cll 1 -cl 1  ;
+				columnLayout -adj true;
+				button -h 30 -w 60 -label $label_Smooth -bgc 0.7 0.7 0.7 -c "AriVertexColorEditor_Smooth(0)";
+				string $formSmooth = `formLayout`;
+				string $smoothButton1 = `button  -w 60 -label $label_SmoothRGB -c "AriVertexColorEditor_Smooth(1)"`;
+				string $smoothButton2 = `button  -w 60 -label $label_SmoothA   -c "AriVertexColorEditor_Smooth(2)"`;
+				setParent..;
+				formLayout -e
+				-af $smoothButton1 "left"  0
+				-ap $smoothButton1 "right" 0 50
+				-af $smoothButton2 "right" 0
+				-ap $smoothButton2 "left"  0 50
+				$formSmooth;
+				$AriVerColorEd_UI_SmoothFloatS =  `floatSliderGrp -vis true -max 1 -min 0 -field true -v 1`;
+				setParent..;
+			setParent..;
+		setParent..;
+		string $edit = `frameLayout -l $label_AddMul -cll 1 -cl 1 -w 50 `;
+			columnLayout -adj true;
+				rowLayout -nc 2 -adj 2;
+					text -w 30 -h 30 -l "RGB" -bgc 1 1 1;
+					columnLayout -adj true ;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[0] = `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $addValue[0]`;
+						button -w 30 -h 20 -l "+" -c "AriVertexColorEditor_Edit(0,0)";
+						button -w 30 -h 20 -l "-" -c "AriVertexColorEditor_Edit(0,1)";
+					setParent..;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[10] = `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $scaleValue[0]`;	
+						button -w 30 -h 20 -l "*" -c "AriVertexColorEditor_Edit(0,2)";
+						button -w 30 -h 20 -l "/" -c "AriVertexColorEditor_Edit(0,3)";
+					setParent..;
+					setParent..;
+				setParent..;
+				rowLayout -nc 2 -adj 2;
+					text -w 30 -l "R" -bgc 1 0 0;
+					columnLayout -adj true ;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[1] = `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $addValue[1]`;
+						button -w 30 -h 20 -l "+" -c "AriVertexColorEditor_Edit(1,0)";
+						button -w 30 -h 20 -l "-" -c "AriVertexColorEditor_Edit(1,1)";
+					setParent..;
+					rowLayout -nc 3 -adj 1;
+					$AriVerColorEdEditFloatF[11]=`floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $scaleValue[1]`;	
+					button -w 30 -h 20 -l "*" -c "AriVertexColorEditor_Edit(1,2)";
+					button -w 30 -h 20 -l "/" -c "AriVertexColorEditor_Edit(1,3)";
+					setParent..;
+					setParent..;
+				setParent..;
+				rowLayout -nc 2 -adj 2;
+					text -w 30 -l "G" -bgc 0 1 0;
+					columnLayout -adj true ;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[2]= `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $addValue[2]`;
+						button -w 30 -h 20 -l "+" -c "AriVertexColorEditor_Edit(2,0)";
+						button -w 30 -h 20 -l "-" -c "AriVertexColorEditor_Edit(2,1)";
+					setParent..;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[12]=`floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $scaleValue[2]`;	
+						button -w 30 -h 20 -l "*" -c "AriVertexColorEditor_Edit(2,2)";
+						button -w 30 -h 20 -l "/" -c "AriVertexColorEditor_Edit(2,3)";
+					setParent..;
+					setParent..;
+				setParent..;
+				rowLayout -nc 2 -adj 2; 
+					text -w 30 -l "B" -bgc 0 0 1;
+					columnLayout -adj true ;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[3]= `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $addValue[3]`;
+						button -w 30 -h 20 -l "+" -c "AriVertexColorEditor_Edit(3,0)";
+						button -w 30 -h 20 -l "-" -c "AriVertexColorEditor_Edit(3,1)";
+					setParent..;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[13]=`floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $scaleValue[3]`;	
+						button -w 30 -h 20 -l "*" -c "AriVertexColorEditor_Edit(3,2)";
+						button -w 30 -h 20 -l "/" -c "AriVertexColorEditor_Edit(3,3)";
+					setParent..;
+					setParent..;
+				setParent..;
+				separator;
+				rowLayout -nc 2 -adj 2;
+					text -w 30 -l "A" -bgc 0 0 0;
+					columnLayout -adj true ;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[4] = `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $addValue[4]`;
+						button -w 30 -h 20 -l "+" -c "AriVertexColorEditor_Edit(4,0)";
+						button -w 30 -h 20 -l "-" -c "AriVertexColorEditor_Edit(4,1)";
+					setParent..;
+					rowLayout -nc 3 -adj 1;
+						$AriVerColorEdEditFloatF[14] = `floatSliderGrp -vis true -cw 1 48 -fmx 1000 -max 10 -min 0 -field true -pre 3 -v $scaleValue[4]`;	
+						button -w 30 -h 20 -l "*" -c "AriVertexColorEditor_Edit(4,2)";
+						button -w 30 -h 20 -l "/" -c "AriVertexColorEditor_Edit(4,3)";
+					setParent..;
+					setParent..;
+				setParent..;
+				setParent..;
+			setParent..;
+			frameLayout -l $label_Clamp -cll 1 -cl 1 -w 50;
+				columnLayout -adj true;
+				rowLayout -nc 4 -cw4 24 50 24 50;
+					text -l "下限";
+					$AriVerColorEdEditFloatF[5]=`floatField -w 40 -pre 2 -v $clampValue[0]`;
+					text -l "上限";
+					$AriVerColorEdEditFloatF[6]=`floatField -w 40 -pre 2 -v $clampValue[1]`;
+				setParent..;
+				button -w 60 -l $label_ClampRGB -c "AriVertexColorEditor_Edit(10,0)";
+				button -w 60 -l $label_ClampA   -c "AriVertexColorEditor_Edit(11,0)";
+				setParent..;
+			setParent..;
+		string $hsv = `frameLayout -l "HSV" -cll 1 -cl 1 -w 280 -vis false`;
+		columnLayout;
+			$AriVerColorEdHSVSlider[0]=`floatSliderGrp  -field true -max 180 -min -180 -cc "AriVertexColorEditor_ChangeHSVSlider()"`;
+			$AriVerColorEdHSVSlider[1]=`floatSliderGrp  -field true -max 1 -min -1 -precision 2 -cc "AriVertexColorEditor_ChangeHSVSlider()"`;
+			$AriVerColorEdHSVSlider[2]=`floatSliderButtonGrp  -field true -max 1 -min -1 -cc "AriVertexColorEditor_ChangeHSVSlider()" -bl "Set" -buttonCommand "AriVertexColorEditor_Select(1)"`;
+		setParent..;
+		setParent..;
+		string $copyPaste = `frameLayout -l "コピー/ペースト" -cll 1 -cl 1 -w 300 -vis false`;
+			rowLayout -nc 2;
+				button -w 60 -l "Copy"  -c "AriVerColorE_Copy()";
+				button -w 60 -l "Paste" -c "AriVerColorE_Paste()";
+			setParent..;
+		setParent..;
+		string $rand=`frameLayout -l "ランダム" -cll 1 -cl 1 -w 300 -vis false `;
+			columnLayout;
+				$AriVerColorEd_UI_MainColorSliderRand[0] = `colorSliderGrp  -rgb 0.5 0.5 0.5 `;
+				$AriVerColorEd_UI_MainColorSliderRand[1] = `colorSliderGrp  -rgb 1 1 1  `;
+			setParent..;
+			rowLayout -nc 2;
+				button -w 60 -l "RGB" -c "AriVerColorE_Rand(0)";
+				button -w 60 -l "A"   -c "AriVerColorE_Rand(1)";
+			setParent..;
+		setParent..;
+		string $gradation = `frameLayout -l "Gradation" -cll 1 -cl 1 -w 300 -vis false`;
+		columnLayout;
+		rowLayout -nc 3 -cw3 40 220 40;
+			text -l "ver1";
+			$AriVerColorEdGradationInput[0] =`floatFieldGrp -pre 5 -numberOfFields 3 -cw3 70 70 70 -v1 0 -v2 0 -v3 0 `;
+			button -l "get" -c "AriVertexColorEditor_GradationVerGet(1)";
+		setParent..;
+			$AriVerColorEdGradationInput[1]=`colorSliderGrp  -rgb 1 1 1 `;
+		rowLayout -nc 3 -cw3 40 220 40;
+			text -l "ver2";
+			$AriVerColorEdGradationInput[2] =`floatFieldGrp -pre 5 -numberOfFields 3 -cw3 70 70 70 -v1 0 -v2 0 -v3 0 `;
+			button -l "get" -c "AriVertexColorEditor_GradationVerGet(2)";
+		setParent..;
+			$AriVerColorEdGradationInput[3]=`colorSliderGrp  -rgb 1 1 1 `;	
+		button -w 200 -l "DistanceGradation" -c "AriVertexColorEditor_GradationGo";
+		setParent..;setParent..;
+		string $vector =`frameLayout -l "Vector" -cll 1 -cl 1 -w 300 -vis false`;
+		columnLayout;
+		rowLayout -nc 2 -cw2 200 40;
+			$AriVerColorEdVectorColorSlider[5] =`floatFieldGrp -pre 2 -numberOfFields 3 -cw3 50 50 50 -v1 0 -v2 1 -v3 0 `;
+			button -l "get" -c "AriVertexColorEditor_VectorGet";
+		setParent..;
+		$AriVerColorEdRampColorPort = `rampColorPort -h 100 `;
+		$AriVerColorEdRampColorSlider = `attrColorSliderGrp -cw 1 0`;
+		$AriVerColorEdRampFieldSlider = `attrFieldSliderGrp -cw 1 0`;
+		$AriVerColorEdRampColorTextF = `textField -w 200 -text "AriVertexColorEditorRamp" -ed true -enterCommand "AriVertexColorEditor_ConnectRamp"`;
+		button -l "Create Ramp" -c "AriVertexColorEditor_CreateRamp()";
+		$AriVerColorEdVectorColorSlider[1]=`colorSliderGrp  -rgb 1 1 1 `;
+		$AriVerColorEdVectorColorSlider[0]=`colorSliderGrp  -rgb 0 0 0 `;
+		$AriVerColorEdVectorColorSlider[3]=`floatSliderGrp  -field true -max 180 -min 0`;
+		$AriVerColorEdVectorColorSlider[4]=`floatSliderButtonGrp  -field true -max 180 -min 0 -v 180 -bl "Set" -buttonCommand "AriVertexColorEditor_VectorSet"`;
+		setParent..;setParent..;
+		string $rireki=`frameLayout -l $label_Historyp -cll 1 -cl 1 -w 280 `;
+		columnLayout;
+			AriVertexColorEditor_AddPalet;
+		setParent..;setParent..;
+		string $exports=`frameLayout -l "出力" -cll 1 -cl 1 -w 280 -vis false`;
+		columnLayout;
+		rowLayout -nc 3;
+		$AriVerColorEdEditFileSize[0]=`intField -w 60 -v 512`;
+		$AriVerColorEdEditFileSize[1]=`intField -w 60 -v 512`;
+		$AriVerColorEdEditFileMode = `optionMenu -w 120  -label "" `;
+				menuItem -label "GIF";
+				menuItem -label "SoftImage";
+				menuItem -label "RLA";
+				menuItem -label "TIFF";
+				menuItem -label "SGI";
+				menuItem -label "Alias";
+				menuItem -label "IFF";
+				menuItem -label "JPEG";
+				menuItem -label "EPS";
+		setParent..;
+		button -w 160 -l "書き出し" -c "AriVertexColorEditor_save()";
+		setParent..;
+		setParent..;
+		$verColONOFF=`rowLayout -nc 5 `;
+			button -w 64 -label $label_ColorOn  -c "AriVertexColorEditor_ViewONOFF(1)";
+			button -w 64 -label $label_ColorOFF -c "AriVertexColorEditor_ViewONOFF(0)";
+			$AriVerColorEdUICheckBoxColorVis = `checkBox -l "All"`;
+			iconTextButton -i "paintVertexColour.png" -c "PaintVertexColorToolOptions";
+			$AriVerColorEdUICheckBoxBrush = `checkBox -l "" -vis false`;
+		setParent..;
+		string $paintFrame = `frameLayout -vis false -l "ペイント" -cll 1 -cl 1 -w 280 `;
+		columnLayout;
+		button -l "ObjSelect" -c "select `polyListComponentConversion`";
+		setParent..;
+		setParent..;
+		setParent..;
+	setParent..;
+	showWindow;
+	scriptJob -p "AriVertexColorEditorW" -event "SelectionChanged" "AriVertexColorEditor_ChangeSelect()";
+	$AriVerColorEd_ChangeTrue = true;
+	AriVertexColorEditor_ChangeSelect();
+	AriVertexColorEditor_ReroadInputField(0);
+}
+

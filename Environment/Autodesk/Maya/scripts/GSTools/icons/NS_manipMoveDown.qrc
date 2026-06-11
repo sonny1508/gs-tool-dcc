@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_manipMoveDown.png">NS_manipMoveDown_100.png</file>
+		<file>NS_manipMoveDown_150.png</file>
+		<file>NS_manipMoveDown_200.png</file>
+	</qresource>

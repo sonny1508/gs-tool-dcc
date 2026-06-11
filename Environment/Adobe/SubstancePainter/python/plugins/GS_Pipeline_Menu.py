@@ -20,11 +20,23 @@ def new_gs_pbr_validator():
     filter_manager = gs_layerstack.FilterManager(layer_manager)
     filter_manager.new_gs_pbr_validator()
 
-def batch_gs_pbr_validator():
-    """Create GS_PBR_Validator filter layer on all texture sets in the project."""
+def batch_gs_pbr_validator_r6():
+    """Create GS_PBR_Validator_R6 filter layer on all texture sets in the project."""
     layer_manager = gs_layerstack.LayerManager()
     filter_manager = gs_layerstack.FilterManager(layer_manager)
-    filter_manager.batch_gs_pbr_validator()
+    filter_manager.batch_gs_pbr_validator_r6()
+
+def batch_gs_pbr_validator_hw3():
+    """Create GS_PBR_Validator_HW3 filter layer on all texture sets in the project."""
+    layer_manager = gs_layerstack.LayerManager()
+    filter_manager = gs_layerstack.FilterManager(layer_manager)
+    filter_manager.batch_gs_pbr_validator_hw3()
+
+def batch_gs_pbr_validator_mgp25():
+    """Create GS_PBR_Validator_MGP25 filter layer on all texture sets in the project."""
+    layer_manager = gs_layerstack.LayerManager()
+    filter_manager = gs_layerstack.FilterManager(layer_manager)
+    filter_manager.batch_gs_pbr_validator_mgp25()
 
 def remove_gs_pbr_validator():
     """Remove GS_PBR_Validator filter layers from all texture sets in the project."""
@@ -131,8 +143,10 @@ def create_menu():
     # Define actions, shortcuts, and separators
     actions_with_separators = [
         ("New Paint Layer with GS_PBR_Validator Filter Effect", new_gs_pbr_validator, "Ctrl+P"),
-        ("Batch GS_PBR_Validator for all Texture Sets", batch_gs_pbr_validator, None),
-        ("Remove GS_PBR_Validator from all Texture Sets", remove_gs_pbr_validator, None),
+        ("Validate PBR for all Texture Sets Ride6 (0.15 - 0.73)", batch_gs_pbr_validator_r6, None),
+        ("Validate PBR for all Texture Sets Hotwheels3 (0.15 - 0.80)", batch_gs_pbr_validator_hw3, None),
+        ("Validate PBR for all Texture Sets MotoGP25 (0.12 - 0.81)", batch_gs_pbr_validator_mgp25, None),
+        ("Remove PBR Validator from all Texture Sets", remove_gs_pbr_validator, None),
         None,  # Separator
         ("New Fill Layer with Base Color", new_fill_layer_base, "Ctrl+F"),
         ("New Fill Layer with Height", new_fill_layer_height, "Ctrl+Alt+F"),

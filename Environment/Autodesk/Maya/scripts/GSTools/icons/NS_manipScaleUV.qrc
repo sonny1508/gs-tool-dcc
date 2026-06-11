@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_manipScaleUV.png">NS_manipScaleUV_100.png</file>
+		<file>NS_manipScaleUV_150.png</file>
+		<file>NS_manipScaleUV_200.png</file>
+	</qresource>

@@ -1,0 +1,865 @@
+//--------------------------------------------------------------------------
+//
+// ScriptName : AriReFreezeRotate
+// Contents   : フリーズしてしまった回転値をエッジや頂点情報から元に戻します。
+// Author     : Ari
+// URL        : http://cgjishu.net
+// Since      : 2015/04
+// LastUpdate : 2017/11/26 親をターゲットにする場合のバグ修正とUI調整
+//              2016/09/11 親と子の回転情報を保持するようにしました。
+//              2016/07/10 法線を基準にしても軸を設定できるようにしました。
+//              2016/03/06 ピボットの回転機能追加
+//              2016/02/07 設定した軸の方向を180度逆に設定するボタンを追加しました。
+//              2015/10/25 複数のオブジェクトに対して行えるようにしました。
+//              2015/08/16 処理をターゲットの親オブジェクトに対して行えるようにしました。
+//
+// Note         エッジまたは頂点を2つ選択し「実行1」ボタンでエッジが「第1軸」に並行になります。
+//              最初に選んだ平行軸以外のエッジを選択して「実行2」ボタンを押すと、第2軸で選んだ軸に「上記の目標軸を軸にして」回転します。
+//              http://cgjishu.net/blog-entry-79.html
+//
+//--------------------------------------------------------------------------
+
+
+proc int AriNumber2to10(int $boolList[]){
+	int $number;
+	int $baisu=1;
+	for($i=0;$i<size($boolList);$i++){
+		$number += $baisu*$boolList[$i];
+		$baisu = $baisu*2;
+	}
+	return $number;	
+}
+proc int[] AriNumber10to2(int $number){
+	int $boolList[];
+	int $baisu=pow(2,20);
+	$amari=$number;
+	for($i=20;$i>=0;$i--){
+		if($amari-$baisu>=0){
+			$amari=$amari-$baisu;
+			$boolList[$i]=1;
+		}
+		else $boolList[$i]=0;
+		$baisu=$baisu/2;
+	}
+	return $boolList;
+}
+proc string AriAngleReFreezeRotate_getParent(string $object,int $parentNum){
+	string $parentObj;
+	string $parentList[];
+	int $i=0;
+	$parentList[0]=$object;
+	if($parentList[0]!=""){
+		for($i=0;$i<$parentNum;$i++){
+			string $pa[]=`listRelatives -p -pa $parentList[$i]`;
+			if($pa[0]=="")break;
+			$parentList[$i+1]=$pa[0];
+		}
+	}
+	if(size($parentList) >= $parentNum+1){
+		$parentObj=$parentList[$parentNum];
+	}
+	else{
+		$parentObj=$parentList[size($parentList)-1];
+	}
+	return $parentObj;
+}
+proc string[] AriAngleReFreezeRotate_getSelectTransformList(int $parentTrue){
+	global string $AriReFreezeRotateUI[10];
+	int $parentNum = `intField -q -v $AriReFreezeRotateUI[3]`;
+	string $transformList[]=`ls -sl -tr`;
+	if(size($transformList)==0){
+		string $selects[]=`ls -sl`;
+		string $objects[] = `polyListComponentConversion $selects`;	
+		$transformList = `listRelatives -p -pa -type "transform" $objects`;
+	}
+	string $parentList[] = $transformList;
+	if($parentTrue){
+		int $i;
+		for($trnsform in $transformList){
+			 $parent = AriAngleReFreezeRotate_getParent($trnsform,$parentNum);
+			if(!stringArrayContains($parent, $parentList)){
+				$parentList[$i] = $parent;
+				$i++;
+			}
+		}
+	}
+	return $parentList;
+}
+proc int AriUnparentOne_ListNum (string $obj){
+	int $num;
+	string $parent[]=`listRelatives -p -pa $obj`;
+	string $children[];
+	if($parent[0]=="")	$children=`ls -as `;
+	else $children=	`listRelatives -c -pa $parent[0]`;
+	int $i=0;
+	for($child in $children){
+		if($child == $obj){
+			$num=$i;
+			break;
+		}
+		$i++;
+	}
+	return $num;
+}
+global proc AriReFreezeRotate_rotateAttrZero(){
+	global string $AriReFreezeRotateMenuItem[5];
+	int $checkTrue = `menuItem -q -checkBox  $AriReFreezeRotateMenuItem[0]`;
+	string $parentList[] = AriAngleReFreezeRotate_getSelectTransformList($checkTrue);
+	for($object in $parentList){
+		setAttr ($object+".rotate") 0 0 0;
+	}
+}
+global proc AriReFreezeRotate_Freeze(){
+	global string $AriReFreezeRotateMenuItem[5];
+	int $myOut = false;
+	int $checkTrue = `menuItem -q -checkBox  $AriReFreezeRotateMenuItem[1]`;
+	string $parentList[] = AriAngleReFreezeRotate_getSelectTransformList($checkTrue);
+	for($object in $parentList){
+		string $childList[] = `listRelatives -pa -c -type "transform" $object`;
+		int $listNum = AriUnparentOne_ListNum($object);
+		string $baseName = $object;
+		string $parentObj[] = `listRelatives -p -pa $object`;
+		if($myOut==true){
+			if($parentObj[0] != ""){
+				string $unParent[] = `parent -w $object`;
+				$object = $unParent[0];
+			}
+		}
+		string $parentGroup;
+		string $childListWorld[];
+		if(size($childList)){
+			$parentGroup = `group -em -name "AriReFreezeParent"`;
+			$childListWorld = `parent $childList $parentGroup`;
+		}
+		makeIdentity -apply true -t 0 -r 1 -s 0 -n 0 $object;
+		string $parentList[];
+		if(size($childList)){
+			$parentList = `parent $childListWorld $object`;
+			delete $parentGroup;
+		}
+		if($myOut==true){
+			if($parentObj[0] != ""){
+				string $outObj[] = `parent $object $parentObj[0]`;
+				$object = $outObj[0];
+				reorder -relative ($listNum+1) $object;
+				if($baseName != $object){
+					rename $object $baseName;
+				}
+			}
+		}
+	}
+	select $parentList;
+}
+global proc AriReFreezeRotate_getObject(){
+	global string $AriReFreezeRotateMenuItem[5];
+	global string $AriReFreezeRotateUI[10];
+	int $checkTrue = `menuItem -q -checkBox  $AriReFreezeRotateMenuItem[2]`;
+	string $targetList[] = AriAngleReFreezeRotate_getSelectTransformList(true);
+	string $transformList[] = AriAngleReFreezeRotate_getSelectTransformList($checkTrue);
+	string $parentObj = $transformList[0];
+	string $text = $targetList[0];
+	if($text=="")$text = "Target";
+	textField -e -text $text $AriReFreezeRotateUI[0];
+	if($parentObj != ""){
+		attrFieldGrp -e -en 1 -attribute ($parentObj+".rotate") $AriReFreezeRotateUI[1];
+	}
+	else{
+		attrFieldGrp -e -en 0  $AriReFreezeRotateUI[1];
+	}
+}
+global proc AriAngleReFreeze_radio(int $mode){
+	global string $AriAngleReFreezeRadio[20];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[6];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[7];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[8];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[9];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[10];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[11];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[12];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[13];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[14];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[15];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[16];
+	radioButton -e -ed 1 $AriAngleReFreezeRadio[17];
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[0]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[6];
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[9];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[6]`)radioButton -e -sl $AriAngleReFreezeRadio[7];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[9]`)radioButton -e -sl $AriAngleReFreezeRadio[10];
+		if($mode==1)radioButton -e -sl $AriAngleReFreezeRadio[12];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[1]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[7];
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[10];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[7]`)radioButton -e -sl $AriAngleReFreezeRadio[8];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[10]`)radioButton -e -sl $AriAngleReFreezeRadio[11];
+		if($mode==1)radioButton -e -sl $AriAngleReFreezeRadio[13];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[2]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[8];
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[11];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[8]`)radioButton -e -sl $AriAngleReFreezeRadio[6];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[11]`)radioButton -e -sl $AriAngleReFreezeRadio[9];
+		if($mode==1)radioButton -e -sl $AriAngleReFreezeRadio[14];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[6]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[9];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[9]`)radioButton -e -sl $AriAngleReFreezeRadio[10];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[7]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[10];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[10]`)radioButton -e -sl $AriAngleReFreezeRadio[11];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[8]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[11];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[11]`)radioButton -e -sl $AriAngleReFreezeRadio[9];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[12]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[15];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[15]`)radioButton -e -sl $AriAngleReFreezeRadio[16];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[13]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[16];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[16]`)radioButton -e -sl $AriAngleReFreezeRadio[17];
+	}
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[14]`){
+		radioButton -e -ed 0 $AriAngleReFreezeRadio[17];
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[17]`)radioButton -e -sl $AriAngleReFreezeRadio[15];
+	}
+}
+proc vector RotPosition(vector $pos,float $rot,int $mode){
+	vector $rotPos;
+	float $rotRad = deg_to_rad($rot);
+	if($mode==0) $rotPos = << $pos.x                                    , $pos.y*cos($rotRad) - $pos.z*sin($rotRad) , $pos.y*sin($rotRad) + $pos.z*cos($rotRad)>>;
+	if($mode==1) $rotPos = << $pos.z*sin($rotRad) + $pos.x*cos($rotRad) , $pos.y                                    , $pos.z*cos($rotRad) - $pos.x*sin($rotRad)>>;
+	if($mode==2) $rotPos = << $pos.x*cos($rotRad) - $pos.y*sin($rotRad) , $pos.x*sin($rotRad) + $pos.y*cos($rotRad) , $pos.z  >>;
+	return $rotPos;
+}
+proc AriReFreezeRotate_GetVectorGO(string $object,vector $baseVec,int $mode,int $normalMode){
+	global string $AriAngleReFreezeRadio[16];
+	global string $AriReFreezeRotateUI[10];
+	int $keepTrue = `checkBox -q -v $AriReFreezeRotateUI[2]`;
+	float $localAttrRot[3];
+	int $k=0;
+	string $thisObj = $object;
+	string $parentList[];
+	clear $parentList;
+	string $childList[] = `listRelatives -pa -c -type "transform" $object`;
+	int $listNum = AriUnparentOne_ListNum($object);
+	string $baseName = $object;
+	string $parentObj[] = `listRelatives -p -pa $object`;
+	if($parentObj[0] != ""){
+		string $unParent[] = `parent -w $object`;
+		$object = $unParent[0];
+	}
+	if($mode==3){
+		$localAttrRot[0]=`getAttr ($object+".rx")`;
+		$localAttrRot[1]=`getAttr ($object+".ry")`;
+		$localAttrRot[2]=`getAttr ($object+".rz")`;
+		rotate -r -ws 0 0 ($localAttrRot[2]*-1) $object;
+		rotate -r -ws 0 ($localAttrRot[1]*-1) 0 $object;
+		rotate -r -ws ($localAttrRot[0]*-1) 0 0 $object;
+		$baseVec = RotPosition($baseVec,($localAttrRot[2]*-1),2);
+		$baseVec = RotPosition($baseVec,($localAttrRot[1]*-1),1);
+		$baseVec = RotPosition($baseVec,($localAttrRot[0]*-1),0);
+	}
+	vector $jikuX = <<1,0,0>>;
+	vector $jikuY = <<0,1,0>>;
+	vector $jikuZ = <<0,0,1>>;
+	vector $jikuXYZ;
+	string $jiku[2];
+	string $view[2];
+	vector $viewVec;
+	float $rotRad;
+	float $rot[2];
+	vector $cross;
+	int $rotTotal=1;
+	if($mode==1){
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[0]`)$jiku[0]="x";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[1]`)$jiku[0]="y";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[2]`)$jiku[0]="z";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[6]`)$view[0]="x";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[7]`)$view[0]="y";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[8]`)$view[0]="z";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[9]`) $view[1]="x";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[10]`)$view[1]="y";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[11]`)$view[1]="z";
+		$rotTotal=2;
+	}
+	if($mode==3){
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[15]`)$jiku[0]="x";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[16]`)$jiku[0]="y";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[17]`)$jiku[0]="z";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[12]`)$view[0]="x";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[13]`)$view[0]="y";
+		if(`radioButton -q -sl $AriAngleReFreezeRadio[14]`)$view[0]="z";
+		$rotTotal=1;
+	}
+	for($i=0;$i<$rotTotal;$i++){
+		if($jiku[0]=="x")$jikuXYZ = $jikuX;
+		if($jiku[0]=="y")$jikuXYZ = $jikuY;
+		if($jiku[0]=="z")$jikuXYZ = $jikuZ;
+		if($view[$i]=="x")$viewVec = <<0,($baseVec.y),($baseVec.z)>>;
+		if($view[$i]=="y")$viewVec = <<($baseVec.x),0,($baseVec.z)>>;
+		if($view[$i]=="z")$viewVec = <<($baseVec.x),($baseVec.y),0>>;
+		$rotRad=`angle $viewVec $jikuXYZ`;
+		$rot[$i]=rad_to_deg($rotRad);
+		$cross = cross($jikuXYZ,$viewVec);
+		float $crossOne;
+		if($view[$i]=="x")$crossOne=$cross.x;
+		if($view[$i]=="y")$crossOne=$cross.y;
+		if($view[$i]=="z")$crossOne=$cross.z;
+		if(0 < $crossOne)$rot[$i]=$rot[$i]*-1;
+		if($normalMode==false){
+			if($rot[$i]>90)$rot[$i]=$rot[$i]-180;
+			if($rot[$i]<-90)$rot[$i]=$rot[$i]+180;
+		}
+		if($view[$i]=="x"){
+			rotate -r -ws ($rot[$i]) 0 0 $object;
+			$baseVec=RotPosition($baseVec,($rot[$i]),0);
+		}
+		if($view[$i]=="y"){
+			rotate -r -ws 0 ($rot[$i]) 0 $object;
+			$baseVec=RotPosition($baseVec,($rot[$i]),1);
+		}
+		if($view[$i]=="z"){
+			rotate -r -ws 0 0 ($rot[$i]) $object;
+			$baseVec=RotPosition($baseVec,($rot[$i]),2);
+		}
+	}
+	if($keepTrue){
+		string $parentGroup;
+		string $childListWorld[];
+		if(size($childList)){
+			$parentGroup = `group -em -name "AriReFreezeParent"`;
+			$childListWorld = `parent $childList $parentGroup`;
+		}
+		makeIdentity -apply true -t 0 -r 1 -s 0 -n 0  $object;
+		string $parentList[];
+		if(size($childList)){
+			$parentList = `parent $childListWorld $object`;
+			delete $parentGroup;
+		}
+		if($view[1]=="x") rotate -r -ws ($rot[1]*-1) 0 0 $object;
+		if($view[1]=="y") rotate -r -ws 0 ($rot[1]*-1) 0 $object;
+		if($view[1]=="z") rotate -r -ws 0 0 ($rot[1]*-1) $object;
+		if($view[0]=="x") rotate -r -ws ($rot[0]*-1) 0 0 $object;
+		if($view[0]=="y") rotate -r -ws 0 ($rot[0]*-1) 0 $object;
+		if($view[0]=="z") rotate -r -ws 0 0 ($rot[0]*-1) $object;
+		if($mode==3){
+			rotate -r -ws ($localAttrRot[0]) 0 0 $object;
+			rotate -r -ws 0 ($localAttrRot[1]) 0 $object;
+			rotate -r -ws 0 0 ($localAttrRot[2]) $object;
+		}
+	}
+	if($parentObj[0] != ""){
+		string $outObj[] = `parent $object $parentObj[0]`;
+		$object = $outObj[0];
+		reorder -relative ($listNum+1) $object;
+		if($baseName != $object){
+			rename $object $baseName;
+		}
+	}
+}
+global proc AriReFreezeRotate_go(int $mode){
+	global string $AriReFreezeRotateUI[10];
+	int $parentNum = `intField -q -v $AriReFreezeRotateUI[3]`;
+	string $selectObj[]=`ls -sl`;
+	string $faceList[] = `filterExpand -selectionMask 34 $selectObj`;
+	int $modeFace = false;
+	if(size($faceList)!=0) $modeFace = true;
+	string $vertexList[];
+	string $allObjectList[];
+	if(!$modeFace){	
+		$vertexList = `polyListComponentConversion -tv $selectObj`;
+		$vertexList = `filterExpand -selectionMask 31 $vertexList`;
+	}
+	else{
+		$vertexList = $faceList;
+	}
+	print "vertexlist----------------\n";
+	print $vertexList;
+	print "\n";
+	$allObjectList = `polyListComponentConversion $vertexList`;
+	$allObjectList = `listRelatives -p -pa -type "transform" $allObjectList`;
+	print "allObjectList----------------\n";
+	print $allObjectList;
+	print "\n";	
+	int $totalVerList[];
+	int $i=0;
+	string $firsttVtx;
+	string $sepaFirst[];
+	tokenize $vertexList[0] "." $sepaFirst;
+	$firstVtx=$sepaFirst[0];
+	for($ver in $vertexList){
+		string $sepa[];
+		tokenize $ver "." $sepa;
+		if($firstVtx == $sepa[0]){
+			$totalVerList[$i]=$totalVerList[$i]+1;
+		}
+		else{
+			$firstVtx = $sepa[0];
+			$i++;
+			$totalVerList[$i]=1;
+		}
+	}
+	print ("選択数---------------\n");
+	print $totalVerList;
+	print "\n";
+	string $vertexPair1[];
+	string $vertexPair2[];
+	vector $localNormalList[];
+	vector $norTotal=<<0,0,0>>;
+	int $k=0;
+	int $normalModeList[];
+	int $count=0;
+	for($j=0 ; $j<size($vertexList) ; $j++){
+		if($totalVerList[$k] != 2 || $modeFace){
+			print ("ver Total 1 Mode ------------------------\n");
+			$normalModeList[$k]=true;
+			float $norF[];
+			if(!$modeFace){
+				$norF = `polyNormalPerVertex -q -xyz $vertexList[$j]`;
+				float $workTotal[3] = {0,0,0};
+				for($q=0 ; $q<size($norF) ; $q=$q+3){
+					$workTotal[0] += $norF[$q];
+					$workTotal[1] += $norF[$q+1];
+					$workTotal[2] += $norF[$q+2];
+				}
+				$norF[0] = $workTotal[0] / ((size($norF)/3) );
+				$norF[1] = $workTotal[1] / ((size($norF)/3) );
+				$norF[2] = $workTotal[2] / ((size($norF)/3) );
+			}
+			else{
+				string $faceNor[]= `polyInfo -fn $vertexList[$j]`;
+				string $sepa[];
+				tokenize $faceNor[0] " " $sepa;
+				$norF[0]=$sepa[2];
+				$norF[1]=$sepa[3];
+				$norF[2]=$sepa[4];
+			}
+			vector $nor=<<$norF[0],$norF[1],$norF[2]>>;
+			$norTotal = $norTotal + $nor;
+			if($count >= $totalVerList[$k]-1){
+				vector $norAve = $norTotal / $totalVerList[$k];
+				print("平均算出完了  "+$allObjectList[$k]+" "+$norAve+"\n\n");
+				$localNormalList[$k] = $norAve;
+				$norTotal=<<0,0,0>>;
+				$k++;
+				$count=0;
+			}
+			else{
+				$count++;
+			}	
+		}
+		else{
+			print ("ver Total 2 Mode ------------------------\n\n");
+			$normalModeList[$k]=false;
+			vector $vec0 =`pointPosition -l $vertexList[$j]`;
+			vector $vec1 =`pointPosition -l $vertexList[$j+1]`;
+			$localNormalList[$k] = $vec1-$vec0;
+			$k++;
+			$j++;
+		}
+	}
+	string $targetObjList[];
+	clear $targetObjList;
+	$j=0;
+	for($obj in $allObjectList){
+		print($obj+" "+$localNormalList[$j]+"-------------------------------------------\n");
+		vector $worldNormal = $localNormalList[$j];
+		string $thisObj = $obj;
+		$k=0;
+		while(1){
+			float $objRotF[] = `getAttr ($thisObj+".rotate")`;
+			$worldNormal = RotPosition($worldNormal,($objRotF[0]),0);
+			$worldNormal = RotPosition($worldNormal,($objRotF[1]),1);
+			$worldNormal = RotPosition($worldNormal,($objRotF[2]),2);
+			string $parents[]= `listRelatives -p -pa $thisObj`;
+			$thisObj = $parents[0];
+			if($thisObj=="")break;
+			$k++;
+		}
+		string $parentObj = AriAngleReFreezeRotate_getParent($obj,$parentNum);
+		$targetObjList[$j] = $parentObj;
+		AriReFreezeRotate_GetVectorGO( $parentObj, $worldNormal, $mode,$normalModeList[$j] );
+		$j++;
+	}
+	AriReFreezeRotate_getObject();
+	if($parentNum==0)	select $selectObj;
+	else				select $targetObjList;
+}
+global proc AriReFreezeRotate_rot90(int $mode,int $rot){
+	string $selects[] = `ls -sl`;
+	string $parentList[] = AriAngleReFreezeRotate_getSelectTransformList(true);
+	for($object in $parentList){
+		string $childList[] = `listRelatives -pa -c -type "transform" $object`;
+		int $listNum = AriUnparentOne_ListNum($object);
+		string $baseName = $object;
+		string $parentObj[] = `listRelatives -p -pa $object`;
+		if($parentObj[0] != ""){
+			string $unParent[] = `parent -w $object`;
+			$object = $unParent[0];
+		}
+		string $parentGroup;
+		string $childListWorld[];
+		if(size($childList)){
+			$parentGroup = `group -em -name "AriReFreezeParent"`;
+			$childListWorld = `parent $childList $parentGroup`;
+		}
+		float $beforeRot[]=`getAttr ($object+".rotate")`;
+		setAttr ($object+".rotate") 0 0 0;
+		if($mode==0) rotate -r -os  $rot 0 0  $object;
+		if($mode==1) rotate -r -os  0 $rot 0  $object;
+		if($mode==2) rotate -r -os  0 0 $rot  $object;
+		makeIdentity -apply true -t 0 -r 1 -s 0 -n 0  $object;
+		if($mode==0) rotate -r -os  (-$rot) 0 0  $object;
+		if($mode==1) rotate -r -os  0 (-$rot) 0  $object;
+		if($mode==2) rotate -r -os  0 0 (-$rot)  $object;
+		rotate -r -ws $beforeRot[0] 0 0 $object;
+		rotate -r -ws 0 $beforeRot[1] 0 $object;
+		rotate -r -ws 0 0 $beforeRot[2] $object;
+		string $parentList[];
+		if(size($childList)){
+			$parentList = `parent $childListWorld $object`;
+			delete $parentGroup;
+		}
+		if($parentObj[0] != ""){
+			string $outObj[] = `parent $object $parentObj[0]`;
+			$object = $outObj[0];
+			reorder -relative ($listNum+1) $object;
+			if($baseName != $object){
+				rename $object $baseName;
+			}
+		}
+	}
+	select $selects;
+}
+global proc AriReFreezeRotate_re180(int $mode){
+	global string $AriAngleReFreezeRadio[20];
+	global string $AriReFreezeRotateUI[10];
+	$jiku1=0;
+	$jiku2=0;
+	$rotJiku=0;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[0]`)$jiku1=0;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[1]`)$jiku1=1;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[2]`)$jiku1=2;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[15]`)$jiku2=0;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[16]`)$jiku2=1;
+	if(`radioButton -q -sl $AriAngleReFreezeRadio[17]`)$jiku2=2;
+	if($mode==0)$rotJiku=$jiku2;
+	if($mode==1)$rotJiku=$jiku1;
+	AriReFreezeRotate_rot90($rotJiku,180);
+}
+global proc AriReFreezeRotate_rotValue(int $mode){
+	global string $AriReFreezeRotateRotFloatF[4];
+	int $jiku=$mode;
+	float $mul=1;
+	if($mode>=3){
+		$jiku=$mode-3;
+		$mul = -1;
+	}
+	float $val=`floatField -q -v $AriReFreezeRotateRotFloatF[$jiku]`;
+	$val=$val*$mul;
+	AriReFreezeRotate_rot90($jiku,$val);
+}
+proc settingSave(){
+	global string $AriReFreezeRotateMenuItem[5];
+	int $checkList[];
+	$checkList[0] = `menuItem -q -checkBox $AriReFreezeRotateMenuItem[0]`;
+	$checkList[1] = `menuItem -q -checkBox $AriReFreezeRotateMenuItem[1]`;
+	$checkList[2] = `menuItem -q -checkBox $AriReFreezeRotateMenuItem[2]`;
+	int $saveVal = AriNumber2to10($checkList);
+	optionVar -intValue "AriReFreezeRotate_checkList" $saveVal;
+}
+global proc AriReFreezeRotateGuiReSetting(){
+	global string $AriReFreezeRotateUI[10];
+	global string $AriReFreezeRotateButton[5];
+	global string $AriReFreezeRotateMenuItem[5];
+	global string $AriReFreezeRotateUI[3];
+	int $intVal = `intField -q -v $AriReFreezeRotateUI[3]`;
+	for($i=0;$i<3;$i++){
+		if (`menuItem -q -checkBox $AriReFreezeRotateMenuItem[$i]`== true && $intVal>=1){
+			button -e -bgc 1 0.5 0 $AriReFreezeRotateButton[$i];
+		}
+		else{
+			button -e -bgc 0.5 0.5 0.5 $AriReFreezeRotateButton[$i];
+		}
+	}
+	if($intVal>=1)	textField -e -bgc 1 0.5 0     $AriReFreezeRotateUI[0];
+	else			textField -e -bgc 0.3 0.3 0.3 $AriReFreezeRotateUI[0];
+	AriReFreezeRotate_getObject;
+	settingSave();
+}
+global proc AriReFreezeRotate_UpDownButton(int $mode){
+	global string $AriReFreezeRotateUI[10];
+	int $value=0;
+	$value = `intField -q -v $AriReFreezeRotateUI[3]`;
+	if($mode==0)$value++;
+	if($mode==1)$value--;
+	if($value<0)$value=0;
+	intField -e -v $value $AriReFreezeRotateUI[3];
+	AriReFreezeRotate_getObject();
+	AriReFreezeRotateGuiReSetting();
+}
+global proc AriReFreezeRotate(){
+	global string $AriAngleReFreezeRadio[20];
+	global string $AriReFreezeRotateUI[10];
+	global string $AriReFreezeRotateRotFloatF[4];
+	global string $AriReFreezeRotateButton[5];
+	global string $AriReFreezeRotateMenuItem[5];
+	string $string_zero = "回転値0";
+	string $string_axis1 = "第1軸:";
+	string $string_axis2 = "第2軸:";
+	string $string_apply1 = "実行1";
+	string $string_apply2 = "実行2";
+	string $string_ann1 = "階層上のオブジェクトを対象(0=選択オブジェクト)";
+	string $string_ann2 = "親ターゲットの回転値を0に";
+	string $string_ann3 = "親ターゲットをFreeze";
+	string $string_ann4 = "親ターゲット値を参照";
+	string $string_input = "数値入力";
+	int $JPTrue = false;
+	if(`about -uil`=="ja_JP")$JPTrue = true;
+	if(!$JPTrue){
+		$string_zero   = "Zero";
+		$string_axis1  = "Axis1";
+		$string_axis2  = "Axis2";
+		$string_apply1 = "Apply1";
+		$string_apply2 = "Apply2";
+		$string_ann1 = "target to parent";
+		$string_ann2 = "target to parent";
+		$string_ann3 = "target to parent";
+		$string_ann4 = "target to parent";
+		$string_input = "Input";
+	}
+	int $checkList[];
+	$checkList[0] = true;
+	$checkList[1] = false;
+	$checkList[2] = true;
+	if(`optionVar -exists "AriReFreezeRotate_checkList"`){
+		int $loadVal = `optionVar -q "AriReFreezeRotate_checkList"`;
+		$checkList = AriNumber10to2($loadVal);
+	}
+	if((`window -ex AriReFreezeRotate`)==true)deleteUI AriReFreezeRotate;
+	window -title "AriReFreezeRotate"  -w 250 -h 100 -mxb 0  AriReFreezeRotate;
+	window -e -h 100 AriReFreezeRotate;
+	columnLayout -adj true;
+		string $form = `formLayout`;
+			$AriReFreezeRotateUI[0] = `textField -ed false -text ""`;
+			string $upDownButton = `rowLayout -nc 2`;
+			$AriReFreezeRotateUI[3] = `intField -w 20 -cc "AriReFreezeRotate_getObject()" -ann $string_ann1`;
+			columnLayout;
+			iconTextButton -i "arrowUp.png"   -w 14 -h 10 -l "" -c "AriReFreezeRotate_UpDownButton(0)";
+			iconTextButton -i "arrowDown.png" -w 14 -h 10 -l "" -c "AriReFreezeRotate_UpDownButton(1)";
+			setParent..;
+			setParent..;
+			$AriReFreezeRotateButton[0] = `button -w 54 -bgc 0.5 0.5 0.5 -l $string_zero -c "AriReFreezeRotate_rotateAttrZero()"`;
+			popupMenu;
+			$AriReFreezeRotateMenuItem[0] = `menuItem -checkBox $checkList[0] -label $string_ann2 -c "AriReFreezeRotateGuiReSetting()"`;
+			$AriReFreezeRotateButton[1] = `button -w 54 -bgc 0.5 0.5 0.5 -l "Freeze" -c "AriReFreezeRotate_Freeze()"`;
+			popupMenu;
+			$AriReFreezeRotateMenuItem[1] = `menuItem -checkBox $checkList[1] -label $string_ann3 -c "AriReFreezeRotateGuiReSetting()"`;
+		setParent..;
+		formLayout -e
+		-af $AriReFreezeRotateButton[1] "right" 0
+		-ac $AriReFreezeRotateButton[0]  "right" 0 $AriReFreezeRotateButton[1]
+		-ac $upDownButton                "right" 0 $AriReFreezeRotateButton[0] 
+		-af $AriReFreezeRotateUI[0] "left" 0
+		-ac $AriReFreezeRotateUI[0] "right" 0 $upDownButton
+		$form;
+		rowLayout -nc 2;
+			$AriReFreezeRotateButton[2] = `canvas -w 10 -h 20 -bgc 0.5 0.5 0.5`;
+			popupMenu;
+			$AriReFreezeRotateMenuItem[2] = `menuItem -checkBox $checkList[2] -label $string_ann4 -c "AriReFreezeRotateGuiReSetting()"`;
+			$AriReFreezeRotateUI[1] = `attrFieldGrp -pre 5 -cw 1 0 -l "" `;
+		setParent..;
+		string $axisForm;
+		string $axisForm_XYZ;
+		string $axisForm_text;
+		string $axisForm_row;
+		$axisForm      = `rowLayout -nc 5 -ad5 2`;
+		$axisForm_text = `text -l $string_axis1 -w 40`;
+		$axisForm_XYZ = `formLayout`;
+		$AriPosAligRadio3D = `radioCollection`;
+		$AriAngleReFreezeRadio[0] = `radioButton -bgc 0.4 0.2 0.2 -w 42 -label " X   " -select	 -cc "AriAngleReFreeze_radio(1)"`;
+		$AriAngleReFreezeRadio[1] = `radioButton -bgc 0.2 0.4 0.2 -w 42 -label " Y   "  -cc "AriAngleReFreeze_radio(1)"`;
+		$AriAngleReFreezeRadio[2] = `radioButton -bgc 0.2 0.2 0.4 -w 42 -label " Z   "  -cc "AriAngleReFreeze_radio(1)"`;
+		setParent..;
+		formLayout -e 
+		-af $AriAngleReFreezeRadio[0] "left" 0 
+		-ap $AriAngleReFreezeRadio[0] "right" 0 33
+		-af $AriAngleReFreezeRadio[2] "right" 0 
+		-ap $AriAngleReFreezeRadio[2] "left" 0 66
+		-ac $AriAngleReFreezeRadio[1] "left"  0 $AriAngleReFreezeRadio[0]
+		-ac $AriAngleReFreezeRadio[1] "right" 0 $AriAngleReFreezeRadio[2]
+		$axisForm_XYZ;
+		$axisForm_row = `rowLayout -nc 2`;
+		button -w 22 -h 30 -l "Re" -c "AriReFreezeRotate_re180(0)";
+		button -w 56 -h 30 -l $string_apply1 -c "AriReFreezeRotate_go(1)"; 
+		setParent..;
+		setParent..;
+		rowLayout -vis 0 -nc 4;
+		text -l "1" -w 40;
+		$AriPosAligRadio3D = `radioCollection`;
+		$AriAngleReFreezeRadio[6] = `radioButton  -w 48 -label "X   " -select	 -cc "AriAngleReFreeze_radio(0)"`;
+		$AriAngleReFreezeRadio[7] = `radioButton  -w 48 -label "Y   "  -cc "AriAngleReFreeze_radio(0)"`;
+		$AriAngleReFreezeRadio[8] = `radioButton  -w 48 -label "Z   "  -cc "AriAngleReFreeze_radio(0)"`;
+		setParent..;
+		rowLayout -vis 0 -nc 4;
+		text -l "2" -w 40;
+		$AriPosAligRadio3D = `radioCollection`;
+		$AriAngleReFreezeRadio[9]  = `radioButton  -w 48 -label "X   " -select	 -cc ""`;
+		$AriAngleReFreezeRadio[10] = `radioButton  -w 48 -label "Y   "  -cc ""`;
+		$AriAngleReFreezeRadio[11] = `radioButton  -w 48 -label "Z   "  -cc ""`;
+		setParent..;
+		$axisForm      = `rowLayout -nc 5 -ad5 2`;
+		$axisForm_text = `text -l $string_axis2 -w 40`;
+		$axisForm_XYZ = `formLayout`;
+		$AriPosAligRadio3D = `radioCollection`;
+		$AriAngleReFreezeRadio[15]=`radioButton -bgc 0.4 0.2 0.2 -w 42 -label " X   " -select	 -cc ""`;
+		$AriAngleReFreezeRadio[16]=`radioButton -bgc 0.2 0.4 0.2 -w 42 -label " Y   "  -cc ""`;
+		$AriAngleReFreezeRadio[17]=`radioButton -bgc 0.2 0.2 0.4 -w 42 -label " Z   "  -cc ""`;
+		setParent..;
+		formLayout -e 
+		-af $AriAngleReFreezeRadio[15] "left" 0 
+		-ap $AriAngleReFreezeRadio[15] "right" 0 33
+		-af $AriAngleReFreezeRadio[17] "right" 0 
+		-ap $AriAngleReFreezeRadio[17] "left" 0 66
+		-ac $AriAngleReFreezeRadio[16] "left"  0 $AriAngleReFreezeRadio[15]
+		-ac $AriAngleReFreezeRadio[16] "right" 0 $AriAngleReFreezeRadio[17]
+		$axisForm_XYZ;
+		$axisForm_row = `rowLayout -nc 2`;
+		button -w 22 -h 30 -l "Re" -c "AriReFreezeRotate_re180(1)";
+		button -w 56 -h 30 -l $string_apply2 -c "AriReFreezeRotate_go(3)";	
+		setParent..;
+		setParent..;
+		rowLayout -vis 0 -nc 5;
+		text -l "回転:" -w 40;
+		$AriPosAligRadio3D = `radioCollection`;
+		$AriAngleReFreezeRadio[12]=`radioButton  -w 48 -label "X      " -select	 -cc "AriAngleReFreeze_radio(0)"`;
+		$AriAngleReFreezeRadio[13]=`radioButton  -w 48 -label "Y      "  -cc "AriAngleReFreeze_radio(0)"`;
+		$AriAngleReFreezeRadio[14]=`radioButton  -w 48 -label "Z      "  -cc "AriAngleReFreeze_radio(0)"`;
+		setParent..;
+		$AriReFreezeRotateUI[2]=`checkBox -vis 0 -l "状態を保持" -v 1`;
+		frameLayout -cl true -cll true -l $string_input -cc "window -e -h 100 AriReFreezeRotate;";
+		string $inputFormChild;
+		string $inputForm = `formLayout`;
+			string $input_text;
+			string $input_floatField;
+			string $button1;
+			string $button2;
+			string $xGroup = `columnLayout -adj true`;
+			$inputFormChild = `formLayout`;
+			$input_text                    = `text   -l " X :"`;
+			$AriReFreezeRotateRotFloatF[0] = `floatField -w 60 -v 45 `;
+			setParent..;
+			formLayout -e
+			-af $input_text "left" 0
+			-af $input_text "top" 2
+			-ac $AriReFreezeRotateRotFloatF[0] "left" 0 $input_text
+			-af $AriReFreezeRotateRotFloatF[0] "right" 0
+			$inputFormChild;
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -bgc 0.4 0.2 0.2 -l "+" -c "AriReFreezeRotate_rotValue(0)"`;
+			$button2 = `button -w 40 -bgc 0.4 0.2 0.2 -l "-" -c "AriReFreezeRotate_rotValue(3)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			separator -w 82 -h 6 -st "in";
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -h 20 -bgc 0.4 0.2 0.2 -l "+90" -c "AriReFreezeRotate_rot90(0,90)"`;
+			$button2 = `button -w 40 -h 20 -bgc 0.4 0.2 0.2 -l "-90" -c "AriReFreezeRotate_rot90(0,-90)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			setParent..;
+			string $yGroup = `columnLayout -adj true`;
+			$inputFormChild = `formLayout`;
+			$input_text                    = `text   -l " Y :"`;
+			$AriReFreezeRotateRotFloatF[1] = `floatField -w 60 -v 45 `;
+			setParent..;
+			formLayout -e
+			-af $input_text "left" 0
+			-af $input_text "top" 2
+			-ac $AriReFreezeRotateRotFloatF[1] "left" 0 $input_text
+			-af $AriReFreezeRotateRotFloatF[1] "right" 0
+			$inputFormChild;
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -bgc 0.2 0.4 0.2-l "+" -c "AriReFreezeRotate_rotValue(1)"`;
+			$button2 = `button -w 40 -bgc 0.2 0.4 0.2-l "-" -c "AriReFreezeRotate_rotValue(4)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			separator -w 82 -h 6 -st "in";
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -h 20 -bgc 0.2 0.4 0.2 -l "+90" -c "AriReFreezeRotate_rot90(1,90)"`;
+			$button2 = `button -w 40 -h 20 -bgc 0.2 0.4 0.2 -l "-90" -c "AriReFreezeRotate_rot90(1,-90)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			setParent..;
+			string $zGroup = `columnLayout -adj true`;
+			$inputFormChild = `formLayout`;
+			$input_text     = `text   -l " Z :"`;
+			$AriReFreezeRotateRotFloatF[2]=`floatField -w 60 -v 45 `;
+			setParent..;
+			formLayout -e
+			-af $input_text "left" 0
+			-af $input_text "top" 2
+			-ac $AriReFreezeRotateRotFloatF[2] "left" 0 $input_text
+			-af $AriReFreezeRotateRotFloatF[2] "right" 0
+			$inputFormChild;
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -bgc 0.2 0.2 0.4 -l "+" -c "AriReFreezeRotate_rotValue(2)"`;
+			$button2 = `button -w 40 -bgc 0.2 0.2 0.4 -l "-" -c "AriReFreezeRotate_rotValue(5)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			separator  -w 82 -h 6 -st "in";
+			$inputFormChild  = `formLayout`;
+			$button1 = `button -w 40 -h 20 -bgc 0.2 0.2 0.4 -l "+90" -c "AriReFreezeRotate_rot90(2,90)"`;
+			$button2 = `button -w 40 -h 20 -bgc 0.2 0.2 0.4 -l "-90" -c "AriReFreezeRotate_rot90(2,-90)"`;
+			setParent..;
+			formLayout -e
+			-af $button1 "left"  0
+			-ap $button1 "right" 0 50
+			-ac $button2 "left"  0 $button1
+			-af $button2 "right" 0
+			$inputFormChild;
+			setParent..;
+		setParent..;
+		formLayout -e
+		-af $xGroup "left" 0
+		-ap $xGroup "right" 0 33
+		-ac $yGroup "left" 0 $xGroup
+		-ap $yGroup "right" 0 66
+		-ac $zGroup "left"  0 $yGroup
+		-af $zGroup "right" 0
+		$inputForm;
+	setParent..;
+	showWindow;
+	AriAngleReFreeze_radio(0);
+	AriReFreezeRotate_getObject();
+	scriptJob -p "AriReFreezeRotate" -event "SelectionChanged" "AriReFreezeRotate_getObject()";
+	AriReFreezeRotateGuiReSetting();
+}
