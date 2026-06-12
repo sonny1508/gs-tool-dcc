@@ -34,7 +34,7 @@ global proc shelf_GSTools () {
         -style "iconOnly" 
         -marginWidth 1
         -marginHeight 1
-        -command "import QuadRemesher\nqr = QuadRemesher.QuadRemesher()" 
+        -command "import gstools; gstools.launch('flatten_combine', 'shelf')" 
         -sourceType "python" 
         -commandRepeatable 1
         -flat 1
