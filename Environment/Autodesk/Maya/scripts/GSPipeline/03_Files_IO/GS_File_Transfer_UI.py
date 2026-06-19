@@ -76,8 +76,8 @@ def get_fbx_settings_for_version(maya_version):
         'library_path': '\\\\192.168.1.210\\Pipeline\\Library\\Data\\',
         
         # CSV configuration
-        'csv_filename': 'Data_Users.csv',  # Should be CSV format (.csv) for direct reading
-        'csv_user_column': 'users',  # Default column name, can be changed
+        'csv_filename': 'Data_Computer_Auto.csv',  # Should be CSV format (.csv) for direct reading
+        'csv_user_column': 'User',  # Default column name, can be changed
         
         # Local temp folder structure
         'local_temp_subfolder': 'fileTransferFbx\\',
@@ -117,6 +117,29 @@ FBX_SETTINGS = get_fbx_settings_for_version(MAYA_VERSION)
 # ============================================================================
 # CSV USER MANAGEMENT
 # ============================================================================
+
+def normalize_username(raw):
+    """
+    Normalize a CSV user value to a bare username.
+
+    The PDQ-deployed CSV stores entries like 'GLENDASTUDIO01\\son.ha.01 (locked)'.
+    Strip the leading 'DOMAIN\\' part and any trailing ' (locked)' / '(...)' marker
+    so only 'son.ha.01' remains. This must match getpass.getuser() so the exported
+    FBX filename is unchanged.
+    """
+    if not raw:
+        return ''
+    name = raw.strip()
+    # Drop trailing parenthetical markers, e.g. ' (locked)'
+    paren_idx = name.find('(')
+    if paren_idx != -1:
+        name = name[:paren_idx]
+    name = name.strip()
+    # Drop leading DOMAIN\ prefix (handle both back- and forward-slash)
+    for sep in ('\\', '/'):
+        if sep in name:
+            name = name.rsplit(sep, 1)[-1]
+    return name.strip()
 
 def load_users_from_csv():
     """Load users from CSV file on the server"""
@@ -164,7 +187,7 @@ def load_users_from_csv():
                 
                 if user_column:
                     for row in reader:
-                        user = row.get(user_column, '').strip()
+                        user = normalize_username(row.get(user_column, ''))
                         if user and user not in users_list:  # Avoid duplicates and empty entries
                             users_list.append(user)
                             
@@ -461,7 +484,17 @@ class FileOperations:
         """Export to Max via local temp file"""
         export_file = os.path.join(self.local_export_path, "maya_to_max{0}".format(FBX_SETTINGS['file_extension']))
         self._safe_export(export_file)
-    
+
+    def import_from_maya(self):
+        """Import from another local Maya session via shared local temp file"""
+        import_file = os.path.join(self.local_export_path, "maya_to_maya{0}".format(FBX_SETTINGS['file_extension']))
+        self._safe_import(import_file)
+
+    def export_to_maya(self):
+        """Export to another local Maya session via shared local temp file"""
+        export_file = os.path.join(self.local_export_path, "maya_to_maya{0}".format(FBX_SETTINGS['file_extension']))
+        self._safe_export(export_file)
+
     # Server file operations
     def import_from_server(self):
         """Import from server based on UI selections"""
@@ -514,7 +547,13 @@ def GS_File_Transfer_UI():
     
     def Export_To_Max(*args):
         file_ops.export_to_max()
-    
+
+    def Import_From_Maya(*args):
+        file_ops.import_from_maya()
+
+    def Export_To_Maya(*args):
+        file_ops.export_to_maya()
+
     def Import_From_Server(*args):
         file_ops.import_from_server()
     
@@ -526,7 +565,7 @@ def GS_File_Transfer_UI():
         cmds.deleteUI("GS_File_Transfer_Window")
 
     # Create window with responsive layout
-    window = cmds.window("GS_File_Transfer_Window", title='GS File Transfer', widthHeight=(220, 420), minimizeButton=False, maximizeButton=False, sizeable=False)
+    window = cmds.window("GS_File_Transfer_Window", title='GS File Transfer', widthHeight=(300, 420), minimizeButton=False, maximizeButton=False, sizeable=False)
     
     # Main column layout
     main_layout = cmds.columnLayout(adjustableColumn=True, width=140)
@@ -578,13 +617,26 @@ def GS_File_Transfer_UI():
     cmds.button(height=25, label='Import', c=Import_From_Max)
     cmds.separator(height=5, style='none')
     cmds.button(height=25, label='Export', c=Export_To_Max)
-    
-    # Layout the frames side by side with responsive positioning
+
+    # Maya group (Maya-to-Maya transfer between local sessions)
+    maya_frame = cmds.frameLayout(parent=local_form, collapsable=False, label='Maya', width=80)
+    cmds.columnLayout(adjustableColumn=True)
+    cmds.separator(height=10, style='none')
+    cmds.button(height=25, label='Import', c=Import_From_Maya,
+                annotation='Import FBX exported from another local Maya session')
+    cmds.separator(height=5, style='none')
+    cmds.button(height=25, label='Export', c=Export_To_Maya,
+                annotation='Export selection for another local Maya session to import')
+
+    # Layout the three frames side by side with responsive positioning
     cmds.formLayout(
         local_form, edit=True,
-        attachForm=[(blender_frame, 'left', 5), (blender_frame, 'top', 5), 
-                   (max_frame, 'right', 5), (max_frame, 'top', 5)],
-        attachPosition=[(blender_frame, 'right', 5, 50), (max_frame, 'left', 5, 50)]
+        attachForm=[(blender_frame, 'left', 5), (blender_frame, 'top', 5),
+                   (max_frame, 'top', 5),
+                   (maya_frame, 'right', 5), (maya_frame, 'top', 5)],
+        attachPosition=[(blender_frame, 'right', 2, 33),
+                        (max_frame, 'left', 2, 33), (max_frame, 'right', 2, 66),
+                        (maya_frame, 'left', 2, 66)]
     )
     
     cmds.setParent(main_layout)

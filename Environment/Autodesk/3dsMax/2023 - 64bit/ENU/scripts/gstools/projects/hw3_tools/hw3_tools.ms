@@ -7,7 +7,7 @@
 --   HW3_ROOT  = %TEMP%\GSApplication\3dsmax\hw3_tools
 --   IO_ROOT   = HW3_ROOT\io   (scratch FBX for building-scene / import-export)
 global TEMP_DIR = (
-    local t = sysInfo.getEnvVariable "TEMP"
+    local t = systemTools.getEnvVariable "TEMP"
     if t == undefined or t == "" then (getDir #temp) else t
 )
 global HW3_ROOT = TEMP_DIR + "\\GSApplication\\3dsmax\\hw3_tools"

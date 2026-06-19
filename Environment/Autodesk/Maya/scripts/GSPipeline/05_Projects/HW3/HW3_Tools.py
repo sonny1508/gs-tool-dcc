@@ -446,7 +446,7 @@ def _safe_material_reuse(pre_import_mats: set) -> int:
 
 def _import_fbx_with_material_reuse(fbx_path: str) -> bool:
     if not os.path.isfile(fbx_path):
-        cmds.warning("Hotwheel Tools: file not found")
+        cmds.warning("HW3 Tools: file not found")
         return False
     if not cmds.pluginInfo("fbxmaya", q=True, loaded=True):
         try:
@@ -1039,7 +1039,7 @@ def UI():
             )
 
     def _on_sync_building_scene(*_) -> None:
-        fbx_path = r"D:\Temp\HW\temp_building_scene.fbx"
+        fbx_path = os.path.join(IO_ROOT, "temp_building_scene.fbx")
         if _import_fbx_with_material_reuse(fbx_path):
             _run_group_by_layer_name()
             _reset_persp_clip_planes()
@@ -1050,7 +1050,7 @@ def UI():
             )
 
     def _on_import_temp(*_) -> None:
-        fbx_path = r"D:\Temp\HW\temp.fbx"
+        fbx_path = os.path.join(IO_ROOT, "temp.fbx")
         if _import_fbx_with_material_reuse(fbx_path):
             cmds.inViewMessage(assistMessage="Imported", position="midCenter", fade=True)
 
@@ -1061,8 +1061,8 @@ def UI():
         if not selected:
             cmds.warning("Hotwheel Tools: select at least one object to export.")
             return
-        export_path = r"D:\Temp\HW\temp.fbx"
-        os.makedirs(r"D:\Temp\HW", exist_ok=True)
+        export_path = os.path.join(IO_ROOT, "temp.fbx")
+        os.makedirs(IO_ROOT, exist_ok=True)
         try:
             mel.eval("FBXExportInstances -v true")
             mel.eval("FBXExportTriangulate -v false")
