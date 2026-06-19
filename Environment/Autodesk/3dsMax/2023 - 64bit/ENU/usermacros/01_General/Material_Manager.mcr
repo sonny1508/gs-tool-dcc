@@ -85,7 +85,9 @@ buttonText:"Material Manager"
 					for f = 1 to faceCount do
 					(
 						local faceMatID = polyop.getFaceMatID obj.baseObject f
-						usedIDs[faceMatID] = true
+						-- Guard: skip if getFaceMatID returned undefined or non-positive value
+						if faceMatID != undefined and faceMatID > 0 then
+							usedIDs[faceMatID] = true
 					)
 				)
 				-- Handle Editable Mesh
@@ -96,7 +98,9 @@ buttonText:"Material Manager"
 					for f = 1 to faceCount do
 					(
 						local faceMatID = getFaceMatID obj.baseObject f
-						usedIDs[faceMatID] = true
+						-- Guard: skip if getFaceMatID returned undefined or non-positive value
+						if faceMatID != undefined and faceMatID > 0 then
+							usedIDs[faceMatID] = true
 					)
 				)
 			)
@@ -114,6 +118,9 @@ buttonText:"Material Manager"
 			for i = 1 to mat.numsubs do
 			(
 				local oldID = mat.materialIDList[i]
+
+				-- Guard: skip slots with undefined or invalid IDs (empty sub-material slots)
+				if oldID == undefined or oldID == 0 then continue
 
 				-- Check if this ID is actually used
 				if usedIDs[oldID] then
@@ -221,6 +228,8 @@ buttonText:"Material Manager"
 					for f = 1 to faceCount do
 					(
 						local currentID = polyop.getFaceMatID obj.baseObject f
+						if currentID == undefined or currentID == 0 then continue
+
 						local newID = idMap[currentID]
 
 						if newID != 0 and newID != currentID then
@@ -239,6 +248,8 @@ buttonText:"Material Manager"
 					for f = 1 to faceCount do
 					(
 						local currentID = getFaceMatID obj.baseObject f
+						if currentID == undefined or currentID == 0 then continue
+
 						local newID = idMap[currentID]
 
 						if newID != 0 and newID != currentID then
@@ -414,6 +425,9 @@ buttonText:"Material Manager"
 					if subMat != undefined then
 					(
 						local matID = selectedMaterial.materialIDList[i]
+
+						-- Guard: skip slots with undefined or invalid IDs
+						if matID == undefined or matID == 0 then continue
 						local oldName = subMat.name
 						local baseName = oldName
 

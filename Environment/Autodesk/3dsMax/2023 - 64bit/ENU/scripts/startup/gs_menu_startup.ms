@@ -1,6 +1,11 @@
 -- Startup script to add GSTools to the 3ds Max menu with dynamic submenu loading
 -- Save this file as gs_menu_startup.ms in your 3ds Max startup scripts folder
 
+-- Expose the GSTools scripts root as a single global so any tool macro can
+-- derive its own deployed path from it (e.g. _gstools_scripts_root +
+-- "projects\\hw3_tools\\hw3_tools_ui.py"). Tool-agnostic: no per-tool wiring here.
+global _gstools_scripts_root = (getDir #userScripts) + "\\gstools\\"
+
 -- Create a function to log messages
 fn logMessage msg =
 (
@@ -41,32 +46,66 @@ fn checkGSToolsMenuExists =
     )
 )
 
+-- Names of the menus this script creates (top-level + submenus), so every
+-- leftover from prior restarts gets purged, not just the first "GSTools" match.
+global gsOwnedMenuNames = #("GSTools", "01 General", "02 UV", "03 Review", "04 File I/O", "05 Projects")
+
+fn isGSToolsMenuName nm =
+(
+    for s in gsOwnedMenuNames do if s == nm do return true
+    false
+)
+
 -- Function to remove existing GSTools menu
-fn removeGSToolsMenu = 
+fn removeGSToolsMenu =
 (
     logMessage "Attempting to remove existing GSTools menu"
-    
+
     try
     (
         -- Get the main menu bar
         local mainMenuBar = menuMan.getMainMenuBar()
-        
+
         if mainMenuBar == undefined then
         (
             logMessage "ERROR: Could not get main menu bar for removal"
             return false
         )
-        
-        -- Use menuMan to find and unregister the menu
+
+        -- Unregister ALL menus that belong to GSTools. findMenu returns only the
+        -- first match, so repeated restarts leave duplicate "GSTools" menus and
+        -- orphaned submenus ("01 General", etc.) in the registry. Loop over every
+        -- menu and remove the top-level GSTools menus plus our named submenus.
         try
         (
-            logMessage "Attempting to remove menu using menuMan methods"
-            local gsMenu = menuMan.findMenu "GSTools"
-            
-            if gsMenu != undefined then
+            logMessage "Removing all GSTools menus and submenus"
+
+            -- Repeatedly scan and unregister until no GSTools-owned menus remain.
+            -- (The count shifts as menus are removed, so re-scan each pass.)
+            local removedAny = true
+            local pass = 0
+            while removedAny and pass < 50 do
             (
-                menuMan.unRegisterMenu gsMenu
-                logMessage "Unregistered GSTools menu"
+                removedAny = false
+                pass += 1
+                for i = (menuMan.numItems()) to 1 by -1 do
+                (
+                    local m = menuMan.getMenu i
+                    if m == undefined do continue
+                    if isGSToolsMenuName (m.getTitle()) then
+                    (
+                        try
+                        (
+                            menuMan.unRegisterMenu m
+                            removedAny = true
+                            logMessage ("Unregistered menu: " + m.getTitle())
+                        )
+                        catch
+                        (
+                            logMessage ("Could not unregister menu: " + (getCurrentException()))
+                        )
+                    )
+                )
             )
         )
         catch
@@ -114,7 +153,7 @@ fn createSubmenusWithMacros gsToolsMenu =
             #("02 UV", #("UV_Tools")),
             #("03 Review", #("Scene_Checker")),
             #("04 File I/O", #("GS_File_Exporter", "GS_File_Transfer")),
-            #("05 Projects", #("HW3_File_Exporter"))
+            #("05 Projects", #("HW3_File_Exporter", "HW3_Tools"))
             -- Add more folders here as needed
         )
         
@@ -176,21 +215,12 @@ fn createGSToolsMenu =
     
     try
     (
-        -- Check if menu already exists with improved detection
-        logMessage "Checking if GSTools menu already exists"
-        local exists = checkGSToolsMenuExists()
-        logMessage ("GSTools menu exists: " + exists as string)
-        
-        -- If the menu exists, remove it first
-        if exists then
-        (
-            logMessage "GSTools menu already exists - removing it first"
-            local removeResult = removeGSToolsMenu()
-            
-            if not removeResult then
-                logMessage "WARNING: Could not completely remove existing menu, but will try to create anyway"
-        )
-        
+        -- Always purge any existing GSTools menus/submenus first. This is a safe
+        -- no-op when none exist, and unlike the old findMenu-based check it clears
+        -- ALL duplicates that accumulate across restarts.
+        logMessage "Removing any existing GSTools menus before rebuild"
+        removeGSToolsMenu()
+
         logMessage "Creating new GSTools menu"
         
         -- Get the main menu bar

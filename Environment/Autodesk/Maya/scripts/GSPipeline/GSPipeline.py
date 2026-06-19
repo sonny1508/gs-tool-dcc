@@ -1,295 +1,137 @@
+# -*- coding: utf-8 -*-
+"""
+GSPipeline startup script (Maya 2022+ / Python 3).
+
+Builds the GSPipeline menu and shelf from the explicit layout in tool_config.py.
+Groups in the config become (possibly nested) submenus; tools become menu items
+and shelf buttons. Nothing is inferred from filenames - the config is the source
+of truth for which tools load, their names, and their icons.
+
+Drop this and tool_config.py in a folder on Maya's script path; createMenuAndShelf()
+runs automatically at import via executeDeferred().
+"""
+
 import os
-import sys
+
 import maya.cmds as cmds
 import maya.utils
 
-# Python version compatibility functions
-def is_python2():
-    """Check if running Python 2"""
-    return sys.version_info[0] < 3  # Use index instead of .major attribute
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ICONS_DIR = os.path.join(SCRIPT_DIR, "Icons")
+DEFAULT_ICON = "pythonFamily.png"
 
-def ensure_unicode(text):
-    """Ensure string is unicode for Python 2/3 compatibility"""
-    if is_python2() and isinstance(text, str):
-        return text.decode('utf-8')
-    return text
+MENU_LABEL = "GSPipeline"
+MENU_ID = "gspipelineMenu"
+SHELF_NAME = "GSPipeline"
 
-def ensure_str(text):
-    """Ensure unicode is converted to str for Python 2/3 compatibility"""
-    if is_python2():
-        if isinstance(text, unicode):  # noqa: F821
-            return text.encode('utf-8')
-    return text
 
-def join_paths(path1, path2):
-    """Join paths with os.path.join and ensure proper string type"""
-    path = os.path.join(ensure_str(path1), ensure_str(path2))
-    if is_python2():
-        return path
-    return path
+def _is_group(entry):
+    """A group is a (label, children) tuple; a tool is a dict."""
+    return isinstance(entry, tuple)
 
-def get_icon_name_from_script(script_name):
-    """Convert a script name to an icon name based on the given pattern"""
-    # Convert to lowercase and ensure underscores are used
-    name = script_name.lower().replace(" ", "_")
-    
-    # Add the icon suffix
-    return name + "_icon.png"
 
-def find_ui_scripts_recursive(base_dir, folder_path, parent_folder=""):
+def _resolve_icon(tool):
+    icon = tool.get("icon")
+    if not icon:
+        return DEFAULT_ICON
+    icon_path = os.path.join(ICONS_DIR, icon).replace("\\", "/")
+    if not os.path.exists(icon_path):
+        print("[GSPipeline] Icon not found: {} (using default)".format(icon))
+        return DEFAULT_ICON
+    return icon_path
+
+
+def _build_command(script):
+    """Command string that launches a tool script.
+
+    Python files are run with __name__ == '__main__' so tools guarded by
+    `if __name__ == "__main__":` fire, while tools that build their UI at
+    module level also work. MEL files are sourced.
     """
-    Recursively find all UI scripts in a directory and its subdirectories
-    
-    Args:
-        base_dir (str): The root directory to use for relative paths
-        folder_path (str): The current directory to search
-        parent_folder (str): The top-level parent folder name
-        
-    Returns:
-        list: List of UI scripts found
-    """
-    ui_scripts = []
-    
-    # Process all items in the current folder
-    for item in os.listdir(folder_path):
-        item_path = os.path.join(folder_path, item)
-        
-        # If it's a directory, process it recursively
-        if os.path.isdir(item_path):
-            # Recursively find UI scripts in this subfolder
-            subfolder_scripts = find_ui_scripts_recursive(
-                base_dir, item_path, parent_folder
+    abs_path = os.path.join(SCRIPT_DIR, script).replace("\\", "/")
+    if abs_path.lower().endswith(".mel"):
+        return "import maya.mel as mel; mel.eval('source \"{0}\";')".format(abs_path)
+    return (
+        "with open(r'{0}', encoding='utf-8') as _f: "
+        "exec(compile(_f.read(), r'{0}', 'exec'), "
+        "{{'__name__': '__main__', '__file__': r'{0}'}})"
+    ).format(abs_path)
+
+
+def _build_menu(entries, parent):
+    """Recursively populate a menu from config entries."""
+    if not entries:
+        cmds.menuItem(parent=parent, label="(empty)", enable=False)
+        return
+    for entry in entries:
+        if _is_group(entry):
+            label, children = entry
+            submenu = cmds.menuItem(parent=parent, label=label, subMenu=True, tearOff=True)
+            _build_menu(children, submenu)
+        else:
+            cmds.menuItem(
+                parent=parent,
+                label=entry["name"],
+                command=_build_command(entry["script"]),
             )
-            
-            # Add scripts from this subfolder to our list
-            ui_scripts.extend(subfolder_scripts)
-        
-        # If it's a file, check if it's a UI script
-        elif os.path.isfile(item_path):
-            filename, ext = os.path.splitext(item)
-            
-            # Look for files ending with "UI" with .py or .mel extensions
-            if filename.endswith("UI") and ext.lower() in ['.py', '.mel']:
-                script_name = filename
-                
-                # Format the display name: remove underscores and "UI" suffix
-                display_name = script_name
-                if display_name.endswith("_UI"):
-                    display_name = display_name[:-3]  # Remove "_UI" suffix
-                display_name = display_name.replace("_", " ")  # Replace underscores with spaces
-                
-                # Get button name from script name
-                button_name = script_name
-                if button_name.endswith("_UI"):
-                    button_name = button_name[:-3]  # Remove "_UI" suffix
-                
-                script_path = os.path.join(folder_path, item).replace("\\", "/")
-                
-                # Create appropriate command based on file extension
-                if ext.lower() == '.py':
-                    # Python command - compatible with both Python 2 and 3
-                    cmd = "exec(compile(open(r'{}', 'r').read(), r'{}', 'exec'))".format(script_path, script_path)
-                else:  # .mel file
-                    # Use Python's maya.mel.eval to properly execute MEL commands
-                    cmd = "import maya.mel as mel; mel.eval('source \\\"{}\\\" ; {}();')".format(
-                        script_path.replace("\\", "/"), 
-                        filename
-                    )
-                
-                # Add to UI scripts list
-                ui_scripts.append({
-                    'name': display_name,
-                    'button_name': button_name,
-                    'path': script_path,
-                    'parent_folder': parent_folder,
-                    'command': cmd
-                })
-    
-    return ui_scripts
+
+
+def _build_shelf(entries, shelf, first=True):
+    """Recursively add shelf buttons, with a separator at every group boundary.
+
+    `first` tracks whether the next button is the very first on the shelf, so we
+    don't emit a leading separator. Returns the updated `first` flag.
+    """
+    for entry in entries:
+        if _is_group(entry):
+            children = entry[1]
+            if not first:
+                cmds.separator(parent=shelf, style="shelf", horizontal=False)
+            first = _build_shelf(children, shelf, first)
+        else:
+            cmds.shelfButton(
+                parent=shelf,
+                label=entry["name"],
+                annotation=entry["name"],
+                image=_resolve_icon(entry),
+                command=_build_command(entry["script"]),
+                width=35,
+                height=35,
+            )
+            first = False
+    return first
+
+
+def _load_config():
+    """Import tool_config from beside this script and return its TOOLS list."""
+    import importlib
+    import tool_config
+    importlib.reload(tool_config)  # pick up edits without restarting Maya
+    return tool_config.TOOLS
+
 
 def createMenuAndShelf():
     try:
-        # Get the directory where this script is located
-        SCRIPT_DIR = os.path.dirname(os.path.abspath(ensure_str(__file__)))
-        
-        # Get current script name without extension and path
-        SCRIPT_NAME = os.path.splitext(os.path.basename(ensure_str(__file__)))[0]
-        
-        # Create display name by replacing underscores with spaces
-        DISPLAY_NAME = ensure_unicode(SCRIPT_NAME).replace("_", " ")
-        
-        # Create internal name (without spaces)
-        INTERNAL_NAME = ensure_unicode(SCRIPT_NAME).replace("_", "")
-        
-        # ================ MENU CREATION ================
-        # Menu ID - use lowercase prefix for consistency
-        MENU_ID = INTERNAL_NAME.lower() + 'Menu'
-        
-        # Remove existing menu if it exists
+        config = _load_config()
+
+        # ---- Menu ----
         if cmds.menu(MENU_ID, exists=True):
             cmds.deleteUI(MENU_ID, menu=True)
-            
-        # Create main menu
-        main_menu = cmds.menu(MENU_ID, 
-                             label=DISPLAY_NAME,
-                             parent='MayaWindow',
-                             tearOff=True)
-        
-        # ================ SHELF CREATION ================
-        # Name for our shelf - use display name with spaces
-        SHELF_NAME = DISPLAY_NAME
-        
-        # Also check for legacy shelf names that might exist
-        LEGACY_SHELF_NAMES = [
-            INTERNAL_NAME,  # "GSPipeline"
-            SCRIPT_NAME     # "GS_Pipeline"
-        ]
-        
-        # Delete legacy shelves if they exist
-        for legacy_name in LEGACY_SHELF_NAMES:
-            if cmds.shelfLayout(legacy_name, exists=True):
-                print("Removing legacy shelf: {}".format(legacy_name))
-                cmds.deleteUI(legacy_name, layout=True)
-        
-        # Delete the current shelf if it already exists
+        menu = cmds.menu(MENU_ID, label=MENU_LABEL, parent="MayaWindow", tearOff=True)
+        _build_menu(config, menu)
+
+        # ---- Shelf ----
         if cmds.shelfLayout(SHELF_NAME, exists=True):
             cmds.deleteUI(SHELF_NAME, layout=True)
-        
-        # Create a new shelf
-        main_shelf = cmds.shelfLayout(SHELF_NAME, parent='ShelfLayout')
-        
-        # ================ GET FOLDERS AND SCRIPTS RECURSIVELY ================
-        folder_menus = {}  # Store folder menus by name
-        all_scripts = []   # Store all found UI scripts
-        
-        # Get all top-level folders in the script directory, excluding __pycache__ and Icons
-        folder_list = []
-        for item in os.listdir(SCRIPT_DIR):
-            item_path = os.path.join(SCRIPT_DIR, item)
-            
-            excluded_folders = {"__pycache__", "Icons"}
-            
-            if os.path.isdir(item_path) and item not in excluded_folders:
-                folder_list.append(item)
-        
-        # Sort folders alphabetically for consistent menu ordering
-        folder_list.sort()
-        
-        # Create menus for each top-level folder (without separators)
-        for folder in folder_list:
-            item_path = os.path.join(SCRIPT_DIR, folder)
-            
-            # Format the folder name for display
-            display_folder_name = folder.replace("_", " ")
-            
-            # Create a submenu for this top-level folder
-            folder_menu = cmds.menuItem(
-                parent=main_menu,
-                label=display_folder_name,
-                subMenu=True,
-                tearOff=True
-            )
-            
-            # Store the menu for this folder
-            folder_menus[folder] = folder_menu
-            
-            # Find all UI scripts recursively in this folder and its subfolders
-            folder_scripts = find_ui_scripts_recursive(SCRIPT_DIR, item_path, folder)
-            
-            # Add menu items for all scripts under this folder
-            has_ui_scripts = False
-            for script in folder_scripts:
-                has_ui_scripts = True
-                cmds.menuItem(
-                    parent=folder_menu,
-                    label=script['name'],
-                    command=script['command']
-                )
-                
-                # Add to the global list of scripts
-                all_scripts.append(script)
-            
-            # If no UI scripts were found, add a placeholder
-            if not has_ui_scripts:
-                cmds.menuItem(
-                    parent=folder_menu,
-                    label="No UI scripts found",
-                    enable=False
-                )
-        
-        # ================ CREATE SHELF BUTTONS ================
-        # Group scripts by their parent folder
-        scripts_by_folder = {}
-        for script in all_scripts:
-            parent_folder = script['parent_folder']
-            if parent_folder not in scripts_by_folder:
-                scripts_by_folder[parent_folder] = []
-            scripts_by_folder[parent_folder].append(script)
-        
-        # Sort folders for consistent ordering
-        sorted_folders = sorted(scripts_by_folder.keys())
-        
-        # Create buttons with separators between different folders
-        for i, folder in enumerate(sorted_folders):
-            # Add a separator before each folder's buttons (except the first one)
-            if i > 0:
-                # Create a separator using a blank button (more reliable than separator.png)
-                cmds.separator(
-                    parent=main_shelf,
-                    width=34,
-                    height=35,
-                    enable=True,
-                    visible=True,
-                    manage=True,
-                    preventOverride=False,
-                    enableBackground=False,
-                    backgroundColor=(0, 0, 0),
-                    style="shelf",  # The specific shelf style from your MEL code
-                    horizontal=False  # Vertical separator
-                )
-            
-            # Create buttons for all scripts in this folder
-            folder_scripts = scripts_by_folder[folder]
-            for script in folder_scripts:
-                # Generate the icon name from the script name
-                original_button_name = script['button_name']
-                icon_filename = get_icon_name_from_script(original_button_name)
-                
-                # Path to the potential icon (with forward slashes for Maya)
-                icons_dir = os.path.join(SCRIPT_DIR, "Icons")
-                icon_path = os.path.join(icons_dir, icon_filename).replace("\\", "/")
-                
-                # Use the icon if it exists, otherwise use default
-                if os.path.exists(icon_path):
-                    icon_to_use = icon_path
-                else:
-                    print("Icon not found: {}. Using default icon.".format(icon_filename))
-                    icon_to_use = 'pythonFamily.png'  # Default Maya script icon
-                
-                # Create a shelf button with label on top of the icon
-                cmds.shelfButton(
-                    parent=main_shelf,
-                    label=script['button_name'],
-                    image=icon_to_use,
-                    # imageOverlayLabel=original_button_name,
-                    annotation=script['name'],
-                    command=script['command'],
-                    width=100,
-                    height=100
-                )
-        
-        # Print Python version info for debugging - fixed for Python 2 compatibility
-        print("Python Version: " + str(sys.version_info[0]) + "." + str(sys.version_info[1]))
-        print("{} menu and shelf created successfully".format(DISPLAY_NAME))
-        print("Script directory: " + SCRIPT_DIR)
-        print("Menu ID: " + MENU_ID)
-        print("Shelf name: " + SHELF_NAME)
-        print("Number of UI scripts found: " + str(len(all_scripts)))
-        
+        shelf = cmds.shelfLayout(SHELF_NAME, parent="ShelfLayout")
+        _build_shelf(config, shelf)
+
+        print("[GSPipeline] Menu and shelf created.")
+
     except Exception as e:
-        cmds.warning("Failed to create menu and shelf: " + str(e))
+        cmds.warning("[GSPipeline] Failed to create menu and shelf: {}".format(e))
         import traceback
         traceback.print_exc()
 
-# Create the menu and shelf when this script is run
+
 maya.utils.executeDeferred(createMenuAndShelf)

@@ -58,7 +58,7 @@ if not exist "%SRC%" (
 ::   /E       all subdirs incl. empty      /DCOPY:DA  copy dir timestamps+attrs
 ::   /XO      skip files older than dest   /R:2 /W:2  light retry on locked files
 ::   /NP /NFL /NDL  quiet output
-robocopy "%SRC%" "%DST%" /E /DCOPY:DA /XO /R:2 /W:2 /NP /NFL /NDL
+robocopy "%SRC%" "%DST%" /E /DCOPY:DA /R:2 /W:2 /NP /NFL /NDL
 
 :: robocopy exit codes 0-7 are success/informational; >=8 is a real failure
 if %ERRORLEVEL% GEQ 8 (
