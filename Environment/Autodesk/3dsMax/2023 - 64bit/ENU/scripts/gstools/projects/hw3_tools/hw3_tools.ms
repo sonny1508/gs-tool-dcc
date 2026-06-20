@@ -19,6 +19,32 @@ fn HW_EnsureIORoot = (
     IO_ROOT
 )
 
+-- Put the FBX exporter into a clean, fully-specified state.
+-- FBXExporterSetParam settings are GLOBAL and STICKY: any param we don't set
+-- keeps whatever value the last export (manual or another tool) left it at.
+-- Resetting first and then setting the full block makes every scripted export
+-- deterministic instead of inheriting whatever state the exporter was last in.
+fn HW_ConfigureFbxExport = (
+    try ( pluginManager.loadClass FBXEXP ) catch ()
+    try ( FBXResetExport() ) catch ()
+
+    FBXExporterSetParam "Animation" false
+    FBXExporterSetParam "BakeAnimation" false
+    FBXExporterSetParam "Skin" false
+    FBXExporterSetParam "Shape" false              -- no morph/blendshape channels
+    FBXExporterSetParam "SmoothingGroups" true
+    FBXExporterSetParam "SmoothMeshExport" false   -- do NOT export as subdivision
+    FBXExporterSetParam "GeomAsBone" false         -- geometry stays geometry, not bone
+    FBXExporterSetParam "Triangulate" false
+    FBXExporterSetParam "PreserveEdgeOrientation" true
+    FBXExporterSetParam "Preserveinstances" true
+    FBXExporterSetParam "Cameras" false
+    FBXExporterSetParam "Lights" false
+    FBXExporterSetParam "EmbedTextures" false
+    FBXExporterSetParam "ASCII" false
+    FBXExporterSetParam "FileVersion" "FBX202000"
+)
+
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn HW_IsDigit ch = (
@@ -727,6 +753,16 @@ fn HW_ExportBuildingScene = (
     undo "HW Export Building Scene" on (
         disableSceneRedraw()
 
+        -- ── Re-run cleanup: remove the previous bake ─────────────────────────────
+        -- Delete every object tagged HW_Baked from a prior run so we regenerate
+        -- fresh instead of stacking duplicate output. The original Array-reference
+        -- objects are preserved (hidden + tagged HW_BakeRef) and re-baked below.
+        local prevBaked = #()
+        for obj in objects do (
+            if (getUserProp obj "HW_Baked") == "1" do append prevBaked obj
+        )
+        for obj in prevBaked where (isValidNode obj) do try ( delete obj ) catch ()
+
         -- Ensure _Part_Divisions_export parent layer exists
         local expParentLyr = layerManager.getLayerFromName EXP_PARENT
         if expParentLyr == undefined do expParentLyr = layerManager.newLayerFromName EXP_PARENT
@@ -805,8 +841,12 @@ fn HW_ExportBuildingScene = (
                     -- Remove temp modifier from source
                     deleteModifier srcNode newMod
 
-                    -- Delete reference object immediately
-                    delete refNode
+                    -- Preserve the Array-reference object instead of deleting it,
+                    -- so this tool is re-runnable: hide it and tag it. It keeps its
+                    -- Array modifier, so HW_CollectRelated + the "has Array modifier"
+                    -- filter re-find it on the next run. (Old behaviour: delete refNode.)
+                    setUserProp refNode "HW_BakeRef" "1"
+                    refNode.isHidden = true
 
                     -- Relink: assign baseObject so clones are true instances of srcNode.
                     -- Save transform first — carries the array positions.
@@ -826,8 +866,11 @@ fn HW_ExportBuildingScene = (
                         try ( newObj.pivot = localPivotPos * newObj.objecttransform ) catch ()
                     )
 
-                    -- Move new objects into the deepest _export layer
+                    -- Move new objects into the deepest _export layer.
+                    -- Tag them as baked output so a later run can remove this bake
+                    -- before regenerating (keeps the tool re-runnable).
                     for newObj in newObjs do (
+                        try ( setUserProp newObj "HW_Baked" "1" ) catch ()
                         try ( expChildLyr.addNode newObj ) catch ()
                         totalCreated += 1
                     )
@@ -844,8 +887,13 @@ fn HW_ExportBuildingScene = (
                             try ( layerManager.deleteLayerByName l.name ) catch ()
                     )
                 ) else (
-                    -- No Array modifier — delete the reference without exporting
-                    delete refNode
+                    -- No Array modifier. This can be a leftover baked instance from a
+                    -- previous run (shares srcNode.baseObject, so HW_CollectRelated
+                    -- returns it). Those are removed by the start-of-run cleanup, so
+                    -- skip anything tagged; only drop genuine non-array references.
+                    local isBaked = (getUserProp refNode "HW_Baked") == "1"
+                    local isRef   = (getUserProp refNode "HW_BakeRef") == "1"
+                    if not isBaked and not isRef do delete refNode
                 )
             )
         )
@@ -952,7 +1000,10 @@ fn HW_ExportBuildingScene = (
                     try ( p = cur.getParent() ) catch ()
                     cur = p
                 )
-                if inDiv do try ( obj.isHidden = false ) catch ()
+                -- Keep preserved Array-reference objects hidden: they must not appear
+                -- in the viewport or be picked up by the visibility-based export.
+                if inDiv and (getUserProp obj "HW_BakeRef") != "1" do
+                    try ( obj.isHidden = false ) catch ()
             )
         )
 
@@ -972,12 +1023,14 @@ fn HW_ExportBuildingScene = (
     local prevSel = selection as array
     local visibleObjs = #()
     for obj in objects do (
-        if not obj.isHidden do append visibleObjs obj
+        if obj.isHidden do continue
+        -- Never export preserved Array-reference source objects.
+        if (getUserProp obj "HW_BakeRef") == "1" do continue
+        append visibleObjs obj
     )
     if visibleObjs.count > 0 do (
         select visibleObjs
-        FBXExporterSetParam "Preserveinstances" true
-        FBXExporterSetParam "Triangulate" false
+        HW_ConfigureFbxExport()
         exportFile fbxPath #noPrompt selectedOnly:true
     )
     if prevSel.count > 0 then select prevSel else clearSelection()
@@ -1044,8 +1097,7 @@ fn HW_ExportSelected = (
         return false
     )
     local exportPath = (HW_EnsureIORoot()) + "\\temp.fbx"
-    FBXExporterSetParam "Preserveinstances" true
-    FBXExporterSetParam "Triangulate" false
+    HW_ConfigureFbxExport()
     local ok = false
     try ( ok = exportFile exportPath #noPrompt selectedOnly:true ) catch ()
     if not ok do (
