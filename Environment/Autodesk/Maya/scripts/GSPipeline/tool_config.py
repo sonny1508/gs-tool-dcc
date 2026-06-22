@@ -35,7 +35,7 @@ TOOLS = [
     ]),
 
     ("02 Normals", [
-        {"name": "GS Normal Tools", "script": "02_Normals/GS_Normal_Tools_UI.mel", "icon": "GS_Normal_Tools_Icon.png"},
+        {"name": "GS Normal Tools", "script": "02_Normals/GS_Normal_Tools_UI.py", "icon": "GS_Normal_Tools_Icon.png"},
     ]),
 
     ("03 Files I/O", [

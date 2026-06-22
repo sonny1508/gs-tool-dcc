@@ -1,6 +1,6 @@
 // =====================================================================
 //  DM Normal Tools
-//  Version: 1.1
+//  Version: 1.13
 //  Author: Dmytro Lystopad
 //  Description: A tool for aligning vertex normals in Maya.
 //               Includes face-weighted and average normal algorithms.
@@ -9,12 +9,17 @@
 //               Supports aligning normals on single and multiple objects simultaneously, or selected components (vertices, faces, or vertex faces).
 // =====================================================================
 
-global proc dmnt_show_UI(int $showNormal, float $normalSize)
+global proc dmnt_showUI(int $showNormal, float $normalSize)
 {
     if (`window -exists DMNTwin`)
     {
         deleteUI DMNTwin;
         windowPref -r DMNTwin;
+    }
+    if (`window -exists DMNTHelpWin`)
+    {
+        deleteUI DMNTHelpWin;
+        windowPref -r DMNTHelpWin;
     }
 
     float $mayaVersion = getApplicationVersionAsFloat();
@@ -26,10 +31,10 @@ global proc dmnt_show_UI(int $showNormal, float $normalSize)
             rowLayout -nc 2 -rat 1 "both" 2;
                 columnLayout -adj 1 -cat "both" 0;
                     radioButtonGrp -w 130 -nrb 2 -la2 "Face Weighted" "Average" -an1 "For each vertex, the script takes the full normal of the face that has the largest area among all faces that use that vertex." -an2 "For each vertex, the script assigns an average normal calculated based on the normals of neighboring faces." -select 1 -vr alignMethodRBG;
-                    checkBox -w 130 -label "Keep Hard Edges" -ann "Preserve the shading for hard edges so they still appear sharp." keepHardEdgesCB;
+                    checkBox -w 130 -l "Keep Hard Edges" -ann "Preserve the shading for hard edges so they still appear sharp." keepHardEdgesCB;
                 setParent ..;
                 rowLayout -nc 1 -adj 1;
-                    button -w 130 -label "Align Normals" -command "dmnt_alignNormalsFromUI" -ann "Select an object or its component to align vertex normals" -h 60 alignNormalsBTN;
+                    button -w 130 -l "Align Normals" -c "dmnt_alignNormalsFromUI" -ann "Select an object or its component to align vertex normals" -h 60 alignNormalsBTN;
                 setParent  ..;
             setParent  ..;
         setParent  ..;
@@ -38,18 +43,18 @@ global proc dmnt_show_UI(int $showNormal, float $normalSize)
             columnLayout -adj 1 -cat "both" 0 -cal "center";
                 rowLayout -nc 3 ;
                     if ($mayaVersion > 2018)
-                        floatFieldGrp -numberOfFields 3 -value1 0 -value2 0 -value3 0 -pre 6 -cw3 60 60 60 -ekf 1 -ann "X, Y and Z values of the normal." normalFFG;
-                    else floatFieldGrp -numberOfFields 3 -value1 0 -value2 0 -value3 0 -pre 6 -cw3 60 60 60 -ann "X, Y and Z values of the normal." normalFFG;
-                        button -w 35 -label "Get" -command "dmnt_copyNormalFromUI()" -ann "Get normal from the selected component." getNormalBTN;
-                        button -w 35 -label "Set" -command "dmnt_pasteNormalFromUI()" -ann "Set normal to the selected component." setNormalBTN;
+                        floatFieldGrp -nf 3 -value1 0 -value2 0 -value3 0 -pre 6 -cw3 60 60 60 -ekf 1 -ann "X, Y and Z values of the normal." normalFFG;
+                    else floatFieldGrp -nf 3 -value1 0 -value2 0 -value3 0 -pre 6 -cw3 60 60 60 -ann "X, Y and Z values of the normal." normalFFG;
+                        button -w 35 -l "Get" -c "dmnt_copyNormalFromUI()" -ann "Get normal from the selected component." getNormalBTN;
+                        button -w 35 -l "Set" -c "dmnt_pasteNormalFromUI()" -ann "Set normal to the selected component." setNormalBTN;
                     setParent ..;
                     rowLayout -nc 2;
-                        button -w 131 -label "Average From Edge" -command "dmnt_alignNormalsOnEdgeFormUI" -ann "Apply average normal from connected faces to the vertices of the selected edge." averageFromEdgeBTN;
-                        button -w 131 -label "Vertex Normal Edit Tool" -command "dmnt_switchToNormalEditToolFromUI" -ann "This tool allows you to manually adjust the vertex normals of the selected components by rotating the manipulator." normalEditToolBTN;
+                        button -w 131 -l "Average From Edge" -c "dmnt_alignNormalsOnEdgeFormUI" -ann "Apply average normal from connected faces to the vertices of the selected edge." averageFromEdgeBTN;
+                        button -w 131 -l "Vertex Normal Edit Tool" -c "dmnt_switchToNormalEditToolFromUI" -ann "This tool allows you to manually adjust the vertex normals of the selected components by rotating the manipulator." normalEditToolBTN;
                     setParent ..;
                     rowLayout -nc 2;
-                        button -w 131 -label "Unlock Normals" -command "dmnt_unlockNormals()" -ann "Unlocks normals and restores soft and hard edges. Can be applied to a single object, multiple objects, or vertices." unlockNormalBTN;
-                        button -w 131 -label "Lock Normals" -command "dmnt_lockNormals()" -ann "Locks vertex normals with their current values. Can be applied to a single object, multiple objects, or vertices." lockNormalBTN;
+                        button -w 131 -l "Unlock Normals" -c "dmnt_unlockNormals()" -ann "Unlocks normals and restores soft and hard edges. Can be applied to a single object, multiple objects, or vertices." unlockNormalBTN;
+                        button -w 131 -l "Lock Normals" -c "dmnt_lockNormals()" -ann "Locks vertex normals with their current values. Can be applied to a single object, multiple objects, or vertices." lockNormalBTN;
                     setParent ..;
                 setParent ..;
             setParent ..;
@@ -58,28 +63,31 @@ global proc dmnt_show_UI(int $showNormal, float $normalSize)
         frameLayout -l "Selection" -bgs 1;
             columnLayout -adj 1 -cat "both" 0;
                 rowLayout -nc 2;
-                    button -w 131 -label "Select Hard Edges" -command "dmnt_selectEdgesFromUI(1)" -ann "Gets hard edges from the selected objects or components." selectHardEdgesBTN;
-                    button -w 131 -label "Select Soft Edges" -command "dmnt_selectEdgesFromUI(0)" -ann "Gets soft edges from the selected objects or components." selectSoftEdgesBTN;
+                    button -w 131 -l "Select Hard Edges" -c "dmnt_selectEdgesFromUI(1)" -ann "Gets hard edges from the selected objects or components. ALT + click to use alternative method (slower)" selectHardEdgesBTN;
+                    button -w 131 -l "Select Soft Edges" -c "dmnt_selectEdgesFromUI(0)" -ann "Gets soft edges from the selected objects or components. ALT + click to use alternative method (slower)" selectSoftEdgesBTN;
                 setParent ..;
                 columnLayout -adj 1 -cat "both" 0;
-                    button -label "Convert to Vertex Faces" -command "dmnt_selectVertexFacesFromUI" -ann "Converts selection to Vertex Face components." selectVertexFacesBTN;
+                    button -l "Convert to Vertex Faces" -c "dmnt_selectVertexFacesFromUI" -ann "Converts selection to Vertex Face components." selectVertexFacesBTN;
                 setParent ..;
             setParent ..;
         setParent  ..;  
 
         frameLayout -l "Display options" -bgs 1;
                 columnLayout -adj 1 -cat "both" 0;
-                    checkBox -label "Show Vertex Normals" -ann "Enables displaying vertex normals" -cc "dmnt_onSettingsChanged" -v $showNormal showNormalsCB;
-                    floatSliderGrp -label "Normal Size:" -ann "Specifies the length of the normal to be displayed." -cal 1 "left" -field 1 -min 0.1 -max 25 -fieldMinValue 0.1 -fieldMaxValue 500 -value $normalSize -fs 0.1 -cw3 70 70 50 -cc "dmnt_onSettingsChanged" -dc "dmnt_onSettingsChanged" normalSizeFSG;
+                    checkBox -l "Show Vertex Normals" -ann "Enables displaying vertex normals" -cc "dmnt_onSettingsChanged" -v $showNormal showNormalsCB;
+                    floatSliderGrp -l "Normal Size:" -ann "Specifies the length of the normal to be displayed." -cal 1 "left" -field 1 -min 0.1 -max 25 -fieldMinValue 0.1 -fieldMaxValue 500 -value $normalSize -fs 0.1 -cw3 70 70 50 -cc "dmnt_onSettingsChanged" -dc "dmnt_onSettingsChanged" normalSizeFSG;
                 setParent  ..;
         setParent  ..;
-        
-        columnLayout -adj 1 -cat "both" 0 -en 0;
+
+        columnLayout -adj 2 -cat "both" 0;
         separator;
-            text -l "GS Normal Tools v1.1" -al "center";
-            // text -l "Dmytro Lystopad" -al "center" -fn obliqueLabelFont;
+            rowLayout -nc 2 -adj 1 -rat 1 "both" 0;
+                text -l "GS Normal Tools v1.13" -al "center" -en 0;
+                iconTextButton -w 15 -h 15  -st "iconOnly" -i "help.png" -ann "Open Help" -c "dmnt_showHelp()" -hlc 1 1 1;
+            setParent ..;
         separator;
-        setParent  ..;
+        setParent ..;
+
     setParent  ..;
 
     dimWhen -false SomethingSelected alignNormalsBTN;
@@ -92,11 +100,79 @@ global proc dmnt_show_UI(int $showNormal, float $normalSize)
     dimWhen -false SomethingSelected unlockNormalBTN;
     dimWhen -false SomethingSelected lockNormalBTN;
     dimWhen -false SomethingSelected normalEditToolBTN;
-    
 
     showWindow DMNTwin;
 }
 
+global proc dmnt_showHelp()
+{
+    if (`window -exists DMNTHelpWin`)
+    {
+        deleteUI DMNTHelpWin;
+        windowPref -r DMNTHelpWin;
+    }
+
+    window -t "DM Normal Tools - Help" -s 0  -rtf 1 DMNTHelpWin;
+
+    columnLayout -adj 1 -cat "both" 0 -cal "center";
+        separator -style "in" -w 10 -h 10;
+            text -l "GS Normal Tools v1.13" -al "center" -fn "boldLabelFont";
+        separator -style "out" -w 10 -h 10;
+    setParent  ..;
+
+    columnLayout -adj 1 -cat "both" 15 -cal "left";
+        text -l "\nFeatures overview" -al "center" -fn "boldLabelFont";
+
+        text -l "\nAlign Normals:" -fn "boldLabelFont";
+        text -l ("Aligns normals depending on the chosen algorithm:" +
+                "\nFace Weighted - For each vertex, the script takes the full normal of the face that has the largest area among all faces that are connected to that vertex." +
+                "\nAverage - For each vertex, the script assigns an average normal calculated based on the normals of neighboring faces." +
+                "\nKeep Hard Edges - This option preserves shading on hard edges, keeping them visually sharp." +
+
+                "\n\nAligning normals can be applied to a single object, multiple objects simultaneously, or selected components (vertices, faces, or vertex faces).");
+
+        text -l "\nAdjust Normals:" -fn "boldLabelFont";
+        text -l ("Get - Gets the normal from the selected component. If multiple components are selected, it gets the average normal from the selected components." +
+                "\nSet - Applies normal from normal input fields to selected components." +
+                "\nAverage From Edge - Applies average normal from connected faces to the vertices of the selected edge." +
+                "\nVertex Normal Edit Tool - This tool allows you to manually adjust the vertex normals of the selected components by rotating the manipulator. Select a vertex or a vertex face to edit the normal vector." +
+                "\nUnlock Normals - Unlocks normals and restores soft and hard edges. Can be applied to a single object, multiple objects, or vertices." +
+                "\nLock Normals - Locks vertex normals with their current values. Can be applied to a single object, multiple objects, or vertices.");
+
+        text -l "\nSelection:" -fn "boldLabelFont";
+        text -l ("Select Hard Edges - Gets hard edges from the selected objects or components." +
+                "\nSelect Soft Edges - Gets soft edges from the selected objects or components." +
+                "\nConvert to Vertex Faces - Converts selection to Vertex Face components." +
+
+                "\n\nSelecting Hard and Soft edges supports an alternative search method that depends on vertex normals." +
+                "\nThis method is slower but works on meshes with locked normals when Maya marks edges as hard, even if they appear smooth." +
+                "\nNon-manifold edges are considered as hard. ALT + LMB on the button to use this method.");
+
+        text -l "\nDisplay options:" -fn "boldLabelFont";
+        text -l ("Show Vertex Normals - Enables displaying vertex normals" +
+                "\nNormal Size - Specifies the length of the normal to be displayed.");
+
+        text -l "\nContact" -al "center" -fn "boldLabelFont";
+        text -l "For bug reports, feature requests, or other questions, contact:";
+        rowLayout -nc 2;
+            text -l "E-mail:";
+            text -l "<a href=\"mailto:lystopad.support@pm.me\">lystopad.support@pm.me</a>" -hl 1;
+        setParent  ..;
+        rowLayout -nc 2;
+            text -l "Gumroad:";
+            text -l "<a href=\"https://lystopad.gumroad.com/\">lystopad.gumroad.com</a>" -hl 1;
+        setParent  ..;
+
+    setParent  ..;
+
+    columnLayout -adj 1 -cat "both" 0 -cal "center";
+        separator -style "in" -w 10 -h 10;
+            text -l "Dmytro Lystopad" -al "center" -fn "obliqueLabelFont";
+        separator -style "out" -w 10 -h 10;
+    setParent  ..;
+
+    showWindow DMNTHelpWin;
+}
 global proc dmnt_copyNormalFromUI()
 {
     vector $normal = dmnt_getNormalFromComponents(ls("-sl", "-fl", "-l"));
@@ -359,12 +435,23 @@ global proc string[] dmnt_getEdges(string $selection[], int $getHardEdges)
     string $result[];
     string $allEdges[] = ls("-fl", "-l", polyListComponentConversion("-te", "-vfa", $selection));
 
-    for ($e = 0; $e < size($allEdges); $e++)
-    {
-        string $edgeInfo[] = `polyInfo -ev $allEdges[$e]`;
+    int $modifiers = getModifiers();
 
-        if ($getHardEdges == gmatch($edgeInfo[0],"*Hard*"))
-            $result[size($result)] = $allEdges[$e];
+    if ($modifiers / 8 % 2) // Alt pressed
+    {
+        for ($e = 0; $e < size($allEdges); $e++)
+            if ($getHardEdges == dmnt_isEdgeHard($allEdges[$e]))
+                $result[size($result)] = $allEdges[$e];
+    }
+    else
+    {
+        for ($e = 0; $e < size($allEdges); $e++)
+        {
+            string $edgeInfo[] = `polyInfo -ev $allEdges[$e]`;
+
+            if ($getHardEdges == gmatch($edgeInfo[0],"*Hard*"))
+                $result[size($result)] = $allEdges[$e];
+        }
     }
 
     return $result;
@@ -442,6 +529,27 @@ global proc string[] dmnt_stringArrayIntersection(string $array1[], string $arra
     return $intersection;
 }
 
+global proc int dmnt_isEdgeHard(string $edge)
+{
+    string $edgeVertexFaces[] = sort(ls("-l", "-fl", polyListComponentConversion("-tvf", $edge)));
+
+    if (size($edgeVertexFaces) != 4)
+        return 1;
+
+    else
+    {
+        vector $n0 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[0]);
+        vector $n1 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[1]);
+        vector $n2 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[2]);
+        vector $n3 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[3]);
+
+        if ($n0 != $n1 || $n2 != $n3)           
+            return 1;
+    }
+
+    return 0;
+}
+
 global proc dmnt_unlockNormals()
 {
     string $selection[] = ls("-sl", "-l", "-fl");
@@ -455,20 +563,8 @@ global proc dmnt_unlockNormals()
         string $objHardEdges[];
         
         for ($edge in $objAllEdges)
-        {
-            string $edgeVertexFaces[] = sort(ls("-l", "-fl", polyListComponentConversion("-tvf", $edge)));
-            if (size($edgeVertexFaces) == 4)
-            {
-                vector $n0 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[0]);
-                vector $n1 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[1]);
-                vector $n2 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[2]);
-                vector $n3 = polyNormalPerVertex("-q", "-xyz", $edgeVertexFaces[3]);
-
-                if ($n0 != $n1 || $n2 != $n3)           
-                    $objHardEdges[size($objHardEdges)] = $edge;
-            }
-            else $objHardEdges[size($objHardEdges)] = $edge;
-        }
+            if (dmnt_isEdgeHard($edge))
+                $objHardEdges[size($objHardEdges)] = $edge;
 
         polyNormalPerVertex -ufn 1 $objVertexFaces;
         if (size($objHardEdges))
@@ -502,7 +598,7 @@ global proc dmnt_lockNormals()
     print("Vertex normals have been locked\n");
 }
 
-global proc GS_Normal_Tools_UI()
+global proc dmnt()
 {
     int $showNormal = 0;
     float $normalSize = 5.0;
@@ -521,9 +617,9 @@ global proc GS_Normal_Tools_UI()
     if ($normalSizeCurrent[0] > 0.4)
         $normalSize = $normalSizeCurrent[0];
 
-    dmnt_show_UI($showNormal, $normalSize);
+    dmnt_showUI($showNormal, $normalSize);
     dmnt_onSettingsChanged();
     scriptJob -e "SelectionChanged" "dmnt_onSettingsChanged()" -p DMNTwin;
 }
 
-GS_Normal_Tools_UI();
+dmnt();

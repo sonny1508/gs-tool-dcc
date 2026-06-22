@@ -50,12 +50,6 @@ fn checkGSToolsMenuExists =
 -- leftover from prior restarts gets purged, not just the first "GSTools" match.
 global gsOwnedMenuNames = #("GSTools", "01 General", "02 UV", "03 Review", "04 File I/O", "05 Projects")
 
-fn isGSToolsMenuName nm =
-(
-    for s in gsOwnedMenuNames do if s == nm do return true
-    false
-)
-
 -- Function to remove existing GSTools menu
 fn removeGSToolsMenu =
 (
@@ -72,33 +66,70 @@ fn removeGSToolsMenu =
             return false
         )
 
-        -- Unregister ALL menus that belong to GSTools. findMenu returns only the
-        -- first match, so repeated restarts leave duplicate "GSTools" menus and
-        -- orphaned submenus ("01 General", etc.) in the registry. Loop over every
-        -- menu and remove the top-level GSTools menus plus our named submenus.
+        -- STEP 1: Detach our top-level entries FROM THE MENU BAR.
+        --
+        -- This is the part the previous rewrite got wrong. mainMenuBar.numItems /
+        -- getItem enumerate the items ON THE MENU BAR (not the global registry),
+        -- and each bar entry is a SubMenuItem whose .getSubMenu gives the actual
+        -- menu. unRegisterMenu alone does NOT reliably drop the visible bar entry,
+        -- which is why a stale "GSTools" survived each restart and a fresh one got
+        -- appended -> duplicate menus. We must remove the bar item by position.
+        --
+        -- Iterate in reverse so positions stay valid as we remove. Re-scan in a
+        -- loop because removing shifts indices and there may be >1 duplicate.
+        local removedAny = true
+        local pass = 0
+        while removedAny and pass < 50 do
+        (
+            removedAny = false
+            pass += 1
+            for i = (mainMenuBar.numItems()) to 1 by -1 do
+            (
+                local item = mainMenuBar.getItem i
+                if item == undefined do continue
+
+                local sub = item.getSubMenu()
+                local title = if sub != undefined then sub.getTitle() else (item.getTitle())
+
+                if title == "GSTools" then
+                (
+                    try
+                    (
+                        mainMenuBar.removeItemByPosition i
+                        removedAny = true
+                        logMessage ("Removed GSTools entry from menu bar at position " + i as string)
+                    )
+                    catch
+                    (
+                        logMessage ("Could not remove menu-bar item: " + (getCurrentException()))
+                    )
+                )
+            )
+        )
+
+        -- STEP 2: Unregister the now-orphaned GSTools menu(s) AND submenus from the
+        -- registry so createMenu starts clean. menuMan.findMenu returns the first
+        -- match only, so loop until none of our owned names remain.
         try
         (
-            logMessage "Removing all GSTools menus and submenus"
+            logMessage "Unregistering orphaned GSTools menus from registry"
 
-            -- Repeatedly scan and unregister until no GSTools-owned menus remain.
-            -- (The count shifts as menus are removed, so re-scan each pass.)
-            local removedAny = true
-            local pass = 0
+            removedAny = true
+            pass = 0
             while removedAny and pass < 50 do
             (
                 removedAny = false
                 pass += 1
-                for i = (menuMan.numItems()) to 1 by -1 do
+                for nm in gsOwnedMenuNames do
                 (
-                    local m = menuMan.getMenu i
-                    if m == undefined do continue
-                    if isGSToolsMenuName (m.getTitle()) then
+                    local m = menuMan.findMenu nm
+                    if m != undefined then
                     (
                         try
                         (
                             menuMan.unRegisterMenu m
                             removedAny = true
-                            logMessage ("Unregistered menu: " + m.getTitle())
+                            logMessage ("Unregistered menu: " + nm)
                         )
                         catch
                         (
@@ -112,7 +143,7 @@ fn removeGSToolsMenu =
         (
             logMessage ("Error unregistering menu: " + (getCurrentException()))
         )
-        
+
         -- Update the menu bar after removal
         try
         (
