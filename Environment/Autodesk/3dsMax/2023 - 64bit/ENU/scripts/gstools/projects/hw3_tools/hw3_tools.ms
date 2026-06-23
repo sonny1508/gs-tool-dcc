@@ -45,6 +45,28 @@ fn HW_ConfigureFbxExport = (
     FBXExporterSetParam "FileVersion" "FBX202000"
 )
 
+-- Put the FBX importer into a clean, fully-specified state.
+-- Like the exporter, FBXImporterSetParam settings are GLOBAL and STICKY. The
+-- critical one is "Mode": if the importer was last left in #merge / #exmerge,
+-- FBX matches incoming nodes to existing scene nodes BY NAME and updates them
+-- in place instead of creating new nodes — so a fresh import produces ZERO new
+-- nodes and our "newly imported objects" detection finds nothing. Forcing
+-- #create guarantees the source mesh comes in as brand-new nodes every time.
+fn HW_ConfigureFbxImport = (
+    -- The FBX importer plugin must be loaded before its params exist. importFile
+    -- with #noPrompt loads it lazily, so prime it via a reset first; guard
+    -- everything so a missing function on an odd FBX build can't abort the import.
+    try ( FBXResetImport() ) catch ()
+
+    try ( FBXImporterSetParam "Mode" #create ) catch ()   -- add as NEW nodes, never merge by name
+    try ( FBXImporterSetParam "Animation" false ) catch ()
+    try ( FBXImporterSetParam "Skin" false ) catch ()
+    try ( FBXImporterSetParam "Shape" false ) catch ()
+    try ( FBXImporterSetParam "Cameras" false ) catch ()
+    try ( FBXImporterSetParam "Lights" false ) catch ()
+    try ( FBXImporterSetParam "SmoothingGroups" false ) catch ()
+)
+
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn HW_IsDigit ch = (
@@ -596,7 +618,9 @@ fn HW_SourceReplace fbxPath = (
     local beforeHandles = #()
     for obj in objects do append beforeHandles obj.handle
 
-    -- Import FBX silently
+    -- Import FBX silently. Force importer into create-new mode first, otherwise a
+    -- sticky #merge mode would update existing nodes by name and import nothing new.
+    HW_ConfigureFbxImport()
     disableSceneRedraw()
     local importOK = false
     try ( importOK = importFile fbxPath #noPrompt ) catch ()
@@ -1052,6 +1076,7 @@ fn HW_ImportTemp = (
     local beforeHandles = #()
     for obj in objects do append beforeHandles obj.handle
 
+    HW_ConfigureFbxImport()
     disableSceneRedraw()
     local importOK = false
     try ( importOK = importFile importPath #noPrompt ) catch ()
