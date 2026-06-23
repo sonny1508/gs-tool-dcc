@@ -22,12 +22,20 @@ MANAGED_DIR_NAME = "GSTools_Common"
 
 # Addons enabled automatically on launch. Kept version-aware for future
 # 3.6-vs-4.x divergence even though the current set is uniform across versions.
+# NOTE: GS_File_Transfer was merged into GS_Pipeline (File I/O > GS File Transfer).
+# The standalone addon is retired; GS_Pipeline supersedes it.
 COMMON_AUTO_ENABLE = [
-    "GS_File_Transfer",
+    "GS_Pipeline",
     "GS_Asset_Validation",
     "GS_Texture_Validator",
     "S4_Env_Validator",
     "S4_Vehicle_Validator",
+]
+
+# Addons that were merged elsewhere and must be force-disabled on launch so they
+# don't double-register operators/properties that now live in GS_Pipeline.
+COMMON_FORCE_DISABLE = [
+    "GS_File_Transfer",
 ]
 
 
@@ -77,6 +85,17 @@ def _setup():
         changed |= _ensure_script_directory(_common_scripts_dir())
     except Exception as e:  # never let setup break Blender startup
         print(f"[GS Pipeline] Failed to register script directory: {e}")
+
+    # Disable retired addons first so their operators/properties free up before
+    # GS_Pipeline re-registers the merged versions.
+    for addon_name in COMMON_FORCE_DISABLE:
+        try:
+            if addon_name in bpy.context.preferences.addons:
+                bpy.ops.preferences.addon_disable(module=addon_name)
+                changed = True
+                print(f"[GS Pipeline] Disabled retired add-on: {addon_name}")
+        except Exception as e:
+            print(f"[GS Pipeline] Could not disable {addon_name}: {e}")
 
     for addon_name in _auto_enable_list():
         try:

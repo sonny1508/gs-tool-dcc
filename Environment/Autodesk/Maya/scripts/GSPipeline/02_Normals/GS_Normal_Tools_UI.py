@@ -403,7 +403,9 @@ def get_normal_to_ui():
     for i in range(0, len(n), 3):
         avg += om.MVector(n[i], n[i + 1], n[i + 2])
     avg.normalize()
-    cmds.floatFieldGrp("dmnt_normalFFG", e=True, v1=avg.x, v2=avg.y, v3=avg.z)
+    cmds.floatField("dmnt_nx", e=True, v=avg.x)
+    cmds.floatField("dmnt_ny", e=True, v=avg.y)
+    cmds.floatField("dmnt_nz", e=True, v=avg.z)
 
 
 def set_normal_from_ui():
@@ -412,12 +414,86 @@ def set_normal_from_ui():
     if not sel:
         cmds.warning("Select a component first.")
         return
-    x = cmds.floatFieldGrp("dmnt_normalFFG", q=True, v1=True)
-    y = cmds.floatFieldGrp("dmnt_normalFFG", q=True, v2=True)
-    z = cmds.floatFieldGrp("dmnt_normalFFG", q=True, v3=True)
+    x = cmds.floatField("dmnt_nx", q=True, v=True)
+    y = cmds.floatField("dmnt_ny", q=True, v=True)
+    z = cmds.floatField("dmnt_nz", q=True, v=True)
     vtf = cmds.ls(cmds.polyListComponentConversion(sel, tvf=True), fl=True, long=True)
     cmds.polyNormalPerVertex(vtf, xyz=(x, y, z))
     cmds.select(sel, r=True)
+
+
+def average_from_edge():
+    """Average the normals of each selected edge's two faces onto its vertices.
+
+    Replicates the original dmnt_setAverageNormalFromEdges: for every selected
+    edge, average the normals of the faces connected to that edge and assign that
+    single normal to both of the edge's vertices (across all of their
+    vertex-faces). Useful for softening shading across a specific edge loop.
+    """
+    if not cmds.filterExpand(cmds.ls(sl=True, fl=True), sm=32):
+        cmds.warning("Select at least one edge to perform Average From Edge.")
+        return
+
+    sel = cmds.ls(sl=True, long=True)
+    did_any = False
+
+    # Per selected mesh, collect that mesh's selected edge ids from the component.
+    for dag, comp in _iter_selected_mesh_components():
+        if comp.isNull() or comp.apiType() != om.MFn.kMeshEdgeComponent:
+            continue
+        edge_ids = om.MFnSingleIndexedComponent(comp).getElements()
+        if not edge_ids:
+            continue
+
+        mesh = om.MFnMesh(dag)
+        face_normals = {}
+
+        def _face_normal(f):
+            if f not in face_normals:
+                n = mesh.getPolygonNormal(f, om.MSpace.kObject)
+                face_normals[f] = om.MVector(n.x, n.y, n.z).normalize()
+            return face_normals[f]
+
+        normals = om.MVectorArray()
+        face_ids = om.MIntArray()
+        vert_ids = om.MIntArray()
+
+        edge_it = om.MItMeshEdge(dag)
+        vert_it = om.MItMeshVertex(dag)
+        for eid in edge_ids:
+            edge_it.setIndex(eid)
+            conn_faces = list(edge_it.getConnectedFaces())
+            if not conn_faces:
+                continue
+
+            avg = om.MVector(0.0, 0.0, 0.0)
+            for f in conn_faces:
+                avg += _face_normal(f)
+            if avg.length() <= 1e-12:
+                continue
+            avg.normalize()
+
+            # Assign to both edge vertices across all their vertex-faces, as the
+            # original (polyNormalPerVertex on the whole vertex) did.
+            for v in (edge_it.vertexId(0), edge_it.vertexId(1)):
+                vert_it.setIndex(v)
+                for f in vert_it.getConnectedFaces():
+                    normals.append(avg)
+                    face_ids.append(f)
+                    vert_ids.append(v)
+
+        if len(normals):
+            mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
+            mesh.updateSurface()
+            did_any = True
+
+    if not did_any:
+        cmds.warning("Nothing to average.")
+        return
+
+    cmds.select(sel, r=True)
+    cmds.refresh()
+    print("Average normal from edges applied\n")
 
 
 def switch_to_normal_edit_tool():
@@ -437,13 +513,22 @@ def on_settings_changed(*_):
 WINDOW = "GSNormalToolsWin"
 
 
-# radioButtonGrp select index (1-based) -> method name.
-_METHODS = {1: "face_weighted", 2: "area_weighted", 3: "average"}
+# radioButton control name -> method name.
+_METHOD_BUTTONS = (
+    ("dmnt_rbFaceWeighted", "face_weighted", "Face Weighted"),
+    ("dmnt_rbAreaWeighted", "area_weighted", "Area Weighted"),
+    ("dmnt_rbAverage",      "average",       "Average"),
+)
+_BUTTON_TO_METHOD = {ctrl: name for ctrl, name, _ in _METHOD_BUTTONS}
 
 
 def _align_cb(*_):
-    method = _METHODS.get(
-        cmds.radioButtonGrp("dmnt_methodRBG", q=True, select=True), "face_weighted")
+    # radioCollection -q -select returns the selected button's name; depending on
+    # Maya version this can be the full path or just the short name, so match on
+    # the trailing control name to be safe.
+    selected = cmds.radioCollection("dmnt_methodRC", q=True, select=True) or ""
+    short = selected.split("|")[-1]
+    method = _BUTTON_TO_METHOD.get(short, "face_weighted")
     keep_hard = cmds.checkBox("dmnt_keepHardCB", q=True, v=True)
     align_normals(method, keep_hard)
 
@@ -457,43 +542,58 @@ def show_ui():
     cmds.columnLayout(adj=True, rs=4, co=("both", 4))
 
     cmds.frameLayout(label="Align Normals", bgs=True, mh=6, mw=6)
-    cmds.columnLayout(adj=True, rs=4)
-    cmds.radioButtonGrp(
-        "dmnt_methodRBG", nrb=3,
-        la3=("Face Weighted", "Area Weighted", "Average"),
-        cw3=(95, 95, 75), select=1,
-        ann="Face Weighted: vertex takes the normal of its single largest "
-            "adjacent face (original behaviour; best on hard-surface meshes). "
-            "Area Weighted: area-weighted blend (correct on curved meshes like a "
-            "torus, large faces still dominate). Average: equal blend.")
+    cmds.rowLayout(nc=2, cl2=("left", "center"),
+                   ct2=("both", "both"), cw2=(136, 136))
+
+    # Left: vertical list of method options + Keep Hard Edges.
+    cmds.columnLayout(adj=True, rs=2, w=136)
+    cmds.radioCollection("dmnt_methodRC")
+    for ctrl, _name, label in _METHOD_BUTTONS:
+        cmds.radioButton(ctrl, l=label)
+    cmds.radioCollection("dmnt_methodRC", e=True, select="dmnt_rbFaceWeighted")
+    cmds.separator(h=4, style="none")
     cmds.checkBox("dmnt_keepHardCB", l="Keep Hard Edges", v=False,
                   ann="Preserve shading on hard edges so they still appear "
                       "sharp.")
-    cmds.button(l="Align Normals", h=50, c=_align_cb)
+    cmds.setParent("..")
+
+    # Right: Align button matches the other buttons' width, fills the height.
+    cmds.button(l="Align Normals", c=_align_cb, w=136, h=100,
+                ann="Align vertex normals on the selected object(s) or "
+                    "components using the chosen method.")
     cmds.setParent("..")
     cmds.setParent("..")
 
     cmds.frameLayout(label="Adjust Normals", bgs=True, mh=6, mw=6)
     cmds.columnLayout(adj=True, rs=4)
-    cmds.rowLayout(nc=3, cw3=(160, 35, 35))
-    cmds.floatFieldGrp("dmnt_normalFFG", nf=3, v1=0, v2=0, v3=0, pre=6,
-                       cw3=(50, 50, 50))
+    # X/Y/Z: three equal-width fields filling the row; Get/Set equal sized.
+    # Widths sum to ~262 (= the 136+136 button columns) so the row fills across.
+    cmds.rowLayout(nc=5, cw5=(59, 59, 59, 45, 45),
+                   ct5=("both", "both", "both", "both", "both"))
+    cmds.floatField("dmnt_nx", v=0, pre=4, ann="Normal X")
+    cmds.floatField("dmnt_ny", v=0, pre=4, ann="Normal Y")
+    cmds.floatField("dmnt_nz", v=0, pre=4, ann="Normal Z")
     cmds.button(l="Get", c=lambda *_: get_normal_to_ui())
     cmds.button(l="Set", c=lambda *_: set_normal_from_ui())
     cmds.setParent("..")
-    cmds.button(l="Vertex Normal Edit Tool",
+    cmds.rowLayout(nc=2, cw2=(136, 136))
+    cmds.button(l="Average From Edge", w=136, c=lambda *_: average_from_edge(),
+                ann="Apply the average normal of each selected edge's connected "
+                    "faces to that edge's vertices.")
+    cmds.button(l="Vertex Normal Edit Tool", w=136,
                 c=lambda *_: switch_to_normal_edit_tool())
-    cmds.rowLayout(nc=2, cw2=(131, 131))
-    cmds.button(l="Unlock Normals", w=131, c=lambda *_: unlock_normals())
-    cmds.button(l="Lock Normals", w=131, c=lambda *_: lock_normals())
+    cmds.setParent("..")
+    cmds.rowLayout(nc=2, cw2=(136, 136))
+    cmds.button(l="Unlock Normals", w=136, c=lambda *_: unlock_normals())
+    cmds.button(l="Lock Normals", w=136, c=lambda *_: lock_normals())
     cmds.setParent("..")
     cmds.setParent("..")
     cmds.setParent("..")
 
     cmds.frameLayout(label="Selection", bgs=True, mh=6, mw=6)
-    cmds.rowLayout(nc=2, cw2=(131, 131))
-    cmds.button(l="Select Hard Edges", w=131, c=lambda *_: select_edges(1))
-    cmds.button(l="Select Soft Edges", w=131, c=lambda *_: select_edges(0))
+    cmds.rowLayout(nc=2, cw2=(136, 136))
+    cmds.button(l="Select Hard Edges", w=136, c=lambda *_: select_edges(1))
+    cmds.button(l="Select Soft Edges", w=136, c=lambda *_: select_edges(0))
     cmds.setParent("..")
     cmds.setParent("..")
 
