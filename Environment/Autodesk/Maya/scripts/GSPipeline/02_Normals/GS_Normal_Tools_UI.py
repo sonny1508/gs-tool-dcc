@@ -24,11 +24,32 @@ Feature parity with the MEL version:
   * Get / Set normal on the selected components.
 """
 
+import contextlib
+
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
 
 # --- Maya 2.0 API plugin contract (harmless for a pure-Python tool module) ---
 maya_useNewAPI = True
+
+
+@contextlib.contextmanager
+def _undo_disabled():
+    """Run a block with Maya's undo queue suspended.
+
+    The fast normal operations write through MFnMesh.setFaceVertexNormals, a
+    direct DG edit Maya does not record on the undo stack. Leaving the queue
+    enabled meant a later Ctrl+Z popped an unrelated/partial entry and tried to
+    revert a mesh whose normals it had no record of - which corrupted or even
+    cleared the normals. Suspending the queue for the whole operation makes
+    these writes completely invisible to undo, so Ctrl+Z can never touch them.
+    """
+    prev = cmds.undoInfo(q=True, state=True)
+    cmds.undoInfo(stateWithoutFlush=False)
+    try:
+        yield
+    finally:
+        cmds.undoInfo(stateWithoutFlush=prev)
 
 
 # =====================================================================
@@ -289,8 +310,10 @@ def align_normals(method, keep_hard_edges):
 
     Geometry is read once via the API and written back in a single
     MFnMesh.setFaceVertexNormals call per object (milliseconds, even on smooth
-    meshes). This direct API write is NOT on Maya's undo stack - Ctrl+Z will not
-    revert it. Re-run Align (or restore from history) if you need to change it.
+    meshes). This direct API write is NOT on Maya's undo stack and the whole
+    operation runs with the undo queue suspended (see _undo_disabled), so Ctrl+Z
+    cannot revert - or corrupt - it. Re-run Align (or restore from history) if
+    you need to change it.
     """
     sel = cmds.ls(sl=True, long=True)
     if not sel:
@@ -303,47 +326,52 @@ def align_normals(method, keep_hard_edges):
         return
 
     did_any = False
-    for dag, comp in targets:
-        result = _align_mesh(dag, comp, method, keep_hard_edges)
-        if result is None:
-            continue
-        mesh, normals, face_ids, vert_ids = result
-        mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
-        # Tell Maya the mesh changed so the viewport reshades immediately.
-        # Without this the new normals are applied but the display stays stale
-        # until the user re-selects the object.
-        mesh.updateSurface()
-        did_any = True
+    with _undo_disabled():
+        for dag, comp in targets:
+            result = _align_mesh(dag, comp, method, keep_hard_edges)
+            if result is None:
+                continue
+            mesh, normals, face_ids, vert_ids = result
+            mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
+            # Tell Maya the mesh changed so the viewport reshades immediately.
+            # Without this the new normals are applied but the display stays
+            # stale until the user re-selects the object.
+            mesh.updateSurface()
+            did_any = True
 
-    if not did_any:
-        cmds.warning("Nothing to align.")
-        return
+        if not did_any:
+            cmds.warning("Nothing to align.")
+            return
 
-    cmds.select(sel, r=True)
+        cmds.select(sel, r=True)
     cmds.refresh()
     print("Vertex normals have been aligned\n")
 
 
 def unlock_normals():
-    """Unlock normals and restore soft edges (keeping existing hard edges)."""
-    objs = cmds.ls(sl=True, long=True, objectsOnly=True)
-    if not objs:
-        cmds.warning("Please select a mesh.")
-        return
+    """Unlock normals on the selected object(s) or only the selected components.
+
+    Works in both contexts from the one button: converting the selection to
+    vertex-faces expands a whole-object selection to every vertex-face, and a
+    component selection (vertices, faces, edges, vertex-faces) to just those.
+    Unlocking restores Maya's stored softness, so we leave edge hardness as-is.
+    """
     sel = cmds.ls(sl=True, long=True)
+    if not sel:
+        cmds.warning("Please select a mesh or components.")
+        return
+    vtx_faces = cmds.polyListComponentConversion(sel, tvf=True)
+    if not vtx_faces:
+        cmds.warning("Please select a mesh or components.")
+        return
 
     cmds.undoInfo(openChunk=True)
     try:
-        for obj in objs:
-            cmds.polyNormalPerVertex(obj, ufn=True)
-            # Soften only the edges that are currently soft would require a
-            # query; unlocking already restores Maya's stored softness, so we
-            # simply leave edge hardness as-is here.
+        cmds.polyNormalPerVertex(vtx_faces, ufn=True)
     finally:
         cmds.undoInfo(closeChunk=True)
 
-    if sel:
-        cmds.select(sel, r=True)
+    cmds.select(sel, r=True)
     print("Vertex normals have been unlocked\n")
 
 
@@ -437,61 +465,67 @@ def average_from_edge():
     sel = cmds.ls(sl=True, long=True)
     did_any = False
 
-    # Per selected mesh, collect that mesh's selected edge ids from the component.
-    for dag, comp in _iter_selected_mesh_components():
-        if comp.isNull() or comp.apiType() != om.MFn.kMeshEdgeComponent:
-            continue
-        edge_ids = om.MFnSingleIndexedComponent(comp).getElements()
-        if not edge_ids:
-            continue
-
-        mesh = om.MFnMesh(dag)
-        face_normals = {}
-
-        def _face_normal(f):
-            if f not in face_normals:
-                n = mesh.getPolygonNormal(f, om.MSpace.kObject)
-                face_normals[f] = om.MVector(n.x, n.y, n.z).normalize()
-            return face_normals[f]
-
-        normals = om.MVectorArray()
-        face_ids = om.MIntArray()
-        vert_ids = om.MIntArray()
-
-        edge_it = om.MItMeshEdge(dag)
-        vert_it = om.MItMeshVertex(dag)
-        for eid in edge_ids:
-            edge_it.setIndex(eid)
-            conn_faces = list(edge_it.getConnectedFaces())
-            if not conn_faces:
+    # Like align_normals, this writes through setFaceVertexNormals (a direct DG
+    # edit Maya does not record), so suspend the undo queue for the whole pass -
+    # otherwise a later Ctrl+Z corrupts normals it has no record of.
+    with _undo_disabled():
+        # Per selected mesh, collect that mesh's selected edge ids from the
+        # component.
+        for dag, comp in _iter_selected_mesh_components():
+            if comp.isNull() or comp.apiType() != om.MFn.kMeshEdgeComponent:
+                continue
+            edge_ids = om.MFnSingleIndexedComponent(comp).getElements()
+            if not edge_ids:
                 continue
 
-            avg = om.MVector(0.0, 0.0, 0.0)
-            for f in conn_faces:
-                avg += _face_normal(f)
-            if avg.length() <= 1e-12:
-                continue
-            avg.normalize()
+            mesh = om.MFnMesh(dag)
+            face_normals = {}
 
-            # Assign to both edge vertices across all their vertex-faces, as the
-            # original (polyNormalPerVertex on the whole vertex) did.
-            for v in (edge_it.vertexId(0), edge_it.vertexId(1)):
-                vert_it.setIndex(v)
-                for f in vert_it.getConnectedFaces():
-                    normals.append(avg)
-                    face_ids.append(f)
-                    vert_ids.append(v)
+            def _face_normal(f):
+                if f not in face_normals:
+                    n = mesh.getPolygonNormal(f, om.MSpace.kObject)
+                    face_normals[f] = om.MVector(n.x, n.y, n.z).normalize()
+                return face_normals[f]
 
-        if len(normals):
-            mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
-            mesh.updateSurface()
-            did_any = True
+            normals = om.MVectorArray()
+            face_ids = om.MIntArray()
+            vert_ids = om.MIntArray()
 
-    if not did_any:
-        cmds.warning("Nothing to average.")
-        return
+            edge_it = om.MItMeshEdge(dag)
+            vert_it = om.MItMeshVertex(dag)
+            for eid in edge_ids:
+                edge_it.setIndex(eid)
+                conn_faces = list(edge_it.getConnectedFaces())
+                if not conn_faces:
+                    continue
 
-    cmds.select(sel, r=True)
+                avg = om.MVector(0.0, 0.0, 0.0)
+                for f in conn_faces:
+                    avg += _face_normal(f)
+                if avg.length() <= 1e-12:
+                    continue
+                avg.normalize()
+
+                # Assign to both edge vertices across all their vertex-faces, as
+                # the original (polyNormalPerVertex on the whole vertex) did.
+                for v in (edge_it.vertexId(0), edge_it.vertexId(1)):
+                    vert_it.setIndex(v)
+                    for f in vert_it.getConnectedFaces():
+                        normals.append(avg)
+                        face_ids.append(f)
+                        vert_ids.append(v)
+
+            if len(normals):
+                mesh.setFaceVertexNormals(normals, face_ids, vert_ids,
+                                          om.MSpace.kObject)
+                mesh.updateSurface()
+                did_any = True
+
+        if not did_any:
+            cmds.warning("Nothing to average.")
+            return
+
+        cmds.select(sel, r=True)
     cmds.refresh()
     print("Average normal from edges applied\n")
 
