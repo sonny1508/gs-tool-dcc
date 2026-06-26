@@ -48,7 +48,10 @@ fn checkGSToolsMenuExists =
 
 -- Names of the menus this script creates (top-level + submenus), so every
 -- leftover from prior restarts gets purged, not just the first "GSTools" match.
-global gsOwnedMenuNames = #("GSTools", "01 General", "02 UV", "03 Review", "04 File I/O", "05 Projects")
+-- These MUST match exactly the names passed to menuMan.createMenu in
+-- createSubmenusWithMacros (the folderStructure folder names) so the cleanup
+-- pass can find and unregister stale submenus across restarts/reorders.
+global gsOwnedMenuNames = #("GSTools", "01_General", "02_UV", "03_Normals", "04_Review", "05_File I/O", "06_Projects")
 
 -- Function to remove existing GSTools menu
 fn removeGSToolsMenu =
@@ -180,11 +183,12 @@ fn createSubmenusWithMacros gsToolsMenu =
         -- Create a list of folders and associated scripts
         local folderStructure = #(
             -- #("FolderName", #("MacroName1", "MacroName2", ...))
-            #("01 General", #("Material_ID_Remapper", "Poly_Smoother", "Texel_Density", "Material_Manager")),
-            #("02 UV", #("UV_Tools")),
-            #("03 Review", #("Scene_Checker")),
-            #("04 File I/O", #("GS_File_Exporter", "GS_File_Transfer")),
-            #("05 Projects", #("HW3_File_Exporter", "HW3_Tools"))
+            #("01_General", #("Material_ID_Remapper", "Poly_Smoother", "Texel_Density", "Material_Manager")),
+            #("02_UV", #("UV_Tools")),
+            #("03_Normals", #("Custom_Normals_Tool")),
+            #("04_Review", #("Scene_Checker")),
+            #("05_File I/O", #("GS_File_Exporter", "GS_File_Transfer")),
+            #("06_Projects", #("HW3_File_Exporter", "HW3_Tools"))
             -- Add more folders here as needed
         )
         
