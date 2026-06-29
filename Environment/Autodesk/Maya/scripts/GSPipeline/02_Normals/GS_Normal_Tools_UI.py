@@ -24,7 +24,8 @@ Feature parity with the MEL version:
   * Get / Set normal on the selected components.
 """
 
-import contextlib
+import os
+import sys
 
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
@@ -33,23 +34,75 @@ import maya.api.OpenMaya as om
 maya_useNewAPI = True
 
 
-@contextlib.contextmanager
-def _undo_disabled():
-    """Run a block with Maya's undo queue suspended.
+# =====================================================================
+#  Undoable API-write bridge
+# =====================================================================
+#
+# Align Normals and Average From Edge write through MFnMesh.setFaceVertexNormals,
+# a direct DG edit Maya does NOT record on the undo stack. We route those writes
+# through the gsNormalApiApply command so the whole operation is one exact,
+# fully-undoable entry on the native stack.
+#
+# All the read/write/restore math lives in gs_normal_core (a plain importable
+# module right beside this one); the command is just the undo vehicle. This file,
+# the core module and the plugin all share that one core, so there is a single
+# source of truth and no sys.modules handoff tricks.
 
-    The fast normal operations write through MFnMesh.setFaceVertexNormals, a
-    direct DG edit Maya does not record on the undo stack. Leaving the queue
-    enabled meant a later Ctrl+Z popped an unrelated/partial entry and tried to
-    revert a mesh whose normals it had no record of - which corrupted or even
-    cleared the normals. Suspending the queue for the whole operation makes
-    these writes completely invisible to undo, so Ctrl+Z can never touch them.
+# 02_Normals is not on sys.path (GSPipeline launches tools by exec'ing scripts),
+# so put this script's own folder on it once - that makes `import gs_normal_core`
+# resolve both here and in the plugin (we load the plugin only after this runs).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.append(_HERE)
+
+import gs_normal_core as core  # noqa: E402  (must follow the sys.path setup)
+
+_UNDO_PLUGIN = "gsNormalApiUndo"
+
+
+def _ensure_plugin():
+    """Load the gsNormalApiApply command plugin if it isn't already (idempotent).
+
+    The plugin is deployed to ~/Documents/maya/plug-ins (a Maya trusted location,
+    also on MAYA_PLUG_IN_PATH), so loading BY NAME raises no "untrusted location"
+    prompt. It imports gs_normal_core at load time, which resolves because we put
+    02_Normals on sys.path above before getting here.
     """
-    prev = cmds.undoInfo(q=True, state=True)
-    cmds.undoInfo(stateWithoutFlush=False)
-    try:
-        yield
-    finally:
-        cmds.undoInfo(stateWithoutFlush=prev)
+    if not cmds.pluginInfo(_UNDO_PLUGIN, q=True, loaded=True):
+        cmds.loadPlugin(_UNDO_PLUGIN, quiet=True)
+
+
+def _flatten_vectors(varr):
+    """Flatten an MVectorArray to a plain [x, y, z, x, y, z, ...] float list.
+
+    The command holds its 'after' normals on its own undo-stack instance, so we
+    hand it owned plain floats rather than an MVectorArray (which is tied to the
+    API and can alias). core rebuilds the MVectorArray from this on write.
+    """
+    flat = []
+    for v in varr:
+        flat.append(v.x)
+        flat.append(v.y)
+        flat.append(v.z)
+    return flat
+
+
+def _apply_via_command(after_specs, before_dags):
+    """Run an undoable normal write: snapshot `before_dags`, apply `after_specs`.
+
+    after_specs : list of dicts {name, normals_flat, face_ids, vert_ids, soft} -
+                  the NEW normals to write per mesh and the soft edges to restore.
+    before_dags : list of MDagPath - the meshes the operation touched, snapshotted
+                  here (full normals + lock + soft-edge state) for undo.
+
+    We snapshot the BEFORE state, stage (before, after) in core, then run the
+    command - which consumes the staged job onto its own instance. Each operation
+    therefore owns its snapshot on the undo stack (A->B->A undoes correctly).
+    """
+    _ensure_plugin()
+    before = [core.capture_mesh_state(dag) for dag in before_dags]
+    core.stage_job(before, after_specs)
+    cmds.gsNormalApiApply()
 
 
 # =====================================================================
@@ -348,10 +401,10 @@ def align_normals(method, keep_hard_edges):
 
     Geometry is read once via the API and written back in a single
     MFnMesh.setFaceVertexNormals call per object (milliseconds, even on smooth
-    meshes). This direct API write is NOT on Maya's undo stack and the whole
-    operation runs with the undo queue suspended (see _undo_disabled), so Ctrl+Z
-    cannot revert - or corrupt - it. Re-run Align (or restore from history) if
-    you need to change it.
+    meshes). The write is routed through the gsNormalApiApply command together
+    with a per-mesh before-snapshot, so the whole operation is one fully-undoable
+    entry on Maya's native stack - Ctrl+Z reverts it exactly, even after editing
+    other objects in between (see _apply_via_command / gsNormalApiUndo.py).
     """
     sel = cmds.ls(sl=True, long=True)
     if not sel:
@@ -363,30 +416,28 @@ def align_normals(method, keep_hard_edges):
         cmds.warning("Selection is not a mesh.")
         return
 
-    did_any = False
-    with _undo_disabled():
-        for dag, comp in targets:
-            result = _align_mesh(dag, comp, method, keep_hard_edges)
-            if result is None:
-                continue
-            mesh, normals, face_ids, vert_ids, soft_edges = result
-            mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
-            # setFaceVertexNormals locks the written normals, which hardens every
-            # touched edge. Restore the edges that were soft before so their soft
-            # shading is preserved whether or not Keep Hard Edges is on; hard
-            # edges are left as they were.
-            _soften_edges(dag, soft_edges)
-            # Tell Maya the mesh changed so the viewport reshades immediately.
-            # Without this the new normals are applied but the display stays
-            # stale until the user re-selects the object.
-            mesh.updateSurface()
-            did_any = True
+    after_specs = []
+    before_dags = []
+    for dag, comp in targets:
+        result = _align_mesh(dag, comp, method, keep_hard_edges)
+        if result is None:
+            continue
+        _mesh, normals, face_ids, vert_ids, soft_edges = result
+        after_specs.append({
+            "name": dag.fullPathName(),
+            "normals_flat": _flatten_vectors(normals),
+            "face_ids": face_ids,
+            "vert_ids": vert_ids,
+            "soft": soft_edges,
+        })
+        before_dags.append(dag)
 
-        if not did_any:
-            cmds.warning("Nothing to align.")
-            return
+    if not after_specs:
+        cmds.warning("Nothing to align.")
+        return
 
-        cmds.select(sel, r=True)
+    _apply_via_command(after_specs, before_dags)
+    cmds.select(sel, r=True)
     cmds.refresh()
     print("Vertex normals have been aligned\n")
 
@@ -516,69 +567,75 @@ def average_from_edge():
         return
 
     sel = cmds.ls(sl=True, long=True)
-    did_any = False
+    after_specs = []
+    before_dags = []
 
-    # Like align_normals, this writes through setFaceVertexNormals (a direct DG
-    # edit Maya does not record), so suspend the undo queue for the whole pass -
-    # otherwise a later Ctrl+Z corrupts normals it has no record of.
-    with _undo_disabled():
-        # Per selected mesh, collect that mesh's selected edge ids from the
-        # component.
-        for dag, comp in _iter_selected_mesh_components():
-            if comp.isNull() or comp.apiType() != om.MFn.kMeshEdgeComponent:
+    # Per selected mesh, collect that mesh's selected edge ids from the component
+    # and build the new normals. The actual write goes through the undoable
+    # gsNormalApiApply command (see _apply_via_command), so a later Ctrl+Z reverts
+    # it exactly instead of corrupting normals it has no record of.
+    for dag, comp in _iter_selected_mesh_components():
+        if comp.isNull() or comp.apiType() != om.MFn.kMeshEdgeComponent:
+            continue
+        edge_ids = om.MFnSingleIndexedComponent(comp).getElements()
+        if not edge_ids:
+            continue
+
+        mesh = om.MFnMesh(dag)
+        face_normals = {}
+
+        def _face_normal(f):
+            if f not in face_normals:
+                n = mesh.getPolygonNormal(f, om.MSpace.kObject)
+                face_normals[f] = om.MVector(n.x, n.y, n.z).normalize()
+            return face_normals[f]
+
+        normals = om.MVectorArray()
+        face_ids = om.MIntArray()
+        vert_ids = om.MIntArray()
+
+        edge_it = om.MItMeshEdge(dag)
+        vert_it = om.MItMeshVertex(dag)
+        for eid in edge_ids:
+            edge_it.setIndex(eid)
+            conn_faces = list(edge_it.getConnectedFaces())
+            if not conn_faces:
                 continue
-            edge_ids = om.MFnSingleIndexedComponent(comp).getElements()
-            if not edge_ids:
+
+            avg = om.MVector(0.0, 0.0, 0.0)
+            for f in conn_faces:
+                avg += _face_normal(f)
+            if avg.length() <= 1e-12:
                 continue
+            avg.normalize()
 
-            mesh = om.MFnMesh(dag)
-            face_normals = {}
+            # Assign to both edge vertices across all their vertex-faces, as
+            # the original (polyNormalPerVertex on the whole vertex) did.
+            for v in (edge_it.vertexId(0), edge_it.vertexId(1)):
+                vert_it.setIndex(v)
+                for f in vert_it.getConnectedFaces():
+                    normals.append(avg)
+                    face_ids.append(f)
+                    vert_ids.append(v)
 
-            def _face_normal(f):
-                if f not in face_normals:
-                    n = mesh.getPolygonNormal(f, om.MSpace.kObject)
-                    face_normals[f] = om.MVector(n.x, n.y, n.z).normalize()
-                return face_normals[f]
+        if len(normals):
+            after_specs.append({
+                "name": dag.fullPathName(),
+                "normals_flat": _flatten_vectors(normals),
+                "face_ids": face_ids,
+                "vert_ids": vert_ids,
+                # Average From Edge deliberately leaves the written edges hard
+                # (it never re-softened), so no soft edges to restore on apply.
+                "soft": [],
+            })
+            before_dags.append(dag)
 
-            normals = om.MVectorArray()
-            face_ids = om.MIntArray()
-            vert_ids = om.MIntArray()
+    if not after_specs:
+        cmds.warning("Nothing to average.")
+        return
 
-            edge_it = om.MItMeshEdge(dag)
-            vert_it = om.MItMeshVertex(dag)
-            for eid in edge_ids:
-                edge_it.setIndex(eid)
-                conn_faces = list(edge_it.getConnectedFaces())
-                if not conn_faces:
-                    continue
-
-                avg = om.MVector(0.0, 0.0, 0.0)
-                for f in conn_faces:
-                    avg += _face_normal(f)
-                if avg.length() <= 1e-12:
-                    continue
-                avg.normalize()
-
-                # Assign to both edge vertices across all their vertex-faces, as
-                # the original (polyNormalPerVertex on the whole vertex) did.
-                for v in (edge_it.vertexId(0), edge_it.vertexId(1)):
-                    vert_it.setIndex(v)
-                    for f in vert_it.getConnectedFaces():
-                        normals.append(avg)
-                        face_ids.append(f)
-                        vert_ids.append(v)
-
-            if len(normals):
-                mesh.setFaceVertexNormals(normals, face_ids, vert_ids,
-                                          om.MSpace.kObject)
-                mesh.updateSurface()
-                did_any = True
-
-        if not did_any:
-            cmds.warning("Nothing to average.")
-            return
-
-        cmds.select(sel, r=True)
+    _apply_via_command(after_specs, before_dags)
+    cmds.select(sel, r=True)
     cmds.refresh()
     print("Average normal from edges applied\n")
 
