@@ -126,9 +126,15 @@ def _align_mesh(dag, comp, method, keep_hard_edges):
                       edges so they stay sharp; otherwise every vertex gets a
                       single normal across all its vertex-faces.
 
-    Returns (mesh_fn, normals, face_ids, vert_ids) - parallel arrays ready for a
-    single fast MFnMesh.setFaceVertexNormals call. Returns None if there is
+    Returns (mesh_fn, normals, face_ids, vert_ids, soft_edges) - the parallel
+    arrays ready for a single fast MFnMesh.setFaceVertexNormals call, plus the
+    list of edge ids that were SOFT before the write. Returns None if there is
     nothing to do.
+
+    soft_edges is captured here because setFaceVertexNormals locks the written
+    normals, which hardens every touched edge. Re-softening those edges
+    afterwards (see align_normals) preserves their original soft stage,
+    regardless of the Keep Hard Edges option. Hard edges are left untouched.
 
     All topology/geometry is read once via the API and the write is a single
     batched API call (see align_normals). The previous version issued one
@@ -166,16 +172,20 @@ def _align_mesh(dag, comp, method, keep_hard_edges):
         face_area[poly_it.index()] = float(poly_it.getArea(om.MSpace.kWorld))
         poly_it.next()
 
-    # Edges Maya marks hard, as frozenset({vtxA, vtxB}) pairs.
+    # One edge pass: collect the ids of currently-soft edges (to restore their
+    # softness after the locking write) and, when Keep Hard Edges is on, the
+    # hard edges as frozenset({vtxA, vtxB}) pairs used to split smoothing groups.
+    soft_edges = []
     hard_edge_pairs = set()
-    if keep_hard_edges:
-        edge_it = om.MItMeshEdge(dag)
-        while not edge_it.isDone():
-            if not edge_it.isSmooth:
-                hard_edge_pairs.add(
-                    frozenset((edge_it.vertexId(0), edge_it.vertexId(1)))
-                )
-            edge_it.next()
+    edge_it = om.MItMeshEdge(dag)
+    while not edge_it.isDone():
+        if edge_it.isSmooth:
+            soft_edges.append(edge_it.index())
+        elif keep_hard_edges:
+            hard_edge_pairs.add(
+                frozenset((edge_it.vertexId(0), edge_it.vertexId(1)))
+            )
+        edge_it.next()
 
     # ---- compute parallel arrays for one batched setFaceVertexNormals call ----
     normals = om.MVectorArray()
@@ -209,7 +219,7 @@ def _align_mesh(dag, comp, method, keep_hard_edges):
 
     if len(normals) == 0:
         return None
-    return mesh, normals, face_ids, vert_ids
+    return mesh, normals, face_ids, vert_ids, soft_edges
 
 
 def _smoothing_groups(vertex, faces, mesh, hard_edge_pairs, keep_hard_edges):
@@ -301,6 +311,34 @@ def _group_normal(group, method, face_normals, face_area):
     return result
 
 
+def _soft_edge_ids(dag):
+    """Return the ids of every currently-soft edge on the mesh at `dag`.
+
+    A single in-memory MItMeshEdge pass - the same source of truth Align uses -
+    so the soft/hard stage restored afterwards matches what Maya reports."""
+    soft = []
+    edge_it = om.MItMeshEdge(dag)
+    while not edge_it.isDone():
+        if edge_it.isSmooth:
+            soft.append(edge_it.index())
+        edge_it.next()
+    return soft
+
+
+def _soften_edges(dag, edge_ids):
+    """Re-soften the given edges on the mesh at `dag`, preserving their stage.
+
+    Writing normals through setFaceVertexNormals / polyNormalPerVertex locks the
+    normals and hardens the touched edges. Calling polySoftEdge -a 360 on the
+    edges that were soft beforehand restores their soft shading without altering
+    any edge that was already hard. No-op when the list is empty."""
+    if not edge_ids:
+        return
+    name = dag.fullPathName()
+    edges = ["{0}.e[{1}]".format(name, e) for e in edge_ids]
+    cmds.polySoftEdge(edges, a=360, ch=False)
+
+
 # =====================================================================
 #  Public operations (called from the UI)
 # =====================================================================
@@ -331,8 +369,13 @@ def align_normals(method, keep_hard_edges):
             result = _align_mesh(dag, comp, method, keep_hard_edges)
             if result is None:
                 continue
-            mesh, normals, face_ids, vert_ids = result
+            mesh, normals, face_ids, vert_ids, soft_edges = result
             mesh.setFaceVertexNormals(normals, face_ids, vert_ids, om.MSpace.kObject)
+            # setFaceVertexNormals locks the written normals, which hardens every
+            # touched edge. Restore the edges that were soft before so their soft
+            # shading is preserved whether or not Keep Hard Edges is on; hard
+            # edges are left as they were.
+            _soften_edges(dag, soft_edges)
             # Tell Maya the mesh changed so the viewport reshades immediately.
             # Without this the new normals are applied but the display stays
             # stale until the user re-selects the object.
@@ -354,7 +397,11 @@ def unlock_normals():
     Works in both contexts from the one button: converting the selection to
     vertex-faces expands a whole-object selection to every vertex-face, and a
     component selection (vertices, faces, edges, vertex-faces) to just those.
-    Unlocking restores Maya's stored softness, so we leave edge hardness as-is.
+
+    Unlocking the normals (polyNormalPerVertex -ufn) re-hardens every edge it
+    touches, so we snapshot which edges were soft beforehand and re-soften them
+    afterwards. This preserves each edge's original soft/hard stage; hard edges
+    are left untouched.
     """
     sel = cmds.ls(sl=True, long=True)
     if not sel:
@@ -365,9 +412,15 @@ def unlock_normals():
         cmds.warning("Please select a mesh or components.")
         return
 
+    # Snapshot soft edges per selected mesh before the locking operation.
+    soft_by_mesh = [(dag, _soft_edge_ids(dag))
+                    for dag, _comp in _iter_selected_mesh_components()]
+
     cmds.undoInfo(openChunk=True)
     try:
         cmds.polyNormalPerVertex(vtx_faces, ufn=True)
+        for dag, soft_edges in soft_by_mesh:
+            _soften_edges(dag, soft_edges)
     finally:
         cmds.undoInfo(closeChunk=True)
 
