@@ -546,6 +546,11 @@ def _get_dialog_class():
                 "Select Ref / Inst", lambda: _call_ms("HW_SelectRefInst()"),
                 tip="Select all geometry that references or instances the single "
                     "selected source object."))
+            row2.addWidget(_btn(
+                "Check Non-reference", lambda: _call_ms("HW_CheckNonReference()"),
+                tip="From the selected objects, keep only those that are neither a "
+                    "reference/instance of another object nor referenced by one "
+                    "(stand-alone geometry), and update the selection to just those."))
             layout.addLayout(row2)
 
             layout.addWidget(_btn(

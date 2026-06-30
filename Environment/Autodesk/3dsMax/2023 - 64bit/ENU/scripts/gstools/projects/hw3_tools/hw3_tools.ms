@@ -390,6 +390,29 @@ fn HW_SelectRefInst = (
     true
 )
 
+-- From the current selection, keep only "non-reference" objects: those that are
+-- neither referenced by nor an instance/reference of any other node. An object
+-- with zero related nodes (HW_CollectRelated returns empty) stands completely
+-- alone and qualifies. Updates the selection to just those objects.
+fn HW_CheckNonReference = (
+    local nodes = selection as array
+    if nodes.count == 0 then (
+        messageBox "Please select at least one object." title:"HW model tool"
+        return false
+    )
+    local standalone = #()
+    for node in nodes do (
+        local related = HW_CollectRelated node
+        if related.count == 0 do append standalone node
+    )
+    if standalone.count == 0 then (
+        messageBox "No non-reference objects found in the selection." title:"HW model tool"
+        return false
+    )
+    select standalone
+    true
+)
+
 fn HW_CreateWindowsGlass = (
     local nodes = selection as array
     if nodes.count == 0 then (
