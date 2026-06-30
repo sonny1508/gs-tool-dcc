@@ -640,6 +640,65 @@ def average_from_edge():
     print("Average normal from edges applied\n")
 
 
+def align_face_normals():
+    """Match each face's vertex normals to the face normal (Maya's "set to face").
+
+    Scope is faces and whole objects only (vertex/edge selections are skipped):
+    every target face's normal is written to all of its vertex-faces, for planar
+    and non-planar faces alike. The write goes through the undoable gsNormalApiApply
+    command (like Align Normals), and edges that were soft beforehand are restored.
+    """
+    sel = cmds.ls(sl=True, long=True)
+    if not sel:
+        cmds.warning("Please select a mesh or faces.")
+        return
+
+    after_specs = []
+    before_dags = []
+
+    for dag, comp in _iter_selected_mesh_components():
+        # Faces & objects only: whole object -> all faces; otherwise require a
+        # face component. Vertex/edge/vertex-face selections are skipped.
+        mesh = om.MFnMesh(dag)
+        if comp.isNull():
+            target_faces = range(mesh.numPolygons)
+        elif comp.apiType() == om.MFn.kMeshPolygonComponent:
+            target_faces = om.MFnSingleIndexedComponent(comp).getElements()
+        else:
+            continue
+
+        normals = om.MVectorArray()
+        face_ids = om.MIntArray()
+        vert_ids = om.MIntArray()
+
+        for f in target_faces:
+            n = mesh.getPolygonNormal(f, om.MSpace.kObject)
+            normal = om.MVector(n.x, n.y, n.z).normalize()
+            for v in mesh.getPolygonVertices(f):
+                normals.append(normal)
+                face_ids.append(f)
+                vert_ids.append(v)
+
+        if len(normals):
+            after_specs.append({
+                "name": dag.fullPathName(),
+                "normals_flat": _flatten_vectors(normals),
+                "face_ids": face_ids,
+                "vert_ids": vert_ids,
+                "soft": _soft_edge_ids(dag),
+            })
+            before_dags.append(dag)
+
+    if not after_specs:
+        cmds.warning("Select faces or whole objects to align face normals.")
+        return
+
+    _apply_via_command(after_specs, before_dags)
+    cmds.select(sel, r=True)
+    cmds.refresh()
+    print("Face normals have been aligned\n")
+
+
 def switch_to_normal_edit_tool():
     cmds.setToolTo("polyVertexNormalEdit")
 
@@ -719,6 +778,12 @@ def show_ui():
     cmds.floatField("dmnt_nz", v=0, pre=4, ann="Normal Z")
     cmds.button(l="Get", c=lambda *_: get_normal_to_ui())
     cmds.button(l="Set", c=lambda *_: set_normal_from_ui())
+    cmds.setParent("..")
+    cmds.rowLayout(nc=1, adj=1)
+    cmds.button(l="Align Face Normals", c=lambda *_: align_face_normals(),
+                ann="Set each selected face's normals perpendicular to the face "
+                    "(flat / faceted shading). Works on selected faces or whole "
+                    "object(s).")
     cmds.setParent("..")
     cmds.rowLayout(nc=2, cw2=(136, 136))
     cmds.button(l="Average From Edge", w=136, c=lambda *_: average_from_edge(),
