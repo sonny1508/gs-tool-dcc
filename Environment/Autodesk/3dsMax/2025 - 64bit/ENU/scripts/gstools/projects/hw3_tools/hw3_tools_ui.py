@@ -1,8 +1,13 @@
 """
-hw3_tools_ui.py — GSTools HW3 Tools for 3ds Max 2023
+hw3_tools_ui.py — GSTools HW3 Tools for 3ds Max 2023 / 2025
 ============================================================
-UI:            PySide2 QDialog (Python 3.9)
+UI:            PySide6 (Max 2025, Qt6) or PySide2 (Max 2023, Qt5) QDialog
 Max operations: pymxs.runtime (imported at call time — not at module load)
+
+Qt binding is resolved lazily via _qt_modules(): PySide6 is preferred (3ds Max
+2025+, Python 3.11) and falls back to PySide2 (3ds Max 2023, Python 3.9). This
+keeps a single file working across both Max versions. Import is deferred to call
+time so the module stays importable under pytest where no Qt binding exists.
 """
 from __future__ import annotations
 import json
@@ -267,10 +272,25 @@ def _load_fbx_list() -> dict:
     return result
 
 
+# ── Qt binding shim (PySide6 for Max 2025, PySide2 for Max 2023) ──────────────
+
+def _qt_modules():
+    """Return (QtWidgets, QtCore, QtGui) from PySide6, falling back to PySide2.
+
+    PySide6 (Qt6) ships with 3ds Max 2025+; PySide2 (Qt5) with Max 2023. Both
+    expose the same widget/enum names used here, so callers are binding-agnostic.
+    """
+    try:
+        from PySide6 import QtWidgets, QtCore, QtGui
+    except ImportError:
+        from PySide2 import QtWidgets, QtCore, QtGui
+    return QtWidgets, QtCore, QtGui
+
+
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
 def _hsep():
-    from PySide2 import QtWidgets
+    QtWidgets, _, _ = _qt_modules()
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
     line.setFrameShadow(QtWidgets.QFrame.Sunken)
@@ -283,7 +303,7 @@ def show() -> None:
     """Open (or re-open) the Hotwheel Tools dialog."""
     global _ms_loaded
     _ms_loaded = False  # always reload hw3_tools.ms so changes take effect
-    from PySide2 import QtWidgets
+    QtWidgets, _, _ = _qt_modules()
     try:
         import qtmax
         parent = qtmax.GetQMaxMainWindow()
@@ -315,7 +335,7 @@ def _get_dialog_class():
     if _HotwheelDialog is not None:
         return _HotwheelDialog
 
-    from PySide2 import QtWidgets, QtCore
+    QtWidgets, QtCore, _ = _qt_modules()
 
     class _HotwheelDialog(QtWidgets.QDialog):
         def __init__(self, parent=None):
@@ -371,7 +391,7 @@ def _get_dialog_class():
             self._build_modelling(mod_widget)
 
         def _build_left(self, outer):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             left = QtWidgets.QVBoxLayout()
             outer.addLayout(left, stretch=3)
 
@@ -472,7 +492,7 @@ def _get_dialog_class():
             self._btn_assign.clicked.connect(self._on_assign)
 
         def _build_right(self, outer):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             right = QtWidgets.QVBoxLayout()
             outer.addLayout(right, stretch=2)
 
@@ -496,7 +516,7 @@ def _get_dialog_class():
             self._mat_list.itemSelectionChanged.connect(self._refresh_assign_btn)
 
         def _build_modelling(self, parent_widget):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = _qt_modules()
 
             layout = QtWidgets.QVBoxLayout(parent_widget)
             layout.setContentsMargins(8, 8, 8, 8)
@@ -684,7 +704,6 @@ def _get_dialog_class():
             self._refresh_fbx()
 
         def _on_export_building_scene(self):
-            from PySide2 import QtWidgets
             from pymxs import runtime as rt
             _ensure_ms()
             result = rt.execute("HW_ExportBuildingScene()")
@@ -692,7 +711,7 @@ def _get_dialog_class():
                 pass  # MaxScript already showed messageBox on error
 
         def _on_detach(self):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = _qt_modules()
             dlg = QtWidgets.QDialog(self)
             dlg.setWindowTitle("Detach")
             dlg.setWindowFlags(dlg.windowFlags() | QtCore.Qt.Window)
@@ -712,7 +731,7 @@ def _get_dialog_class():
             row.addWidget(btn_clone)
             btn_elem.clicked.connect(lambda: (_call_ms("HW_Detach false"), dlg.accept()))
             btn_clone.clicked.connect(lambda: (_call_ms("HW_Detach true"),  dlg.accept()))
-            dlg.exec_()
+            dlg.exec()
 
         def _refresh_fbx(self):
             self._fbx_paths = _load_fbx_list()
@@ -737,7 +756,7 @@ def _get_dialog_class():
             self._replacer_list.clear()
 
         def _on_clear_fbx(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             selected = self._fbx_list.selectedItems()
             if selected:
                 # Delete only selected FBX files
@@ -775,7 +794,7 @@ def _get_dialog_class():
             self._refresh_fbx()
 
         def _on_export_source_modules(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             from pymxs import runtime as rt
             _ensure_ms()
             mesh_root_ms = MESH_ROOT.replace("\\", "\\\\")
@@ -788,7 +807,7 @@ def _get_dialog_class():
                 )
 
         def _on_source_replace(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             from pymxs import runtime as rt
 
             n_rep = self._replacer_list.count()
@@ -845,7 +864,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _on_clear_mat(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             import shutil
             reply = QtWidgets.QMessageBox.question(
                 self, "Clear Material folder",
@@ -903,7 +922,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _on_clear_tex(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             import shutil
             reply = QtWidgets.QMessageBox.question(
                 self, "Clear Textures folder",
@@ -938,16 +957,16 @@ def _get_dialog_class():
 
         def _selected_mat_obj(self):
             """Return the mat object for the currently selected Max Material item."""
-            from PySide2.QtCore import Qt as _Qt
+            _, QtCore, _ = _qt_modules()
             if self._mat_list is None:
                 return None
             sel = self._mat_list.selectedItems()
             if not sel:
                 return None
-            return sel[0].data(_Qt.UserRole)
+            return sel[0].data(QtCore.Qt.UserRole)
 
         def _on_assign(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = _qt_modules()
             mat = self._selected_mat_obj()
             if mat is None:
                 QtWidgets.QMessageBox.warning(
@@ -989,7 +1008,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _refresh_materials(self):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = _qt_modules()
             self._mat_list.clear()
             for display_name, mat_obj in _list_scene_materials():
                 item = QtWidgets.QListWidgetItem(display_name)
