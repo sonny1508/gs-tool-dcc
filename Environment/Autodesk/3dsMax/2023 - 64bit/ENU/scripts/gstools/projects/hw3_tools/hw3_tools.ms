@@ -567,6 +567,60 @@ fn HW_MaterialNamesMatch srcMat masterMat =
     false
 )
 
+-- Check a Multi/Sub-Object material: every populated slot's sub-material name must
+-- end with the slot ID zero-padded to two digits (ID 4 → "...04", ID 12 → "...12",
+-- ID 100 → "...100"). An empty slot counts as a mismatch (no name to match its ID).
+-- Returns true if ALL slots match, false if any slot mismatches.
+fn HW_MultiMatIDsMatch masterMat =
+(
+    if masterMat == undefined then return false
+    if (classOf masterMat) != Multimaterial then return false
+    for i = 1 to masterMat.numsubs do (
+        local sub   = masterMat.materialList[i]
+        local slotID = masterMat.materialIDList[i]
+        if sub == undefined then return false  -- empty slot = mismatch
+        local suffix = HW_TwoDigit slotID
+        local name   = sub.name
+        if name == undefined or name.count < suffix.count then return false
+        local tail = substring name (name.count - suffix.count + 1) suffix.count
+        if tail != suffix do return false
+    )
+    true
+)
+
+-- Loop through the materials of all selected objects and report every Multi/Sub-Object
+-- master whose sub-materials don't all match their slot ID suffix. Single materials are
+-- skipped silently (no slot/ID relationship to violate). Shows the list of offending
+-- master materials (master name only) in a messageBox.
+fn HW_CheckNonMatchingID = (
+    local nodes = selection as array
+    if nodes.count == 0 then (
+        messageBox "Please select at least one object." title:"HW model tool"
+        return false
+    )
+    local checked    = #()  -- masters already examined (dedupe shared materials)
+    local mismatched = #()  -- offending master materials
+    for node in nodes do (
+        local mat = node.material
+        if mat == undefined do continue
+        if (classOf mat) != Multimaterial do continue  -- skip single materials
+        if (findItem checked mat) != 0 do continue
+        append checked mat
+        if not (HW_MultiMatIDsMatch mat) do append mismatched mat
+    )
+    if mismatched.count == 0 then (
+        messageBox "All Multi/Sub-Object sub-material IDs match their name suffix." title:"HW model tool"
+        return true
+    )
+    local report = ""
+    for m in mismatched do (
+        if report != "" do report += "\n"
+        report += m.name
+    )
+    messageBox ("Materials with non-matching sub-material IDs:\n\n" + report) title:"HW model tool"
+    false
+)
+
 -- ── Source Replace ────────────────────────────────────────────────────────────
 
 global HW_ReplacerNode = undefined

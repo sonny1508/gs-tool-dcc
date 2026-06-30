@@ -348,7 +348,21 @@ def _get_dialog_class():
 
             mat_widget = QtWidgets.QWidget()
             tabs.addTab(mat_widget, "Material")
-            outer = QtWidgets.QHBoxLayout(mat_widget)
+            mat_root = QtWidgets.QVBoxLayout(mat_widget)
+
+            self._btn_check_id = QtWidgets.QPushButton("Check Multi/Sub with non-matching ID")
+            self._btn_check_id.setFixedHeight(34)
+            self._btn_check_id.setStyleSheet("font-weight: bold;")
+            self._btn_check_id.setToolTip(
+                "Check each selected object's Multi/Sub-Object material: every "
+                "sub-material name must end with its slot ID zero-padded to two "
+                "digits (ID 4 -> '...04'). Lists any master materials that don't "
+                "fully match. Single materials are skipped.")
+            self._btn_check_id.clicked.connect(lambda: _call_ms("HW_CheckNonMatchingID()"))
+            mat_root.addWidget(self._btn_check_id)
+
+            outer = QtWidgets.QHBoxLayout()
+            mat_root.addLayout(outer)
             self._build_left(outer)
             self._build_right(outer)
 
