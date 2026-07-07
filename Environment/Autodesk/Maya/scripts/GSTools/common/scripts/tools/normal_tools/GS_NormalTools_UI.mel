@@ -1,9 +1,177 @@
-// Depend on these scripts:
-// GS_TransferAttrNormal
-// GS_TransferNormal2RecessPart
-// GS_CopyVertexNormalArr
-// GS_CopyNormals
-// GS_ApplyEverageNormal
+// Self-contained: the transfer/copy procs below used to live in a separate
+// (uncommitted) MEL and were the source of "GS_TransferAttrNormal not found".
+
+global proc GS_TransferAttrNormal(string $srcObj, string $dstObj){
+	string $srcPath[] = `listRelatives -f -p $srcObj` ;
+	string $dstPath[] = `listRelatives -f -p $dstObj` ;
+	// unparent Object first - avoid Freeze transfrom all nodes above of an Obj
+	string $tmpStr[] ;
+	if (size($srcPath)){
+		$tmpStr = `parent -w $srcObj` ;
+		$srcObj = $tmpStr[0] ;
+	}
+	if (size($dstPath)){
+		$tmpStr = `parent -w $dstObj` ;
+		$dstObj = $tmpStr[0] ;
+	}
+
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $srcObj ;
+	DeleteHistory $srcObj ;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $dstObj ;
+	DeleteHistory $dstObj ;
+
+	transferAttributes -transferPositions 0 -transferNormals 1 -transferUVs 0 -transferColors 0 -sampleSpace 0 -searchMethod 3 -flipUVs 0 -colorBorders 1 $srcObj $dstObj;
+	DeleteHistory $dstObj ;
+
+	// Reparent Object to the original DAG path
+	if (size($srcPath)){
+		parent $srcObj $srcPath[0] ;
+	}
+	if (size($dstPath)){
+		parent $dstObj $dstPath[0] ;
+	}
+}
+
+//
+// Copy vertex normals from a source vertex array to a destination vertex array
+// by nearest world-space position (order-independent).
+//
+global proc geCopyVertexNormalArr(string $vtxSrc[], string $vtxDst[]){
+	for ($aDst in $vtxDst){
+		float $dPos[] = `xform -q -ws -t $aDst`;
+		float $shortest = 1000000;
+		string $closest = "";
+		for ($aSrc in $vtxSrc){
+			float $sPos[] = `xform -q -ws -t $aSrc`;
+			float $d = (($sPos[0]-$dPos[0])*($sPos[0]-$dPos[0]))
+					 + (($sPos[1]-$dPos[1])*($sPos[1]-$dPos[1]))
+					 + (($sPos[2]-$dPos[2])*($sPos[2]-$dPos[2]));
+			if ($d < $shortest){
+				$shortest = $d;
+				$closest = $aSrc;
+			}
+		}
+		if ($closest != ""){
+			float $n[] = `polyNormalPerVertex -q -xyz $closest`;
+			polyNormalPerVertex -xyz $n[0] $n[1] $n[2] $aDst;
+		}
+	}
+}
+
+//
+// TransferNormal2RecessPart: delete history, freeze transform before doing transfer Normal to Recess Part
+//
+global proc GS_TransferNormal2RecessPart(string $srcObj, string $dstObj){
+	string $srcPath[] = `listRelatives -f -p $srcObj` ;
+	string $dstPath[] = `listRelatives -f -p $dstObj` ;
+	// unparent Object first - avoid Freeze transfrom all nodes above of an Obj
+	string $tmpStr[] ;
+	if (size($srcPath)){
+		$tmpStr = `parent -w $srcObj` ;
+		$srcObj = $tmpStr[0] ;
+	}
+	if (size($dstPath)){
+		$tmpStr = `parent -w $dstObj` ;
+		$dstObj = $tmpStr[0] ;
+	}
+
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $srcObj ;
+	DeleteHistory $srcObj ;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $dstObj ;
+	DeleteHistory $dstObj ;
+	// Duplicate Target Mesh and then transfer Normal from Source to Dup Mesh
+	string $dupTarget[] = `duplicate $dstObj` ;
+	transferAttributes -transferPositions 0 -transferNormals 1 -transferUVs 0 -transferColors 0 -sampleSpace 0 -searchMethod 3 -flipUVs 0 -colorBorders 1 $srcObj $dupTarget[0];
+	DeleteHistory $dupTarget[0] ;
+	// Copy Normal of Vertices at border back to Target ($dst) mesh
+	//
+	select $dupTarget ;
+	ConvertSelectionToVertices ;
+	string $vtxSrc[] = `ls -sl -fl -l`;
+	select $dstObj ;
+	ConvertSelectionToVertices ;
+	polyConvertToShellBorder ;
+	string $vtxDst[] = `ls -sl -fl -l`;
+	geCopyVertexNormalArr($vtxSrc, $vtxDst) ;
+	DeleteHistory $dstObj ;
+	delete $dupTarget[0] ;
+	select -cl ;
+	// Reparent Object to the original DAG path
+	if (size($srcPath)){
+		parent $srcObj $srcPath[0] ;
+	}
+	if (size($dstPath)){
+		parent $dstObj $dstPath[0] ;
+	}
+}
+
+//
+// cqDung: this function is cited from CG_NormalTools due to showed UI when Source the script
+//
+global proc GS_CopyNormals()
+{
+	// Construction History Off
+	constructionHistory -toggle on;
+
+	string $sel[] = `ls -sl -l -fl`; select -cl;
+	string $closestVert, $vertSel[], $sourceSel[];
+
+	// if selection is >2 i.e. verts
+	if (size($sel) > 2)
+	{
+		for ($i=0;$i<(size($sel) - 1);$i++)
+		{
+			$vertSel[$i] = $sel[$i];
+		}
+
+		select $sel[size($sel)-1];
+		ConvertSelectionToVertices;
+		$sourceSel = `ls -sl -fl -l`;
+	}
+
+	// if selection is == 2 ie objects
+	if (size($sel) == 2)
+	{
+		select $sel[0];
+		ConvertSelectionToVertices;
+		$vertSel = `ls -sl -fl -l`;
+
+		select $sel[1];
+		ConvertSelectionToVertices;
+		$sourceSel = `ls -sl -fl -l`;
+	}
+
+	for ($i=0;$i<size($vertSel);$i++)
+	{
+		float $shortestDistance = 1000000;
+
+		//select $vertSel[$i];
+		float $vPos[] = `xform -q -ws -t $vertSel[$i]`;
+
+		for ($j=0;$j<size($sourceSel);$j++)
+		{
+			float $testVert[] = `xform -q -ws -t $sourceSel[$j]`;
+			float $testLength = ((($testVert[0] - $vPos[0])*($testVert[0] - $vPos[0])) + (($testVert[1] - $vPos[1])*($testVert[1] - $vPos[1])) + (($testVert[2] - $vPos[2])*($testVert[2] - $vPos[2])));
+
+			if ($testLength < $shortestDistance)
+			{
+				$closestVert = $sourceSel[$j];
+				$shortestDistance = $testLength;
+			}
+
+		}
+		//print ($closestVert + "\n");
+		float $wNormal[] = `polyNormalPerVertex -q -xyz $closestVert`;
+
+		for ($k=0;$k<size($wNormal);$k=$k+3)
+		{
+			polyNormalPerVertex -xyz $wNormal[$k] $wNormal[$k+1] $wNormal[$k+2] $vertSel[$i];
+		}
+	}
+
+	select -cl;
+
+}
 
 global proc TranferNormalTargetSource(){
 	string $slObj[] = `ls -l -sl` ;
@@ -28,10 +196,6 @@ global proc MkRecessTargetSource(){
 }
 global proc TranferNormal2SelectedVertices(){
 	GS_CopyNormals();
-}
-global proc EverageNormal(){
-	GS_ApplyEverageNormal();
-	repeatLast -ac "GS_ApplyEverageNormal";
 }
 
 global proc callSelectSourceMesh(){
@@ -80,148 +244,6 @@ global proc MatchVertexNormalOn2DupMeshes(){
 	DoMatchVertexNormal($slMesh[0], $slMesh[1]);
 }
 
-global proc float polyFaceArea() {
- string $list[] = `ls -sl`;
- float $totalArea = 0;
- for ($origFace in $list) {
-  string $sel = $origFace;
-  string $tokens[];
-  int $num = `tokenize $sel "." $tokens`;
-  string $object = $tokens[0];
-  polyTriangulate -ch 1 $sel;
-  string $listOfFaces[] =`ls -sl -flatten`;
-  for ($face in $listOfFaces) {
-   if ( size(`match "\.f\[[0-9]+\]$" $face`) > 0 ) {
-	   string $listOfVertsToToke[] = `polyInfo -fv $face`;
-	   	tokenize $listOfVertsToToke[0] " " $tokens;
-	   	float $x[],$y[],$z[];
-	   	for ($i = 2; $i<5;$i++) {
-			string $vertName = ($object+".vtx["+$tokens[$i]+"]");
-			float $loc[] = `xform -q -ws -t $vertName`;
-			$x[$i-2] = $loc[0];
-			$y[$i-2] = $loc[1];
-			$z[$i-2] = $loc[2];
-	   	}
-	    float $a = `distanceBetween {$x[0],$y[0],$z[0]} {$x[1],$y[1],$z[1]}`;
-	    float $b = `distanceBetween {$x[1],$y[1],$z[1]} {$x[2],$y[2],$z[2]}`;
-	    float $c = `distanceBetween {$x[2],$y[2],$z[2]} {$x[0],$y[0],$z[0]}`;
-	    float $area = .25* sqrt ( ($a+$b+$c) * ($b+$c-$a) *($c+$a-$b)*($a+$b-$c) );
-	    $totalArea += $area;
-  		}
-	}
-  undo;
- }
-
- return $totalArea;
-} 
-
-global proc float distanceBetween(float $loc1[], float $loc2[]) {
- float $a = `pow ($loc2[0] - $loc1[0]) 2`;
- float $b = `pow ($loc2[1] - $loc1[1]) 2`;
- float $c = `pow ($loc2[2] - $loc1[2]) 2`;
- float $distance = `sqrt ( $a+$b+$c )`;
- return $distance;
-}
-
-
-global proc float getFaceArea(string $face)
-{
-    select -r $face;
-    float $area = polyFaceArea();
-    return $area;
-}
-
-
-global proc string getBiggestFace(string $faceList[])
-{
-    float $biggestArea = 0;
-    string $biggestFace = "";
-    for($Owner in $faceList)
-    {
-        //get the area of the face
-        float $area = getFaceArea($Owner);
-        if($area>$biggestArea)
-        {
-            $biggestArea = $area;
-            $biggestFace = $Owner;
-        }           
-    }
-    return $biggestFace;      
-}
-global proc vector getFaceNormal(string $face)
-{
-    vector $normal;
-    float $x, $y, $z;
-    select -r $face;
-    string $faceNormalInfo[] = `polyInfo -fn`;
-    string $tokens[];
-    int $numTokens = `tokenize $faceNormalInfo[0] " " $tokens`;
-    $x = ($tokens[$numTokens-3]);
-    $y = ($tokens[$numTokens-2]);
-    $z = ($tokens[$numTokens-1]);
-    $normal = <<$x, $y, $z>>;
-    $normal =`unit $normal`;
-    return $normal;
-}
-
-global proc string[] getOwnerFaces(string $vert)
-{
-    select -r $vert;
-    string $faces[]=`polyListComponentConversion -tf`;
-    string $reFaceArray[] = `filterExpand -sm 34 $faces`;
-    return $reFaceArray;
-}
-
-global proc FaceWeightedNormal()
-{
-    string $selected[] = `ls -sl`;
-        for($mesh in $selected)
-        {
-            //get vertex count
-            int $vertexEval[] = `polyEvaluate -v $mesh`;
-            int $vertexCount = $vertexEval[0];
-            
-            //loop through vertex
-            for($i=0; $i<$vertexCount; ++$i)
-            {
-                string $vertex = $mesh + ".vtx[" + $i + "]";
-                
-                string $faceArray[] = getOwnerFaces($vertex);
-                string $BiggestFace = getBiggestFace($faceArray);
-                
-                vector $vertexNormal = getFaceNormal($BiggestFace);
-                select -r ($mesh + ".vtx[" + $i + "]");
-                float $x = $vertexNormal.x;
-                float $y = $vertexNormal.y;
-                float $z = $vertexNormal.z;    
-                polyNormalPerVertex -xyz $x $y $z;
-            }
-        }
-}
-
-global proc alignNormalToFace()
-{
-    string $FaceSelected[] = `ls -sl`;
-    string $SelectedFaceArray[] = `filterExpand -sm 34 $FaceSelected`;
-    for($face in $SelectedFaceArray)
-    {
-        vector $vertexNormal = getFaceNormal($face);
-        
-        string $vertex[]=`polyListComponentConversion -tv`;
-        string $vertexArray[] = `filterExpand -sm 31 $vertex`;
-        
-        for($vert in $vertexArray)
-        {
-            select -r $vert;
-            float $x = $vertexNormal.x;
-            float $y = $vertexNormal.y;
-            float $z = $vertexNormal.z;    
-            polyNormalPerVertex -xyz $x $y $z;
-        }
-    }
-
-}
-
 global proc GS_NormalTools_UI(){
 	if (`window -ex NormaltoolsWin`)
         deleteUI NormaltoolsWin ;
@@ -233,6 +255,6 @@ global proc GS_NormalTools_UI(){
 
 	windowPref -enableAll false;
 	showWindow $gsNormalToolsVWin ;
-    window -e -topLeftCorner 500 200 -wh 262 530 $gsNormalToolsVWin ;
+    window -e -topLeftCorner 500 200 -wh 262 350 $gsNormalToolsVWin ;
 	windowPref -enableAll true;
 }

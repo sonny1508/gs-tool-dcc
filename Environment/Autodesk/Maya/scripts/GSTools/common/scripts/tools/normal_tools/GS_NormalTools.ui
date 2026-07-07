@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>262</width>
-    <height>529</height>
+    <height>350</height>
    </rect>
   </property>
   <property name="maximumSize">
@@ -17,36 +17,14 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>GS Normal Tools</string>
+   <string>Simple Normal Transfer</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPushButton" name="btEverageNormal">
-    <property name="enabled">
-     <bool>true</bool>
-    </property>
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>460</y>
-      <width>211</width>
-      <height>41</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Appy 'Everage Normal' (2 vertices)</string>
-    </property>
-    <property name="-command" stdset="0">
-     <string>EverageNormal</string>
-    </property>
-    <property name="-ann" stdset="0">
-     <string>&quot;Apply Everage Normal (select 2 vertices)&quot;</string>
-    </property>
-   </widget>
    <widget class="QGroupBox" name="groupBox_2">
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>130</y>
+      <y>10</y>
       <width>241</width>
       <height>321</height>
      </rect>
@@ -262,76 +240,6 @@
      </property>
      <property name="alignment">
       <set>Qt::AlignCenter</set>
-     </property>
-    </widget>
-   </widget>
-   <widget class="QGroupBox" name="groupBox_3">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>10</y>
-      <width>241</width>
-      <height>111</height>
-     </rect>
-    </property>
-    <property name="title">
-     <string>Face Weighted Normal</string>
-    </property>
-    <widget class="QPushButton" name="btAlignBig">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>20</y>
-       <width>201</width>
-       <height>31</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Align To Bigest Face</string>
-     </property>
-     <property name="-ann" stdset="0">
-      <string>&quot;Auto align normal to bigest face&quot;</string>
-     </property>
-     <property name="-command" stdset="0">
-      <string>FaceWeightedNormal</string>
-     </property>
-    </widget>
-    <widget class="QPushButton" name="btAlignFace">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>60</y>
-       <width>201</width>
-       <height>31</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Align To Selected Face</string>
-     </property>
-     <property name="-command" stdset="0">
-      <string>alignNormalToFace</string>
-     </property>
-     <property name="-ann" stdset="0">
-      <string>&quot;Select face and do it&quot;</string>
-     </property>
-    </widget>
-    <widget class="Line" name="line_2">
-     <property name="geometry">
-      <rect>
-       <x>0</x>
-       <y>100</y>
-       <width>241</width>
-       <height>16</height>
-      </rect>
-     </property>
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
      </property>
     </widget>
    </widget>
