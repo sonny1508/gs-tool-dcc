@@ -131,7 +131,7 @@ def _get_dialog_class():
             self.setObjectName("Scene Checker UI")
             self.setWindowTitle("Scene Checker v1.2")
             self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
-            self.resize(360, 380)
+            self.resize(420, 380)
 
             self._current_check_type = ""
             self._build_ui()
@@ -178,14 +178,14 @@ def _get_dialog_class():
 
             # Right side — results list
             self._lbx_results = QtWidgets.QListWidget()
-            self._lbx_results.setMinimumWidth(190)
+            self._lbx_results.setMinimumWidth(200)
             self._lbx_results.itemDoubleClicked.connect(self._on_result_double_clicked)
             root.addWidget(self._lbx_results, stretch=1)
 
         def _btn(self, label, callback):
             b = QtWidgets.QPushButton(label)
             b.setFixedHeight(25)
-            b.setMinimumWidth(120)
+            b.setMinimumWidth(160)
             b.clicked.connect(callback)
             return b
 

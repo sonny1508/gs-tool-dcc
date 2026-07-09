@@ -151,7 +151,7 @@ fn SC_validateEditablePoly selection_array =
 )
 
 -- ── Open Edges checker function ──────────────────────────────────────────────
-fn SC_checkOpenEdges selectobj =
+fn SC_analyzeOpenEdges selectobj =
 (
 	local open_edges = polyop.getOpenEdges selectobj
 
@@ -173,7 +173,7 @@ fn SC_checkOpenEdges selectobj =
 )
 
 -- ── N-gon checker function ───────────────────────────────────────────────────
-fn SC_checkNgons selectobj =
+fn SC_analyzeNgons selectobj =
 (
 	local ngon_faces = #()
 	local numFaces = polyop.getNumFaces selectobj
@@ -206,7 +206,7 @@ fn SC_checkNgons selectobj =
 )
 
 -- ── Smoothing groups checker function ────────────────────────────────────────
-fn SC_checkSmoothingGroups selectobj =
+fn SC_analyzeSmoothingGroups selectobj =
 (
 	local numFaces = polyop.getNumFaces selectobj
 	local faces_without_sg = #()
@@ -243,7 +243,7 @@ fn SC_checkSmoothingGroups selectobj =
 )
 
 -- ── Transform checker function ───────────────────────────────────────────────
-fn SC_checkTransform selectobj =
+fn SC_analyzeTransform selectobj =
 (
 	local hasError = false
 	local transform_data = SC_TransformAnalysisData()
@@ -313,7 +313,7 @@ fn SC_checkTransform selectobj =
 )
 
 -- ── UV Channels checker function ─────────────────────────────────────────────
-fn SC_checkUVChannels selectobj =
+fn SC_analyzeUVChannels selectobj =
 (
 	-- Use snapshotAsMesh to query map channels without modifying the original object
 	local temp_mesh = snapshotAsMesh selectobj
@@ -676,7 +676,7 @@ fn SC_CheckOpenEdges =
 
 	for obj in selection do
 	(
-		SC_checkOpenEdges obj
+		SC_analyzeOpenEdges obj
 	)
 
 	SC_current_check_type = "openedges"
@@ -694,7 +694,7 @@ fn SC_CheckNgons =
 
 	for obj in selection do
 	(
-		SC_checkNgons obj
+		SC_analyzeNgons obj
 	)
 
 	SC_current_check_type = "ngons"
@@ -712,7 +712,7 @@ fn SC_CheckSmoothing =
 
 	for obj in selection do
 	(
-		SC_checkSmoothingGroups obj
+		SC_analyzeSmoothingGroups obj
 	)
 
 	SC_current_check_type = "sg"
@@ -726,7 +726,7 @@ fn SC_CheckTransform =
 
 	for obj in selection do
 	(
-		SC_checkTransform obj
+		SC_analyzeTransform obj
 	)
 
 	SC_current_check_type = "transform"
@@ -749,7 +749,7 @@ fn SC_CheckUVChannels =
 
 	for obj in selection do
 	(
-		SC_checkUVChannels obj
+		SC_analyzeUVChannels obj
 	)
 
 	SC_current_check_type = "uv"
