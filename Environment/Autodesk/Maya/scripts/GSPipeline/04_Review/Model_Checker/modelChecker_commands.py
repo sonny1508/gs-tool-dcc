@@ -206,19 +206,49 @@ def noneManifoldEdges(_, SLMesh):
     return "edge", noneManifoldEdges
 
 
-def openEdges(_, SLMesh):
-    openEdges = defaultdict(list)
+def openBorder(_, SLMesh):
+    # Everything Maya's edge "On Border" constraint treats as a border edge:
+    #   * fewer than two connected faces -> classic open edges, plus unwelded /
+    #     overlapping duplicate edges (each coincident edge carries a single
+    #     face) and stray wire edges
+    #   * exactly two faces wound the same way -> a flipped neighbour, which
+    #     Maya draws and selects as a border even though the face count is 2
+    # (Three or more faces is non-manifold, handled by noneManifoldEdges.)
+    openBorder = defaultdict(list)
     selIt = om.MItSelectionList(SLMesh)
     while not selIt.isDone():
-        edgeIt = om.MItMeshEdge(selIt.getDagPath())
-        fn = om.MFnDependencyNode(selIt.getDagPath().node())
+        dagPath = selIt.getDagPath()
+        fn = om.MFnDependencyNode(dagPath.node())
         uuid = fn.uuid().asString()
+
+        # Collect the directed traversal every incident face imposes on each
+        # edge, keyed by the real edge id so coincident edges stay distinct.
+        # getEdges()[i] is the edge spanning getVertices()[i] .. [i + 1].
+        edgeDirections = defaultdict(list)
+        faceIt = om.MItMeshPolygon(dagPath)
+        while not faceIt.isDone():
+            verts = faceIt.getVertices()
+            edges = faceIt.getEdges()
+            count = len(verts)
+            for i in range(count):
+                edgeDirections[edges[i]].append((verts[i], verts[(i + 1) % count]))
+            try:
+                faceIt.next(True)  # Try with argument first
+            except TypeError:
+                faceIt.next()  # If that fails, try without argument
+
+        edgeIt = om.MItMeshEdge(dagPath)
         while not edgeIt.isDone():
-            if edgeIt.numConnectedFaces() < 2:
-                openEdges[uuid].append(edgeIt.index())
+            directions = edgeDirections.get(edgeIt.index(), [])
+            # < 2 faces -> open / overlapping; exactly 2 faces traversed the
+            # same way -> a flipped neighbour. Both read as a border in Maya.
+            if len(directions) < 2:
+                openBorder[uuid].append(edgeIt.index())
+            elif len(directions) == 2 and directions[0] == directions[1]:
+                openBorder[uuid].append(edgeIt.index())
             edgeIt.next()
         selIt.next()
-    return "edge", openEdges
+    return "edge", openBorder
 
 
 def poles(_, SLMesh):

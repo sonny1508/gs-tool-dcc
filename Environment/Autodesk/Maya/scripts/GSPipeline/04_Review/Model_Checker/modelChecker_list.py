@@ -59,8 +59,8 @@ mcCommandsList = {
         'label': 'Ngons',
         'category': 'topology',
     },
-    "openEdges": {
-        'label': 'Open Edges',
+    "openBorder": {
+        'label': 'Open Border',
         'category': 'topology',
     },
     "poles":{
