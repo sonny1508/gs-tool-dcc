@@ -71,12 +71,25 @@ class GSNormalApiApply(om.MPxCommand):
         self.redoIt()
 
     def redoIt(self):
+        # core.apply_after guards each target and never raises; the extra guard
+        # here keeps a single bad spec from aborting the rest and, above all,
+        # guarantees nothing escapes into Maya's undo machinery mid-redo.
         for spec in self._after:
-            core.apply_after(spec)
+            try:
+                core.apply_after(spec)
+            except Exception as exc:  # pragma: no cover - defensive
+                om.MGlobal.displayWarning(
+                    "gsNormalApiApply.redoIt: {0}".format(exc))
 
     def undoIt(self):
+        # Same contract as redoIt: a raise here corrupts the undo queue (the
+        # disappearing-mesh / lost-material symptom), so swallow and warn.
         for snapshot in self._before:
-            core.restore_mesh_state(snapshot)
+            try:
+                core.restore_mesh_state(snapshot)
+            except Exception as exc:  # pragma: no cover - defensive
+                om.MGlobal.displayWarning(
+                    "gsNormalApiApply.undoIt: {0}".format(exc))
 
     def isUndoable(self):
         return True

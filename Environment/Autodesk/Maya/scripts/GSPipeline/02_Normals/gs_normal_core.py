@@ -39,6 +39,23 @@ import maya.api.OpenMaya as om
 #  Snapshot capture
 # ---------------------------------------------------------------------------
 
+def mesh_fingerprint(dag):
+    """A cheap topology signature, used to detect that a mesh drifted between
+    capture and (un)apply.
+
+    Normal writes, lock/unlock and edge softening never change any of these
+    counts, so across a single normal operation the fingerprint is stable. A
+    MISMATCH therefore means the topology itself changed since capture - the
+    mesh's construction history re-evaluated, faces/verts were deleted, the
+    object was rebuilt, etc. - and the stored face/vertex/edge ids are no longer
+    safe to write blindly. Writing them anyway is what threw inside undoIt and
+    corrupted Maya's undo queue (disappearing mesh / lost shading group).
+    """
+    mesh = om.MFnMesh(dag)
+    return (mesh.numVertices, mesh.numEdges, mesh.numPolygons,
+            mesh.numFaceVertices)
+
+
 def capture_mesh_state(dag):
     """Snapshot everything needed to exactly restore one mesh's normals.
 
@@ -89,6 +106,7 @@ def capture_mesh_state(dag):
 
     return {
         "name": name,
+        "fingerprint": mesh_fingerprint(dag),
         "normals": flat,
         "face_ids": face_ids,
         "vert_ids": vert_ids,
@@ -102,10 +120,20 @@ def capture_mesh_state(dag):
 # ---------------------------------------------------------------------------
 
 def _resolve_dag(name):
-    """Re-resolve a dag path by name (names survive across undo, objects move)."""
+    """Re-resolve a dag path by name, or None if it no longer resolves.
+
+    Names survive across undo but objects move: a target can be renamed,
+    reparented (its full path changes) or deleted between the edit and the undo.
+    MSelectionList.add then RAISES. Returning None instead lets the caller
+    skip-and-warn - the important thing is that undoIt never throws, because a
+    raise mid-undo corrupts Maya's undo queue (the disappearing-mesh symptom).
+    """
     sel = om.MSelectionList()
-    sel.add(name)
-    return sel.getDagPath(0)
+    try:
+        sel.add(name)
+        return sel.getDagPath(0)
+    except (RuntimeError, IndexError):
+        return None
 
 
 def _write_normals(dag, normals_flat, face_ids, vert_ids):
@@ -178,26 +206,73 @@ def _restore_locks(dag, locked_pairs, all_face_ids, all_vert_ids):
 #  Public directions
 # ---------------------------------------------------------------------------
 
+def _guard_target(name, fingerprint):
+    """Resolve `name` and confirm its topology still matches `fingerprint`.
+
+    Returns the MDagPath when the mesh is present and unchanged, or None (after
+    emitting a warning) when it is missing or has drifted. Every write path funnels
+    through here so a stale target is SKIPPED rather than written blindly - the
+    blind write is what raised inside (un)doIt and corrupted the undo queue.
+    """
+    dag = _resolve_dag(name)
+    if dag is None:
+        om.MGlobal.displayWarning(
+            "GS Normal Tools: skipped '{0}' - object no longer exists.".format(name))
+        return None
+    if fingerprint is not None and mesh_fingerprint(dag) != tuple(fingerprint):
+        om.MGlobal.displayWarning(
+            "GS Normal Tools: skipped '{0}' - mesh topology changed since the "
+            "operation (history re-evaluated or geometry edited); its normals "
+            "were left untouched to avoid corrupting the scene.".format(name))
+        return None
+    return dag
+
+
 def apply_after(spec):
     """Forward / redo: write one mesh's NEW normals and restore its soft edges.
 
     Align/Average intend the written normals to become locked user normals (the
     original tool's behaviour), so we leave them locked here - only the soft
     edges that were soft before are re-softened.
+
+    Returns True on success, False when the target was skipped or the write
+    failed. NEVER raises: this runs inside the command's doIt/redoIt and an
+    exception there leaves a half-applied command on Maya's undo stack.
     """
-    dag = _resolve_dag(spec["name"])
-    _write_normals(dag, spec["normals_flat"], spec["face_ids"], spec["vert_ids"])
-    _soften(dag, spec["soft"])
+    dag = _guard_target(spec["name"], spec.get("fingerprint"))
+    if dag is None:
+        return False
+    try:
+        _write_normals(dag, spec["normals_flat"], spec["face_ids"], spec["vert_ids"])
+        _soften(dag, spec["soft"])
+    except Exception as exc:  # pragma: no cover - defensive; must not escape doIt
+        om.MGlobal.displayWarning(
+            "GS Normal Tools: failed to apply '{0}': {1}".format(spec["name"], exc))
+        return False
+    return True
 
 
 def restore_mesh_state(snapshot):
-    """Undo: re-apply a BEFORE snapshot from capture_mesh_state, exactly."""
-    dag = _resolve_dag(snapshot["name"])
-    _write_normals(dag, snapshot["normals"],
-                   snapshot["face_ids"], snapshot["vert_ids"])
-    _restore_locks(dag, snapshot["locked"],
-                   snapshot["face_ids"], snapshot["vert_ids"])
-    _soften(dag, snapshot["soft"])
+    """Undo: re-apply a BEFORE snapshot from capture_mesh_state, exactly.
+
+    Returns True on success, False when skipped/failed. NEVER raises - a raise
+    inside undoIt corrupts Maya's undo queue, which is precisely what made the
+    mesh disappear and lose its material.
+    """
+    dag = _guard_target(snapshot["name"], snapshot.get("fingerprint"))
+    if dag is None:
+        return False
+    try:
+        _write_normals(dag, snapshot["normals"],
+                       snapshot["face_ids"], snapshot["vert_ids"])
+        _restore_locks(dag, snapshot["locked"],
+                       snapshot["face_ids"], snapshot["vert_ids"])
+        _soften(dag, snapshot["soft"])
+    except Exception as exc:  # pragma: no cover - defensive; must not escape undoIt
+        om.MGlobal.displayWarning(
+            "GS Normal Tools: failed to undo '{0}': {1}".format(snapshot["name"], exc))
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------

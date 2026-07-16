@@ -425,6 +425,7 @@ def align_normals(method, keep_hard_edges):
         _mesh, normals, face_ids, vert_ids, soft_edges = result
         after_specs.append({
             "name": dag.fullPathName(),
+            "fingerprint": core.mesh_fingerprint(dag),
             "normals_flat": _flatten_vectors(normals),
             "face_ids": face_ids,
             "vert_ids": vert_ids,
@@ -482,7 +483,13 @@ def unlock_normals():
 def lock_normals():
     """Lock vertex normals at their current values."""
     sel = cmds.ls(sl=True, long=True)
-    vtx_faces = cmds.polyListComponentConversion(tvf=True)
+    if not sel:
+        cmds.warning("Please select a mesh or components.")
+        return
+    # Convert the explicit selection (matches unlock_normals); relying on the
+    # implicit active list here silently converted nothing when a transform,
+    # rather than a component, was selected.
+    vtx_faces = cmds.polyListComponentConversion(sel, tvf=True)
     if not vtx_faces:
         cmds.warning("Please select a mesh or components.")
         return
@@ -621,6 +628,7 @@ def average_from_edge():
         if len(normals):
             after_specs.append({
                 "name": dag.fullPathName(),
+                "fingerprint": core.mesh_fingerprint(dag),
                 "normals_flat": _flatten_vectors(normals),
                 "face_ids": face_ids,
                 "vert_ids": vert_ids,
@@ -682,6 +690,7 @@ def align_face_normals():
         if len(normals):
             after_specs.append({
                 "name": dag.fullPathName(),
+                "fingerprint": core.mesh_fingerprint(dag),
                 "normals_flat": _flatten_vectors(normals),
                 "face_ids": face_ids,
                 "vert_ids": vert_ids,
