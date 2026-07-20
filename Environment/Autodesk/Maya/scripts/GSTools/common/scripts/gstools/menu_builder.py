@@ -37,6 +37,29 @@ def _menu_command(tool_id):
     return _run
 
 
+def _shelf_command(tool_id):
+    """Build the `-dragMenuCommand` callback for a menu item.
+
+    When an artist Ctrl+Shift+drags a menu item to their shelf, Maya's
+    menuItemToShelf copies the item's `-command` onto the new shelfButton *as
+    text* - but our command is a live Python closure, which has no source, so the
+    query returns its repr ("<function ... _run at 0x...>") and the shelf button
+    is dead.
+
+    `-dragMenuCommand` is Maya's sanctioned hook for exactly this: for a
+    python-sourceType item, Maya *calls* this callback at drag time and bakes its
+    return value into the shelf as the button's command string. We return a
+    self-contained launch line:
+      - it depends only on `gstools` being importable, and launch() runs
+        ensure_paths() itself, so it self-bootstraps in a fresh session;
+      - tool_id is a stable key, so the button survives module renames/refactors;
+      - source="shelf" keeps menu vs shelf launches distinguishable in telemetry.
+    """
+    def _drag(*_args):
+        return 'import gstools; gstools.launch("%s", "shelf")' % tool_id
+    return _drag
+
+
 def _add_item(item):
     """Create a single menuItem (or divider) for `item`."""
     if item.get("divider"):
@@ -54,6 +77,11 @@ def _add_item(item):
         "label": label,
         "annotation": item.get("annotation", ""),
         "command": _menu_command(item["id"]),
+        # dragMenuCommand feeds Ctrl+Shift+drag-to-shelf; sourceType applies to
+        # both callbacks and MUST be "python" or Maya treats the dragged text as
+        # MEL. See _shelf_command for the full rationale.
+        "dragMenuCommand": _shelf_command(item["id"]),
+        "sourceType": "python",
     }
     if item.get("icon"):
         kwargs["image"] = item["icon"]
