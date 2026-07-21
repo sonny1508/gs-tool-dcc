@@ -708,7 +708,7 @@ class MATERIAL_OT_link_external_to_slot(bpy.types.Operator):
     material_name: bpy.props.StringProperty()
 
     def execute(self, context):
-        filepath = "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend"
+        filepath = "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend"
         if not os.path.isfile(filepath):
             self.report({'ERROR'}, "File not found")
             return {'CANCELLED'}
@@ -1195,7 +1195,7 @@ class BasicShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     '''
     def import_file(self):
         # Check if the file exists
@@ -1248,7 +1248,7 @@ class BodyworkShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1293,7 +1293,7 @@ class GlassShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1338,7 +1338,7 @@ class LightGlassShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1383,7 +1383,7 @@ class TireShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1428,7 +1428,7 @@ class WheelShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1473,7 +1473,7 @@ class DirtShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
@@ -1518,7 +1518,7 @@ class SpeedNode(bpy.types.Operator, ShaderToolPanel, globalVariables):
     
     def __init__(self):
         # Define the path to the blend file containing the custom node
-        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.10\\Softwares\\Technical_Script\\Blender\\addons\\S4_vehicle\\S4_Vehicle_Shaders.blend")  
+        self.source_file = os.path.join(os.path.dirname(__file__), "\\\\192.168.1.210\\Pipeline\\Tool\\gs-tool-dcc\\Blender\\common\\scripts\\addons\\S4_Vehicle_ValidatorS4_Vehicle_Shaders.blend")  
     
     def instantiate_group(self, nodes, data_block_name):
         group = nodes.new(type='ShaderNodeGroup')
