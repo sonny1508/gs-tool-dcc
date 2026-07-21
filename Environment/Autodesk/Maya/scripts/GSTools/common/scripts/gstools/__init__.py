@@ -94,9 +94,40 @@ def run_startup():
     return startup.run()
 
 
+def start_session():
+    """Open the telemetry session for this Maya process.
+
+    A no-op (and thread-free, socket-free) unless GS_TELEMETRY_URL is set, so
+    this costs nothing outside the studio. Isolated in its own try/except: usage
+    reporting must never be able to stop Maya from booting the tools.
+    """
+    try:
+        from gstools import telemetry
+        telemetry.session_start()
+        _register_quit_hook(telemetry)
+    except Exception as exc:
+        logger.debug("telemetry session_start failed: %s", exc)
+
+
+def _register_quit_hook(telemetry):
+    """Flush telemetry when Maya quits.
+
+    telemetry.session_start() already registers an atexit handler; this adds
+    Maya's own quitApplication event as a belt-and-braces second trigger, since
+    atexit does not always run on every Maya shutdown path. _on_exit() guards
+    against running twice.
+    """
+    try:
+        import maya.cmds as cmds
+        cmds.scriptJob(event=["quitApplication", telemetry._on_exit], protected=True)
+    except Exception as exc:
+        logger.debug("telemetry quit hook not registered: %s", exc)
+
+
 def boot():
-    """Full GSTools boot: build the menu, then register startup extras.
-    This is what GSTools.mel calls at Maya startup."""
+    """Full GSTools boot: open the telemetry session, build the menu, then
+    register startup extras. This is what GSTools.mel calls at Maya startup."""
+    start_session()
     build_menu()
     run_startup()
 

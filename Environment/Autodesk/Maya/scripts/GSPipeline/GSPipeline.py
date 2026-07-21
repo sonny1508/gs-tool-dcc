@@ -41,21 +41,20 @@ def _resolve_icon(tool):
     return icon_path
 
 
-def _build_command(script):
-    """Command string that launches a tool script.
+def _build_command(tool):
+    """Command string that launches a tool.
 
-    Python files are run with __name__ == '__main__' so tools guarded by
-    `if __name__ == "__main__":` fire, while tools that build their UI at
-    module level also work. MEL files are sourced.
+    Everything routes through gspipeline_telemetry.launch(), which records the
+    launch and then dispatches. Keeping the dispatch logic in that module rather
+    than inlined here means there is one place to instrument, and the baked
+    command string stays short and path-independent.
+
+    repr() is used for the literals so labels containing quotes or backslashes
+    can't break the generated source.
     """
-    abs_path = os.path.join(SCRIPT_DIR, script).replace("\\", "/")
-    if abs_path.lower().endswith(".mel"):
-        return "import maya.mel as mel; mel.eval('source \"{0}\";')".format(abs_path)
-    return (
-        "with open(r'{0}', encoding='utf-8') as _f: "
-        "exec(compile(_f.read(), r'{0}', 'exec'), "
-        "{{'__name__': '__main__', '__file__': r'{0}'}})"
-    ).format(abs_path)
+    return "import gspipeline_telemetry; gspipeline_telemetry.launch({0}, {1})".format(
+        repr(tool["script"]), repr(tool["name"])
+    )
 
 
 def _build_menu(entries, parent):
@@ -72,7 +71,10 @@ def _build_menu(entries, parent):
             cmds.menuItem(
                 parent=parent,
                 label=entry["name"],
-                command=_build_command(entry["script"]),
+                command=_build_command(entry),
+                # The command is a Python string, so say so explicitly rather
+                # than relying on the default source type.
+                sourceType="python",
             )
 
 
@@ -94,7 +96,8 @@ def _build_shelf(entries, shelf, first=True):
                 label=entry["name"],
                 annotation=entry["name"],
                 image=_resolve_icon(entry),
-                command=_build_command(entry["script"]),
+                command=_build_command(entry),
+                sourceType="python",
                 width=35,
                 height=35,
             )
