@@ -115,6 +115,75 @@ def capture_mesh_state(dag):
     }
 
 
+def soft_edges_of_faces(dag, target_faces):
+    """Return the ids of the currently-soft edges that border `target_faces`.
+
+    A write to a face's normals hardens only the edges of that face, so these are
+    exactly the edges Set-to-Face may harden and therefore the only ones a scoped
+    undo needs to re-soften. O(selection), unlike the whole-mesh _soft_edge_ids.
+    """
+    edge_ids = set()
+    poly_it = om.MItMeshPolygon(dag)
+    for f in target_faces:
+        poly_it.setIndex(f)
+        edge_ids.update(poly_it.getEdges())
+
+    soft = []
+    edge_it = om.MItMeshEdge(dag)
+    for e in edge_ids:
+        edge_it.setIndex(e)
+        if edge_it.isSmooth:
+            soft.append(e)
+    return soft
+
+
+def capture_faces_state(dag, target_faces):
+    """Scoped counterpart of capture_mesh_state: snapshot ONLY `target_faces`.
+
+    Captures the normal value and lock flag of every face-vertex on the target
+    faces, plus the soft state of their bordering edges - exactly what a Set-to-
+    Face write touches. Restoring it (restore_mesh_state) reverts that write and
+    nothing else. This runs in O(selection), so it stays instant on a heavy mesh
+    where the whole-mesh capture_mesh_state would freeze Maya.
+
+    Face-vertex order follows getPolygonVertices(f) / getFaceNormalIds(f), which
+    are 1:1 by face-local index (see capture_mesh_state for why that pairing is
+    the reliable one).
+    """
+    mesh = om.MFnMesh(dag)
+    mesh_normals = mesh.getNormals(om.MSpace.kObject)
+
+    face_ids = om.MIntArray()
+    vert_ids = om.MIntArray()
+    flat = []
+    locked = []
+
+    for f in target_faces:
+        verts = mesh.getPolygonVertices(f)
+        normal_ids = mesh.getFaceNormalIds(f)
+        for i in range(len(verts)):
+            v = verts[i]
+            nid = normal_ids[i]
+            n = mesh_normals[nid]
+            face_ids.append(f)
+            vert_ids.append(v)
+            flat.append(n.x)
+            flat.append(n.y)
+            flat.append(n.z)
+            if mesh.isNormalLocked(nid):
+                locked.append((f, v))
+
+    return {
+        "name": dag.fullPathName(),
+        "fingerprint": mesh_fingerprint(dag),
+        "normals": flat,
+        "face_ids": face_ids,
+        "vert_ids": vert_ids,
+        "locked": locked,
+        "soft": soft_edges_of_faces(dag, target_faces),
+    }
+
+
 # ---------------------------------------------------------------------------
 #  Apply / restore primitives
 # ---------------------------------------------------------------------------

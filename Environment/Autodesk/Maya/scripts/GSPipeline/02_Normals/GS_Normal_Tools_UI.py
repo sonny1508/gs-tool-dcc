@@ -87,21 +87,26 @@ def _flatten_vectors(varr):
     return flat
 
 
-def _apply_via_command(after_specs, before_dags):
+def _apply_via_command(after_specs, before_dags, before_snaps=None):
     """Run an undoable normal write: snapshot `before_dags`, apply `after_specs`.
 
     after_specs : list of dicts {name, normals_flat, face_ids, vert_ids, soft} -
                   the NEW normals to write per mesh and the soft edges to restore.
     before_dags : list of MDagPath - the meshes the operation touched, snapshotted
                   here (full normals + lock + soft-edge state) for undo.
+    before_snaps: optional list of pre-built BEFORE snapshots (one per mesh, same
+                  order as after_specs). Face-scoped callers pass a scoped
+                  capture_faces_state snapshot so undo stays O(selection); when
+                  omitted we fall back to the whole-mesh capture_mesh_state.
 
     We snapshot the BEFORE state, stage (before, after) in core, then run the
     command - which consumes the staged job onto its own instance. Each operation
     therefore owns its snapshot on the undo stack (A->B->A undoes correctly).
     """
     _ensure_plugin()
-    before = [core.capture_mesh_state(dag) for dag in before_dags]
-    core.stage_job(before, after_specs)
+    if before_snaps is None:
+        before_snaps = [core.capture_mesh_state(dag) for dag in before_dags]
+    core.stage_job(before_snaps, after_specs)
     cmds.gsNormalApiApply()
 
 
@@ -655,6 +660,12 @@ def align_face_normals():
     every target face's normal is written to all of its vertex-faces, for planar
     and non-planar faces alike. The write goes through the undoable gsNormalApiApply
     command (like Align Normals), and edges that were soft beforehand are restored.
+
+    A face SELECTION touches only those faces - the undo snapshot and soft-edge
+    scan are scoped to them (capture_faces_state / soft_edges_of_faces), so picking
+    one face on a dense mesh is instant, matching Maya's native Set to Face rather
+    than snapshotting the whole mesh. A whole-object selection keeps the batched
+    whole-mesh path, which the fast setFaceVertexNormals write is built for.
     """
     sel = cmds.ls(sl=True, long=True)
     if not sel:
@@ -663,15 +674,23 @@ def align_face_normals():
 
     after_specs = []
     before_dags = []
+    before_snaps = []
 
     for dag, comp in _iter_selected_mesh_components():
         # Faces & objects only: whole object -> all faces; otherwise require a
         # face component. Vertex/edge/vertex-face selections are skipped.
         mesh = om.MFnMesh(dag)
         if comp.isNull():
-            target_faces = range(mesh.numPolygons)
+            # Whole object: every face, and the whole-mesh snapshot/soft pass -
+            # this is the legitimately heavy case the batched write is built for.
+            target_faces = list(range(mesh.numPolygons))
+            scoped = False
         elif comp.apiType() == om.MFn.kMeshPolygonComponent:
-            target_faces = om.MFnSingleIndexedComponent(comp).getElements()
+            # A face selection: touch ONLY those faces, like Maya's Set to Face.
+            # The snapshot and soft-edge scan below are scoped to them, so this
+            # stays instant even on a mesh with tons of polygons.
+            target_faces = list(om.MFnSingleIndexedComponent(comp).getElements())
+            scoped = True
         else:
             continue
 
@@ -687,22 +706,33 @@ def align_face_normals():
                 face_ids.append(f)
                 vert_ids.append(v)
 
-        if len(normals):
-            after_specs.append({
-                "name": dag.fullPathName(),
-                "fingerprint": core.mesh_fingerprint(dag),
-                "normals_flat": _flatten_vectors(normals),
-                "face_ids": face_ids,
-                "vert_ids": vert_ids,
-                "soft": _soft_edge_ids(dag),
-            })
-            before_dags.append(dag)
+        if not len(normals):
+            continue
+
+        # Build the BEFORE snapshot now (pre-write). Scoped for a face pick,
+        # whole-mesh for a whole object, so undo reverts exactly what we touch.
+        if scoped:
+            before_snaps.append(core.capture_faces_state(dag, target_faces))
+            soft = core.soft_edges_of_faces(dag, target_faces)
+        else:
+            before_snaps.append(core.capture_mesh_state(dag))
+            soft = _soft_edge_ids(dag)
+
+        after_specs.append({
+            "name": dag.fullPathName(),
+            "fingerprint": core.mesh_fingerprint(dag),
+            "normals_flat": _flatten_vectors(normals),
+            "face_ids": face_ids,
+            "vert_ids": vert_ids,
+            "soft": soft,
+        })
+        before_dags.append(dag)
 
     if not after_specs:
         cmds.warning("Select faces or whole objects to align face normals.")
         return
 
-    _apply_via_command(after_specs, before_dags)
+    _apply_via_command(after_specs, before_dags, before_snaps=before_snaps)
     cmds.select(sel, r=True)
     cmds.refresh()
     print("Face normals have been aligned\n")
