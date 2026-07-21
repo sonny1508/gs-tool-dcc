@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_tweakUVTool.png">NS_tweakUVTool_100.png</file>
+		<file>NS_tweakUVTool_150.png</file>
+		<file>NS_tweakUVTool_200.png</file>
+	</qresource>

@@ -1,0 +1,229 @@
+global proc prUV_TransferUV(string $referenceobject, int $type)
+{
+
+	string  $Objects[];
+	int $i;
+	int $n;
+    
+	$Objects = `ls -os -o -l` ;
+	$n=size($Objects);
+	
+	if($n==0){error  "No Source Objects Selected";}
+	else
+	{
+		if( `objExists $referenceobject` ) 
+		{
+		    select -add $referenceobject;
+			DeleteHistory;
+			select -r $Objects;
+		
+			//Initialize default progressBar of maya
+			global string $gMainProgressBar;
+			progressBar -edit   -beginProgress
+			-isInterruptable true  -status "UV Transfer..."
+			-maxValue $n	-minValue 0    $gMainProgressBar;
+
+            
+			for($i=0;$i<$n;++$i)
+			{
+                string $srcUV = `optionMenu -q -v comboSourceUV` ;
+                string $dstUV = `optionMenu -q -v comboDistUV` ;
+				if(`progressBar -query -isCancelled $gMainProgressBar`) break;	
+				
+				if($type>=0)
+				{
+					transferAttributes -transferPositions 0 -transferNormals 0 -transferUVs 1 -transferColors 0 -sampleSpace $type -sourceUvSet $srcUV -targetUvSet $dstUV -searchMethod 3 -flipUVs 0 -colorBorders 0 $referenceobject $Objects[$i];
+				}
+				else
+				{
+					transferAttributes -transferPositions 1 -transferNormals 0 -transferUVs 0 -transferColors 0 -sampleSpace 3 -sourceUvSet $srcUV -targetUvSet $dstUV -searchMethod 3 -flipUVs 0 -colorBorders 0 $referenceobject $Objects[$i];
+				}
+
+				progressBar -edit   -step 1 $gMainProgressBar;	
+			}
+
+			//free progresBar from this process
+			progressBar -edit   -endProgress $gMainProgressBar;	
+			DeleteHistory;
+		}
+		else
+		{
+			error "Source object does not exists!";
+		}
+	}
+}
+
+global proc string prUV_GetSelected()
+{
+	string  $Objects[];
+	int $n;
+	$Objects = `ls -os -o` ;
+	$n=size($Objects);
+	
+	if($n==0){error  "Select the source object first";}
+	else
+	{
+		if($n>1){warning  "More than one object is selected, using the last one as source.";}
+		
+		return $Objects[$n-1];
+		
+	}
+	
+	return "(source object not set)";
+}
+
+global proc TransUVTool()
+{
+	string $Version="Transfer UV Tools";
+	string $cmdstr="";
+
+	int $prUV_SaveToPref=1;//0 yes, 1 no
+
+	//Returned Values from procs
+	global string $prUV_LastWronngPlacementList[];
+	global string $prUV_LastOverlapingList[];
+	global string $prUV_LastFlippedUVs[];
+	global string $prUV_LastNoUVs[];
+	global string $prUV_referenceobject;
+	global string $prUV_TexelDensityRefGeo;
+    
+	//UI Component Names
+	global string $prUV_Win;
+	global string $prUV_DistVariationSlider;
+	global string $prUV_DistURatioSlider;
+	global string $prUV_DistVRatioSlider;
+	global string $prUV_GapField;
+	global string $prUV_GapMapResField;	
+	global string $prUV_LayoutURatioSlider;
+	global string $prUV_LayoutVRatioSlider;
+	global string $prUV_grpthreshold;
+	global string $prUV_referenceLabel;
+	global string $prUV_ProgressBar;
+	global string $prUV_TexelDensityRefText;
+	global string $prUV_TexelDensityField;
+	global string $prUV_TexelDensityResField;
+	global string $prUV_TranslateField;
+
+	
+		int $bh=30; int $bh2=25;
+	float $prUV_GreyValue=0.4;
+
+
+	//LegacyVariable
+	global int $prUV_layoutmode=1;
+	
+	if($prUV_Win!="")
+	{
+		if(`window -exists prUV_Window`)
+		{deleteUI -window prUV_Window;}
+	}
+	//{window -edit -vis true $prUV_Win;}
+
+	$prUV_Win = `window -title $Version
+       -widthHeight 325 100
+	   -sizeable false
+	   -resizeToFitChildren true prUV_Window`;
+	  
+	window -e -widthHeight 320 100 -resizeToFitChildren true /*-bgc 0.101 0.101 0.101*/ prUV_Window;
+
+	    string $form = `formLayout`;
+	    	columnLayout -rs 0;
+			  					
+						$prUV_GreyValue=0.4;
+					
+						string $refText="(Please Select The Source Object)";
+						if($prUV_referenceobject!="")$refText=$prUV_referenceobject;
+						
+						$prUV_referenceLabel = `text -label $refText -width 248 -fn boldLabelFont -wordWrap true -h 20`;
+						
+
+						$cmdstr= "$prUV_referenceobject=prUV_GetSelected(); text -edit -label $prUV_referenceobject $prUV_referenceLabel;";
+						if (!`runTimeCommand -exists prUV_SetAsReference`){runTimeCommand -d $prUV_SaveToPref -cat "TransUVTool" -c $cmdstr prUV_SetAsReference;}
+						else if($prUV_SaveToPref==0) runTimeCommand -e -c $cmdstr prUV_SetAsReference;
+						
+						$cmdstr="prUV_TransferUV($prUV_referenceobject,5);";
+						if (!`runTimeCommand -exists prUV_Transfer_UV_Topo`){runTimeCommand -d $prUV_SaveToPref -cat "TransUVTool" -c $cmdstr prUV_Transfer_UV_Topo;}
+						else if($prUV_SaveToPref==0) runTimeCommand -e -c $cmdstr prUV_Transfer_UV_Topo;
+
+						$cmdstr="prUV_TransferUV($prUV_referenceobject,4);";
+						if (!`runTimeCommand -exists prUV_Transfer_UV`){runTimeCommand -d $prUV_SaveToPref -cat "TransUVTool" -c $cmdstr prUV_Transfer_UV;}
+						else if($prUV_SaveToPref==0) runTimeCommand -e -c $cmdstr prUV_Transfer_UV;
+
+						$cmdstr="prUV_TransferUV($prUV_referenceobject,0);";
+						if (!`runTimeCommand -exists prUV_Project_UV`){runTimeCommand -d $prUV_SaveToPref -cat "TransUVTool" -c $cmdstr prUV_Project_UV;}
+						else if($prUV_SaveToPref==0) runTimeCommand -e -c $cmdstr
+						prUV_Project_UV;
+
+						$cmdstr="prUV_TransferUV($prUV_referenceobject,-1);";
+						if (!`runTimeCommand -exists prUV_TransferShape`){runTimeCommand -d $prUV_SaveToPref -cat "TransUVTool" -c $cmdstr prUV_TransferShape;}
+						else if($prUV_SaveToPref==0) runTimeCommand -e -c $cmdstr
+						prUV_TransferShape;
+
+
+							rowLayout -nc 1;
+								button -label "Set as source" 
+								-command "prUV_SetAsReference"
+								-w 300 -h $bh2
+								-bgc $prUV_GreyValue $prUV_GreyValue $prUV_GreyValue
+								;
+							setParent..;
+                            
+                             rowLayout -nc 1;
+                            optionMenu -label "Source UV" -cc prUV_TransferUV -width 300 comboSourceUV;
+                                menuItem -label "map1";
+                                menuItem -label "map2";
+                                menuItem -label "map3";
+                                menuItem -label "map4";
+                                menuItem -label "UVChannel_1";
+                                menuItem -label "UVChannel_2";
+                                menuItem -label "UVChannel_3";
+                                menuItem -label "UVChannel_4";
+                            
+                            setParent..;
+                            
+                            rowLayout -nc 1;
+                            optionMenu -label "Dist UV" -cc prUV_TransferUV -width 300 comboDistUV;
+                                menuItem -label "map1";
+                                menuItem -label "map2";
+                                menuItem -label "map3";
+                                menuItem -label "map4";
+                                menuItem -label "UVChannel_1";
+                                menuItem -label "UVChannel_2";
+                                menuItem -label "UVChannel_3";
+                                menuItem -label "UVChannel_4";
+                            
+                            setParent..;
+
+							rowLayout -nc 2;
+								button -label "Transfer UV (ID)"
+								-command "prUV_Transfer_UV"                             
+								-width 149 -h $bh2 -bgc $prUV_GreyValue $prUV_GreyValue $prUV_GreyValue;
+
+								button -label "Transfer UV (Topo)"
+								-command "prUV_Transfer_UV_Topo"
+								-width 149 -h $bh2 -bgc $prUV_GreyValue $prUV_GreyValue $prUV_GreyValue;
+							setParent..;
+
+							rowLayout -nc 2;
+
+								button -label "Project UV"
+								-command "prUV_Project_UV"
+								-width 149 -h $bh2 -bgc $prUV_GreyValue $prUV_GreyValue $prUV_GreyValue;
+								
+
+								button -label "Transfer Shape"
+								-command "prUV_TransferShape"
+								-width 149 -h $bh2 -bgc $prUV_GreyValue $prUV_GreyValue $prUV_GreyValue;
+
+							setParent ..;
+											
+				separator -h 10 -w 320;
+
+				
+			setParent..;
+		setParent..;
+	
+	setParent..;
+	showWindow;
+
+}

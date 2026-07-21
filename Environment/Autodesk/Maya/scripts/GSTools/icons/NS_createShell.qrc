@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_createShell.png">NS_createShell_100.png</file>
+		<file>NS_createShell_150.png</file>
+		<file>NS_createShell_200.png</file>
+	</qresource>

@@ -1,0 +1,582 @@
+{
+  "blender": {
+    "OUTPUT_MATERIAL": {
+      "vray": null,
+      "redshift": null,
+      "input_att": {},
+      "output_att": {}
+    },
+    "BSDF_PRINCIPLED": {
+      "vray": "VRayMtl",
+      "redshift": null,
+      "input_att": {
+        "Base Color": {
+          "vray": "color",
+          "redshift": null
+        },
+        "Metallic": {
+          "vray": "metalness",
+          "redshift": null
+        },
+        "Roughness": {
+          "vray": "reflectionGlossiness",
+          "redshift": null
+        },
+        "Specular": {
+          "vray": "reflectionColor",
+          "redshift": null
+        },
+        "Transmission": {
+          "vray": "refractionColor",
+          "redshift": null
+        },
+        "IOR": {
+          "vray": "refractionIOR",
+          "redshift": null
+        },
+        "Alpha": {
+          "vray": "opacityMap",
+          "redshift": null
+        },
+        "Normal": {
+          "vray": "bumpMap",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "BSDF": {
+          "vray": "outColor",
+          "redshift": null
+        }
+      }
+    },
+    "TEX_IMAGE": {
+      "vray": "file",
+      "redshift": null,
+      "input_att": {
+        "Vector": {
+          "vray": "uvCoord",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Color": {
+          "vray": "outColor",
+          "redshift": null
+        },
+        "Alpha": {
+          "vray": "outAlpha",
+          "redshift": null
+        }
+      }
+    },
+    "TEX_NOISE": {
+      "vray": "noise",
+      "redshift": null,
+      "input_att": {
+        "Vector": {
+          "vray": "uvCoord",
+          "redshift": null
+        },
+        "Scale": {
+          "vray": "frequencyRatio",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Color": {
+          "vray": "outColor",
+          "redshift": null
+        },
+        "Fac": {
+          "vray": "outColorR",
+          "redshift": null
+        }
+      }
+    },
+    "TEX_CHECKER": {
+      "vray": "checker",
+      "redshift": null,
+      "input_att": {
+        "Vector": {
+          "vray": "uvCoord",
+          "redshift": null
+        },
+        "Color1": {
+          "vray": "color1"
+        },
+        "Color2": {
+          "vray": "color2"
+        }
+      },
+      "output_att": {
+        "Color": {
+          "vray": "outColor",
+          "redshift": null
+        },
+        "Fac": {
+          "vray": "outColorR",
+          "redshift": null
+        }
+      }
+    },
+    "MAPPING": {
+      "vray": "place2dTexture",
+      "redshift": null,
+      "input_att": {
+        "Scale": {
+          "vray": "repeatUV",
+          "redshift": null
+        },
+        "Rotation": {
+          "vray": "rotateUV",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Vector": {
+          "vray": null,
+          "redshift": null
+        }
+      }
+    },
+    "TEX_COORD": {
+      "vray": "place2dTexture",
+      "redshift": null,
+      "input_att": {},
+      "output_att": {}
+    },
+    "INVERT": {
+      "vray": "reverse",
+      "redshift": null,
+      "input_att": {
+        "Color": {
+          "vray": "input",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Color": {
+          "vray": "output",
+          "redshift": null
+        }
+      }
+    },
+    "ADD_SHADER": {
+      "vray": "VRayBlendMtl",
+      "redshift": null,
+      "input_att": {
+        "Shader_01": {
+          "vray": "base_material",
+          "redshift": null
+        },
+        "Shader_02": {
+          "vray": "coat_material_0",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Shader": {
+          "vray": "outColor",
+          "redshift": null
+        }
+      }
+    },
+    "MIX_SHADER": {
+      "vray": "VRayBlendMtl",
+      "redshift": null,
+      "input_att": {
+        "Fac": {
+          "vray": "blend_amount_0",
+          "redshift": null
+        },
+        "Shader_01": {
+          "vray": "base_material",
+          "redshift": null
+        },
+        "Shader_02": {
+          "vray": "coat_material_0",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Shader": {
+          "vray": "outColor",
+          "redshift": null
+        }
+      }
+    },
+    "EMISSION": {
+      "vray": "VRayLightMtl",
+      "redshift": null,
+      "input_att": {
+        "Color": {
+          "vray": "color",
+          "redshift": null
+        },
+        "Strength": {
+          "vray": "colorMultiplier",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Emission": {
+          "vray": "outColor",
+          "redshift": null
+        }
+      }
+    },
+    "BUMP": {
+      "vray": null,
+      "redshift": null,
+      "input_att": {},
+      "output_att": {}
+    },
+    "NORMAL_MAP": {
+      "vray": null,
+      "redshift": null,
+      "input_att": {},
+      "output_att": {}
+    },
+    "FRESNEL": {
+      "vray": "VRayFresnel",
+      "redshift": null,
+      "input_att": {
+        "IOR": {
+          "vray": "IOR",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Fac": {
+          "vray": "outColorR",
+          "redshift": null
+        }
+      }
+    },
+    "CLAMP": {
+      "vray": "clamp",
+      "redshift": null,
+      "input_att": {
+        "Value": {
+          "vray": "input",
+          "redshift": null
+        },
+        "Min": {
+          "vray": "min",
+          "redshift": null
+        },
+        "Max": {
+          "vray": "max",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "Result": {
+          "vray": "output",
+          "redshift": null
+        }
+      }
+    }
+  },
+  "vray": {
+    "VRayMtl": {
+      "blender": "BSDF_PRINCIPLED",
+      "redshift": null,
+      "input_att": {
+        "color": {
+          "redshift": null,
+          "blender": "Base Color"
+        },
+        "metalness": {
+          "redshift": null,
+          "blender": "Metallic"
+        },
+        "reflectionGlossiness": {
+          "redshift": null,
+          "blender": "Roughness"
+        },
+        "reflectionColor": {
+          "redshift": null,
+          "blender": "Specular"
+        },
+        "refractionColor": {
+          "redshift": null,
+          "blender": "Transmission"
+        },
+        "opacityMap": {
+          "redshift": null,
+          "blender": "Alpha"
+        },
+        "bumpMap": {
+          "redshift": null,
+          "blender": "Normal"
+        },
+        "refractionIOR": {
+          "redshift": null,
+          "blender": "IOR"
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "redshift": null,
+          "blender": "BSDF"
+        }
+      }
+    },
+    "file": {
+      "blender": "TEX_IMAGE",
+      "redshift": null,
+      "input_att": {
+        "uvCoord": {
+          "redshift": null,
+          "blender": "Vector"
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "redshift": null,
+          "blender": "Color"
+        },
+        "outAlpha": {
+          "redshift": null,
+          "blender": "Alpha"
+        }
+      }
+    },
+    "noise": {
+      "blender": "TEX_NOISE",
+      "redshift": null,
+      "input_att": {
+        "uvCoord": {
+          "blender": "Vector"
+        },
+        "frequencyRatio": {
+          "blender": "Scale"
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "blender": "Color"
+        },
+        "outColorR": {
+          "blender": "outColorR"
+        }
+      }
+    },
+    "checker": {
+      "blender": "TEX_CHECKER",
+      "input_att": {
+        "uvCoord": {
+          "blender": "Vector"
+        },
+        "color1": {
+          "blender": "Color1"
+        },
+        "color2": {
+          "blender": "Color2"
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "blender": "Color"
+        },
+        "outColorR": {
+          "blender": "Fac"
+        }
+      }
+    },
+    "place2dTexture": {
+      "blender": "MAPPING",
+      "redshift": null,
+      "input_att": {
+        "repeatUV": {
+          "blender": "Scale",
+          "redshift": null
+        },
+        "rotateUV": {
+          "blender": "Rotation",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "outUV": {
+          "blender": "Vector",
+          "redshift": null
+        }
+      }
+    },
+    "reverse": {
+      "blender": "INVERT",
+      "redshift": null,
+      "input_att": {
+        "input": {
+          "blender": "Color",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "output": {
+          "blender": "Color",
+          "redshift": null
+        }
+      }
+    },
+    "VRayBlendMtl": {
+      "blender": "MIX_SHADER",
+      "redshift": null,
+      "input_att": {
+        "blend_amount_0": {
+          "blender": "Fac_00",
+          "redshift": null
+        },
+        "blend_amount_1": {
+          "blender": "Fac_01",
+          "redshift": null
+        },
+        "blend_amount_2": {
+          "blender": "Fac_02",
+          "redshift": null
+        },
+        "blend_amount_3": {
+          "blender": "Fac_03",
+          "redshift": null
+        },
+        "blend_amount_4": {
+          "blender": "Fac_04",
+          "redshift": null
+        },
+        "blend_amount_5": {
+          "blender": "Fac_05",
+          "redshift": null
+        },
+        "blend_amount_6": {
+          "blender": "Fac_06",
+          "redshift": null
+        },
+        "blend_amount_7": {
+          "blender": "Fac_07",
+          "redshift": null
+        },
+        "blend_amount_8": {
+          "blender": "Fac_08",
+          "redshift": null
+        },
+        "base_material": {
+          "blender": "Shader_base",
+          "redshift": null
+        },
+        "coat_material_0": {
+          "blender": "Shader_00",
+          "redshift": null
+        },
+        "coat_material_1": {
+          "blender": "Shader_01",
+          "redshift": null
+        },
+        "coat_material_2": {
+          "blender": "Shader_02",
+          "redshift": null
+        },
+        "coat_material_3": {
+          "blender": "Shader_03",
+          "redshift": null
+        },
+        "coat_material_4": {
+          "blender": "Shader_04",
+          "redshift": null
+        },
+        "coat_material_5": {
+          "blender": "Shader_05",
+          "redshift": null
+        },
+        "coat_material_6": {
+          "blender": "Shader_06",
+          "redshift": null
+        },
+        "coat_material_7": {
+          "blender": "Shader_07",
+          "redshift": null
+        },
+        "coat_material_8": {
+          "blender": "Shader_08",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "blender": "Shader",
+          "redshift": null
+        }
+      }
+    },
+    "VRayLightMtl": {
+      "blender": "EMISSION",
+      "redshift": null,
+      "input_att": {
+        "color": {
+          "blender": "Color",
+          "redshift": null
+        },
+        "colorMultiplier": {
+          "blender": "Strength",
+          "redshift": null
+        }
+      },
+      "output_att": {
+        "outColor": {
+          "blender": "Emission",
+          "redshift": null
+        }
+      }
+    },
+    "VRayFresnel": {
+      "blender": "INVERT",
+      "input_att": {
+        "IOR": {
+          "blender": "IOR"
+        }
+      },
+      "output_att": {
+        "outColorR": {
+          "blender": "Fac"
+        }
+      }
+    },
+    "clamp": {
+      "blender": "CLAMP",
+      "input_att": {
+        "input": {
+          "blender": "Value"
+        },
+        "min": {
+          "blender": "Min"
+        },
+        "max": {
+          "blender": "Max"
+        }
+      },
+      "output_att": {
+        "output": {
+          "blender": "Result"
+        }
+      }
+    }
+  },
+  "blender_command": {
+    "BSDF_PRINCIPLED": "ShaderNodeBsdfPrincipled",
+    "TEX_IMAGE": "ShaderNodeTexImage",
+    "MAPPING": "ShaderNodeMapping",
+    "OUTPUT_MATERIAL": "ShaderNodeOutputMaterial",
+    "NORMAL_MAP": "ShaderNodeNormalMap",
+    "BUMP": "ShaderNodeBump",
+    "INVERT": "ShaderNodeInvert",
+    "ADD_SHADER": "ShaderNodeAddShader",
+    "MIX_SHADER": "ShaderNodeMixShader",
+    "EMISSION": "ShaderNodeEmission",
+    "FRESNEL": "ShaderNodeFresnel",
+    "CLAMP": "ShaderNodeClamp",
+    "TEX_NOISE": "ShaderNodeTexNoise",
+    "TEX_CHECKER": "ShaderNodeTexChecker"
+  }
+}

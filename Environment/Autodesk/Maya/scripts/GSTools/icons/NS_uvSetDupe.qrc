@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_uvSetDupe.png">NS_uvSetDupe_100.png</file>
+		<file>NS_uvSetDupe_150.png</file>
+		<file>NS_uvSetDupe_200.png</file>
+	</qresource>

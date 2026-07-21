@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_unitize.png">NS_unitize_100.png</file>
+		<file>NS_unitize_150.png</file>
+		<file>NS_unitize_200.png</file>
+	</qresource>

@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_shortestPathTool.png">NS_shortestPathTool_100.png</file>
+		<file>NS_shortestPathTool_150.png</file>
+		<file>NS_shortestPathTool_200.png</file>
+	</qresource>

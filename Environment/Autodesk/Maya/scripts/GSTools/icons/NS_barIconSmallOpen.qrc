@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_barIconSmallOpen.png">NS_barIconSmallOpen_100.png</file>
+		<file>NS_barIconSmallOpen_150.png</file>
+		<file>NS_barIconSmallOpen_200.png</file>
+	</qresource>

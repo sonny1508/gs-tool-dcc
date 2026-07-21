@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_manipRot90CCW.png">NS_manipRot90CCW_100.png</file>
+		<file>NS_manipRot90CCW_150.png</file>
+		<file>NS_manipRot90CCW_200.png</file>
+	</qresource>

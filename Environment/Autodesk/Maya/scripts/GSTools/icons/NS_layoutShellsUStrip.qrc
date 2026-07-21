@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_layoutShellsUStrip.png">NS_layoutShellsUStrip_100.png</file>
+		<file>NS_layoutShellsUStrip_150.png</file>
+		<file>NS_layoutShellsUStrip_200.png</file>
+	</qresource>

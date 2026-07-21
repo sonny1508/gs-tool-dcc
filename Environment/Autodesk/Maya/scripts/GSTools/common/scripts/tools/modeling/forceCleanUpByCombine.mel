@@ -1,0 +1,241 @@
+global int $g_forceClnAutoCleanup = 1;
+
+global proc CG_forceCleanUpByCombineResult()
+{
+	confirmDialog -title "Clean Up by Combine" -message "Cleaning is finished."
+    -button "Happy" -defaultButton "Happy";
+}
+
+global proc string CG_forceCleanUpByCombine( string $clnList[] )
+{
+	int $listSize = size($clnList);
+	global string $combineResult = "fault";
+	global int $g_forceClnAutoCleanup;
+	if ($listSize > 0)
+	{
+		string $parent[] = `listRelatives -fullPath -parent $clnList[0]`;
+		global string $combineResult;
+		string $firstName = `match "[^|]*$" $clnList[0]`;
+
+		// Snapshot original UV sets before combine
+		string $originalUVSets[] = `polyUVSet -q -allUVSets $clnList[0]`;
+
+		string $proxyCube[] = `polyCube -ch off -o on -w 1 -h 1 -d 1 -cuv 4`;
+
+		string $group = `group -n "vutGroup#" $clnList $proxyCube`;
+
+		//string $combined[] = `polyUnite -ch off $group`;
+		string $combined[] = `evalEcho("polyUnite -ch off \""+$group+"\"")`;
+
+		string $faceToVertex[] = `polyInfo -faceToVertex`;
+		int $sizeFaces = size($faceToVertex);
+
+		int $start = $sizeFaces - 6;
+		int $end = $sizeFaces - 1;
+
+		string $deletePart = $combined[0] + ".f[" + $start + ":" + $end + "]";
+		delete $deletePart;
+
+		$combineResult = `rename $combined[0] $firstName`;
+		delete -ch $combineResult;
+
+		// Delete only the extra UV channels that polyUnite created
+		string $postUVSets[] = `polyUVSet -q -allUVSets $combineResult`;
+		for ($uv in $postUVSets)
+		{
+			if (!stringArrayContains($uv, $originalUVSets))
+			{
+				catchQuiet(`polyUVSet -delete -uvSet $uv $combineResult`);
+			}
+		}
+
+		if($parent[0] != "")
+		{
+			parent $combineResult $parent[0];
+		}
+
+		// Auto clean up: delete the leftover vutGroup
+		if ($g_forceClnAutoCleanup && `objExists $group`)
+		{
+			delete $group;
+		}
+	}
+	else
+	{
+		error "Nothing to combine.";
+	}
+
+	return $combineResult;
+}
+
+//CG_forceCleanUpByCombine();
+
+global proc forceCleanUpByCombine()
+{
+	forceCleanUpByCombineUI();
+}
+
+global proc CG_forceCleanUpSceneByCombineUV(){
+	string $meshes[] = `ls -type "mesh"`;
+	for ($each in $meshes){
+		string $uvSets[] = `polyUVSet -q -allUVSets $each`;
+		for ($uv in $uvSets){
+			int $catch = catchQuiet(`polyUVSet -delete -uvSet $uv $each`);
+		}
+		string $uvSets2[] = `polyUVSet -q -allUVSets $each`;
+		for ($uv in $uvSets2){
+			catchQuiet(`polyUVSet -rename -uvSet $uv -newUVSet "map1" $each`);
+		}
+	}
+	select -cl;
+	CG_forceCleanUpSceneByCombine();
+}
+
+global proc CG_forceCleanUpSceneByCombine()
+{
+	string $meshes[] = `ls -l -type "mesh"`;
+	print("\n");
+	string $transformList[] = { "1", "2" };
+	clear($transformList);
+	int $transformID = 0;
+
+	for ($each in $meshes){
+		string $transform[] = `listRelatives -fullPath -parent $each`;
+		string $parent[] = `listRelatives -parent $transform[0]`;
+		if (size($transform) > 0){
+			print ($each + " - " + $transform[0] + " - " + $parent[0] + "\n");
+			$transformList[$transformID] = $transform[0];
+			$transformID ++;
+		}
+	}
+	string $transformShortList[] = stringArrayRemoveDuplicates($transformList);
+
+	print ("\nUnique transforms:\n");
+	for ($each in $transformShortList){
+		print ($each + "\n");
+		string $selection[];
+		clear($selection);
+		$selection[0] = $each;
+		if(CG_forceCleanUpIsObject($selection[0]) == 0){
+			string $result = CG_forceCleanUpByCombine( $selection );
+		} else {
+			delete $selection;
+		}
+	}
+	CG_forceCleanUpByCombineResult();
+	select $transformShortList;
+}
+
+global proc int CG_forceCleanUpIsObject(string $possibleGroupNode){
+	int $onlyTransforms = true;
+
+	string $groupChildren[] = `listRelatives -children -path $possibleGroupNode`;
+
+	if ( size( $groupChildren ) == 0 ) {
+	  print ( "Empty transform.\n" );
+	} else {
+	  // iterate children and see if they're all transforms themselves...
+	  for ( $child in $groupChildren ) {
+	    if ( `nodeType $child` != "transform" ) {
+	      $onlyTransforms = false;
+	      break;
+	    }
+	  }
+	}
+	return $onlyTransforms;
+}
+
+// ─────────────────────────────────────────────────────────
+//  UI
+// ─────────────────────────────────────────────────────────
+
+global proc CG_forceCleanUpByCombineExecute()
+{
+	global int $g_forceClnAutoCleanup;
+	$g_forceClnAutoCleanup = `checkBox -q -value forceClnAutoCleanup_cb`;
+
+	int $mode = `radioButtonGrp -q -select forceClnCombineMode_rbg`;
+
+	string $selection[] = `ls -sl -l -type "transform"`;
+
+	if (size($selection) == 0)
+	{
+		error "Nothing selected.";
+		return;
+	}
+
+	if ($mode == 1)
+	{
+		// Combine All Selected into one mesh
+		string $result = CG_forceCleanUpByCombine( $selection );
+		select $result;
+	}
+	else
+	{
+		// Per Selected Object: combine shapes within each selected object individually
+		string $results[];
+		int $ri = 0;
+		for ($each in $selection)
+		{
+			string $single[];
+			clear($single);
+			$single[0] = $each;
+			if (`objExists $single[0]` && CG_forceCleanUpIsObject($single[0]) == 0)
+			{
+				int $catch = catchQuiet(`CG_forceCleanUpByCombine( $single )`);
+				if ($catch == 0)
+				{
+					global string $combineResult;
+					$results[$ri] = $combineResult;
+					$ri++;
+				}
+				else
+				{
+					warning ("Skipped: " + $each);
+				}
+			}
+		}
+		if (size($results) > 0)
+		{
+			select $results;
+		}
+		CG_forceCleanUpByCombineResult();
+	}
+}
+
+global proc forceCleanUpByCombineUI()
+{
+	if (`window -exists forceCleanUpByCombineWin`)
+		deleteUI forceCleanUpByCombineWin;
+
+	window -title "Force Clean Up by Combine" -widthHeight 340 190 -sizeable true forceCleanUpByCombineWin;
+
+	columnLayout -adjustableColumn true -rowSpacing 6 -columnAttach "both" 10;
+
+		separator -height 4 -style "none";
+
+		text -label "Combine Mode" -align "left" -font "boldLabelFont";
+
+		radioButtonGrp -numberOfRadioButtons 2
+			-label ""
+			-labelArray2 "Combine All Selected" "Per Selected Object"
+			-select 1
+			-columnWidth3 1 160 160
+			forceClnCombineMode_rbg;
+
+		separator -height 6 -style "in";
+
+		checkBox -label "Automatic Clean Up (delete vutGroup)"
+			-value 1
+			forceClnAutoCleanup_cb;
+
+		separator -height 6 -style "in";
+
+		button -label "Execute Clean Up"
+			-height 34
+			-command "CG_forceCleanUpByCombineExecute()";
+
+	setParent ..;
+
+	showWindow forceCleanUpByCombineWin;
+}

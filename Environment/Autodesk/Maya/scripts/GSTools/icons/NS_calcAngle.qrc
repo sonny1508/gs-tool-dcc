@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_calcAngle.png">NS_calcAngle_100.png</file>
+		<file>NS_calcAngle_150.png</file>
+		<file>NS_calcAngle_200.png</file>
+	</qresource>

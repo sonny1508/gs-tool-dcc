@@ -1,1 +1,0 @@
-from .pythoneditor import TabbedEditor

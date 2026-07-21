@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_gatherShells.png">NS_gatherShells_100.png</file>
+		<file>NS_gatherShells_150.png</file>
+		<file>NS_gatherShells_200.png</file>
+	</qresource>

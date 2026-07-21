@@ -1,1 +1,0 @@
-{"name": "fkchain__g0uay9p", "description": "", "rules": [{"name": "skinJointName", "creator": "ZooToolsPro", "description": "Deformation joint chain name.", "expression": "{componentName}_{side}", "exampleFields": {"componentName": "arm", "side": "L", "id": "upr", "type": "joint"}}], "fields": []}

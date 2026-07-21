@@ -1,0 +1,137 @@
+//--------------------------------------------------------------------------
+//
+// ScriptName : AriNormalSmooth
+// Contents   : 頂点法線をスムーズ化します。
+// Author     : Ari
+// URL        : http://cgjishu.net/
+// Since      : 2022/06
+// LastUpdate : 
+// Help       : http://cgjishu.net/blog-entry-359.html
+//
+//--------------------------------------------------------------------------
+
+proc vector normalizeVector(vector $vec){
+	vector $normalizeVec;
+	float $floatVal[]={$vec.x,$vec.y,$vec.z};
+	normalize($floatVal);
+	$normalizeVec=<<$floatVal[0],$floatVal[1],$floatVal[2]>>;
+	return $normalizeVec;
+}
+proc int verNumFromVertex(string $ver){
+	string $sepa[];
+	tokenize $ver "[]" $sepa;
+	int $num = $sepa[size($sepa)-1];
+	return $num;
+}
+proc AriNormalSmooth_Save(){
+	global string $AriNormalSmooth_LoopIF;
+	int $loop = `intSliderGrp -q -v $AriNormalSmooth_LoopIF`;
+	optionVar -intValue   "AriNormalSmooth_Loop" $loop;
+}
+proc AriNormalSmooth_Load(){
+	global string $AriNormalSmooth_LoopIF;
+	int $loop = 1;
+	if(`optionVar -exists "AriNormalSmooth_Loop"`) $loop = `optionVar -q "AriNormalSmooth_Loop"`;
+	intSliderGrp -e -v $loop $AriNormalSmooth_LoopIF;
+}
+proc string[] AriNormalSmooth_Around(string $ver){
+	string $aroundList[];
+	string $edgeList[] = `polyListComponentConversion -te $ver`;
+	$edgeList = `filterExpand -selectionMask 32 $edgeList`;
+	string $edgeToVerList[] = `polyListComponentConversion -tv $edgeList`;
+	$edgeToVerList = `filterExpand -selectionMask 31 $edgeToVerList`;
+	int $i=0;
+	for($edgeToVer in $edgeToVerList){
+		if($edgeToVer != $ver){
+			$aroundList[$i] = $edgeToVer;
+			$i++;
+		}
+	}
+	return $aroundList;
+}
+global proc AriNormalSmooth_GO(){
+	global string $AriNormalSmooth_LoopIF;
+	AriNormalSmooth_Save();
+	int $loop = `intSliderGrp -q -v $AriNormalSmooth_LoopIF`;
+	string $selectList[]=`ls -sl`;
+	string $verList[] = `polyListComponentConversion -tv $selectList`;
+	$verList = `filterExpand -selectionMask 31 $verList`;	
+	string $aroundVerList[]; 
+	string $aroundNormalList[]; 
+	int $totalVer[];         
+	vector $beforeNormalList_num[];
+	int $i;
+	for($i=0; $i<size($verList); $i++){
+		string $around[] = AriNormalSmooth_Around($verList[$i]);
+		if($i==0)	$totalVer[$i] = size($around);
+		else		$totalVer[$i] = $totalVer[$i-1] + size($around);
+		$aroundVerList = stringArrayCatenate($aroundVerList, $around);
+		float $nor[] = `polyNormalPerVertex -q -xyz $verList[$i]`;
+	}
+	string $aroundVerList_One[] = stringArrayRemoveDuplicates($aroundVerList);
+	for($ver in $aroundVerList_One){
+		float $nor[] = `polyNormalPerVertex -q -xyz $ver`;
+		int $num = verNumFromVertex($ver);
+		$beforeNormalList_num[$num] = <<$nor[0],$nor[1],$nor[2]>>;
+	}
+	vector $nowNormalList_num[] = $beforeNormalList_num;
+	vector $aveNormalList[];
+	int $n = 0;
+	while($n < $loop){
+		for($i=0; $i<size($aroundVerList); $i++){
+			int $num = verNumFromVertex($aroundVerList[$i]);
+			$aroundNormalList[$i] = $nowNormalList_num[$num];
+		}
+		for($i=0; $i<size($verList); $i++){
+			int $num = verNumFromVertex($verList[$i]);
+			int $startNum = 0;
+			if($i != 0)	$startNum = $totalVer[$i-1];
+			int $endNum = $totalVer[$i];
+			vector $totalNormal = <<0,0,0>>;
+			for($j=$startNum; $j<$endNum; $j++){
+				$totalNormal += $aroundNormalList[$j];
+			}
+			$aveNormalList[$i] = normalizeVector($totalNormal/($endNum-$startNum));
+			$nowNormalList_num[$num] = $aveNormalList[$i];
+		}
+		$n++;
+	}
+	for($i=0; $i<size($verList); $i++){
+		vector $verNor = $aveNormalList[$i];
+		polyNormalPerVertex -e -x ($verNor.x) -y ($verNor.y) -z ($verNor.z) $verList[$i];
+	}
+}
+global proc AriNormalSmooth(){
+	global string $AriNormalSmooth_LoopIF;
+	if((`window -ex  AriNormalSmooth`)==true)deleteUI AriNormalSmooth;
+	window -title "AriNormalSmooth"  -tlb true -w 200 -h 50 AriNormalSmooth;
+	string $form = `formLayout`;
+	string $column = `columnLayout -adj true`;
+	columnLayout -adj true;
+	rowLayout -nc 4 -adj 4 ;
+	iconTextButton -i "polySetVertexNormal" -c "SetVertexNormalOptions" ;
+	iconTextButton -i "polyNormalUnlock"    -c "UnlockNormals" ;
+	separator -hr false -h 40 -w 10;
+	columnLayout -adj true;
+	button -h 20 -l "NorDisp" -c "ToggleVertexNormalDisplay";
+	button -h 20 -l "Size" -c "ChangeNormalSize";
+	setParent..;
+	setParent..;
+	setParent..;
+	separator -h 10;
+	$AriNormalSmooth_LoopIF = `intSliderGrp -w 20 -v 1 -min 1 -max 100 -field true -cw 1 40`;
+	setParent..;
+	string $button = `button -h 30 -l "Smooth" -c "AriNormalSmooth_GO()"`;
+	setParent..;
+	formLayout -e
+	-af $column "left"  0
+	-af $column "right" 0
+	-af $column "top"   0
+	-af $button "left"   0
+	-af $button "right"  0
+	-af $button "bottom" 0
+	-ac $button "top"    0 $column
+	$form;
+	showWindow;
+	AriNormalSmooth_Load();
+}

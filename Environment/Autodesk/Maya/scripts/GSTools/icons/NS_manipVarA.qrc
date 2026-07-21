@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_manipVarA.png">NS_manipVarA_100.png</file>
+		<file>NS_manipVarA_150.png</file>
+		<file>NS_manipVarA_200.png</file>
+	</qresource>

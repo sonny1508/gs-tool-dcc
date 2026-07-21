@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>NormaltoolsWin</class>
+ <widget class="QMainWindow" name="NormaltoolsWin">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>262</width>
+    <height>350</height>
+   </rect>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>16777215</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Simple Normal Transfer</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QGroupBox" name="groupBox_2">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>241</width>
+      <height>321</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Transfer Normal / Match Normal:</string>
+    </property>
+    <widget class="QPushButton" name="btTranferNormalTargetSource">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>40</y>
+       <width>201</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Transfer Normal</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Transfer Normal from SOURCE surface to TARGET surface without open Maya Dialog&quot;</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>TranferNormalTargetSource</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>171</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>select TARGET, then SOURCE:</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btMkRecess">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>75</y>
+       <width>201</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Transfer &quot;Open-Edge Recess&quot;</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>MkRecessTargetSource</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Transfer Normal from SOURCE surface to all open edge-vertices of the floating recess TARGET.&quot;</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btTranferNormal2SelectedVertices">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>110</y>
+       <width>201</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Transfer to Selected Vertices</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>TranferNormal2SelectedVertices</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Select  a vertex selection first then shift select a source object&quot;</string>
+     </property>
+    </widget>
+    <widget class="Line" name="line">
+     <property name="geometry">
+      <rect>
+       <x>0</x>
+       <y>140</y>
+       <width>241</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="txtSrcMesh">
+     <property name="geometry">
+      <rect>
+       <x>94</x>
+       <y>160</y>
+       <width>141</width>
+       <height>20</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btSelectSrcMesh">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>160</y>
+       <width>81</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Pick SOURCE:</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>callSelectSourceMesh</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Click to choose selected mesh as SOURCE&quot;</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btLodToolsTranferNormal">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>190</y>
+       <width>201</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Transfer Normal to Selected Meshes</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Transfer Normal from SOURCE to Selected Meshes without open Maya Dialog&quot;</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>callTranferNormalFromSourceToSelectedMeshes</string>
+     </property>
+    </widget>
+    <widget class="Line" name="line_5">
+     <property name="geometry">
+      <rect>
+       <x>0</x>
+       <y>230</y>
+       <width>241</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btEverageNormal_2">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>270</y>
+       <width>191</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>MATCH Vertex Normal
+(on 2 identical meshes)</string>
+     </property>
+     <property name="-command" stdset="0">
+      <string>MatchVertexNormalOn2DupMeshes</string>
+     </property>
+     <property name="-ann" stdset="0">
+      <string>&quot;Matching Vertex Normal between 2 identical meshes&quot;</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label_3">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>250</y>
+       <width>171</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>select TARGET, then SOURCE:</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </widget>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>262</width>
+     <height>21</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,578 @@
+//--------------------------------------------------------------------------
+//
+// ScriptName : AriBoundingSizePrimitive
+// Contents   : 選択したオブジェクトのバウンディングボックスサイズのプリミティブを作成します。
+// Author     : Ari
+// Help       : http://cgjishu.net/blog-entry-336.html
+// Since      : 2021/07
+// LastUpdate : 2022/11/27 複数オブジェクト選択時1プリミティブ機能追加
+//
+//--------------------------------------------------------------------------
+
+
+
+
+proc int[] AriNumber10to2(int $number){
+	int $boolList[];
+	int $baisu=pow(2,20);
+	$amari=$number;
+	
+	for($i=20;$i>=0;$i--){
+		if($amari-$baisu>=0){
+			$amari=$amari-$baisu;
+			$boolList[$i]=1;
+		}
+		else $boolList[$i]=0;
+		$baisu=$baisu/2;
+	}
+	return $boolList;	
+}
+proc int AriNumber2to10(int $boolList[]){
+	int $number;
+	int $baisu=1;
+	for($i=0;$i<size($boolList);$i++){
+		$number += $baisu*$boolList[$i];
+		$baisu = $baisu*2;
+	}
+	return $number;	
+}
+proc float[] AriBoundingSizePrimitive_MimMax(string $verList[],int $worldTrue){
+	global string $AriBoundingSizePrimitive_UI_worldRB[];
+	float $minmax[];
+	int $i=0;
+	for($ver in $verList){
+		float $verPos[] = `pointPosition -l $ver`;
+		if($worldTrue){
+			$verPos = `pointPosition -w $ver`;
+		}
+		if($i==0){
+			$minmax[0] = $verPos[0];
+			$minmax[1] = $verPos[1];
+			$minmax[2] = $verPos[2];
+			$minmax[3] = $verPos[0];
+			$minmax[4] = $verPos[1];
+			$minmax[5] = $verPos[2];
+		}
+		if($minmax[0] > $verPos[0]) $minmax[0] = $verPos[0];
+		if($minmax[1] > $verPos[1]) $minmax[1] = $verPos[1];
+		if($minmax[2] > $verPos[2]) $minmax[2] = $verPos[2];
+		if($minmax[3] < $verPos[0]) $minmax[3] = $verPos[0];
+		if($minmax[4] < $verPos[1]) $minmax[4] = $verPos[1];
+		if($minmax[5] < $verPos[2]) $minmax[5] = $verPos[2];
+		$i++;
+	}
+	return $minmax;
+}
+proc string[] getSelectToTransformList(){
+	string $transformList[] = `ls -sl -tr`;
+	string $selects[] = `ls -sl`;
+	string $delTf[] = stringArrayRemove($transformList, $selects);
+	string $vertexList[] = `polyListComponentConversion -tv $delTf`;
+	string $shapes[]     = `polyListComponentConversion $vertexList`;	
+	string $shapeToTf[] = `listRelatives -p -pa -type "transform" $shapes`;
+	string $targetTransformList[] = stringArrayCatenate($transformList, $shapeToTf);
+	return $targetTransformList;
+}
+proc string[] getSelectToVertexList(){
+	string $selectList[]    = `ls -sl`;
+	string $checkVerList[];
+	$checkVerList = `filterExpand -selectionMask 31 $selectList`;
+	string $works[];
+	string $selectEdgeList[]=`filterExpand -selectionMask 32 $selectList`;
+	if(size($selectEdgeList)>0 || size($checkVerList)==0){
+		$works=`polyListComponentConversion -tv $selectEdgeList`;
+		$works=`filterExpand -selectionMask 31 $works`;
+		$checkVerList = $works;
+	}
+	string $selectFaceList[]=`filterExpand -selectionMask 34 $selectList`;
+	if(size($selectFaceList)>0 || size($checkVerList)==0){
+		$works=`polyListComponentConversion -tv $selectFaceList`;
+		$works=`filterExpand -selectionMask 31 $works`;
+		$checkVerList = $works;
+	}
+	return $checkVerList;
+}
+proc int AriListNum (string $obj){
+	int $num;
+	string $parent[]=`listRelatives -p -pa $obj`;
+	string $children[];
+	if($parent[0]=="")	$children=`ls -as`;
+	else $children=		`listRelatives -c -pa $parent[0]`;
+	int $i=0;
+	for($child in $children){
+		if($child == $obj){
+			$num=$i;
+			break;
+		}
+		$i++;
+	}
+	return $num;
+}
+proc vector[] getSevenPosition(string $obj, string $transformList[], string $checkVerList[],int $worldTrue){
+	vector $positionList[];
+	int $groupTrue = false;
+	string $verList[];
+	if(stringArrayContains($obj, $transformList)){
+		$verList = `polyListComponentConversion -tv $obj`;
+		$verList = `filterExpand -selectionMask 31 $verList`;
+		string $shapeList[] = `listRelatives  -c -s  $obj`;
+		if(size($shapeList)==0)$groupTrue = true;
+	}
+	else{
+		int $counter = 0;
+		for($ver in $checkVerList){
+			if(startsWith($ver,$obj)){
+				$verList[$counter] = $ver;
+				$counter++;
+			}
+		}
+	}
+	float $boundPos[] = AriBoundingSizePrimitive_MimMax($verList,$worldTrue);
+	vector $pivPos;
+	if($worldTrue){
+		float $pos[] = `xform -q -ws -piv  $obj`;
+		$pivPos = <<$pos[0], $pos[1], $pos[2]>>;
+	}
+	else{
+		float $pos[] = `xform -q     -piv  $obj`;
+		$pivPos = <<$pos[0], $pos[1], $pos[2]>>;
+		if($groupTrue==true){
+			string $parents[] = `listRelatives -p -pa $obj`;	
+			int $num = AriListNum($obj);
+			string $wObj = $obj;
+			if($parents[0] != ""){
+				string $work[] = `parent -w $obj`;
+				$wObj = $work[0];
+			}
+			vector $beforeTranslate = `getAttr ($wObj+".translate")`;
+			vector $beforeRotate    = `getAttr ($wObj+".rotate")`;
+			vector $beforeScale     = `getAttr ($wObj+".scale")`;
+			vector $beforeShear     = `getAttr ($wObj+".shear")`;
+			setAttr ($wObj+".translate") 0 0 0;
+			setAttr ($wObj+".rotate") 0 0 0;
+			setAttr ($wObj+".scale") 1 1 1;
+			setAttr ($wObj+".shearXY") 0;
+			setAttr ($wObj+".shearXZ") 0;
+			setAttr ($wObj+".shearYZ") 0;
+			float $pos[] = `xform -q     -piv  $wObj`;
+			$pivPos = <<$pos[0], $pos[1], $pos[2]>>;
+			float $beforePivot[]  = `xform -q -os -piv $wObj`;
+			xform -os -piv 0 0 0 $wObj;
+			float $getW[] = `xform -q -ws -piv  $wObj`;
+			vector $worldPos = <<$getW[0], $getW[1], $getW[2]>>;
+			$verList = `polyListComponentConversion -tv $wObj`;
+			$verList = `filterExpand -selectionMask 31 $verList`;
+			$boundPos = AriBoundingSizePrimitive_MimMax($verList,true);
+			xform -sp $pos[0] $pos[1] $pos[2] $wObj;
+			xform -rp $pos[3] $pos[4] $pos[5] $wObj;
+			setAttr ($wObj+".shearXY") ($beforeShear.x);
+			setAttr ($wObj+".shearXZ") ($beforeShear.y);
+			setAttr ($wObj+".shearYZ") ($beforeShear.z);
+			setAttr ($wObj+".scale")     ($beforeScale.x)  ($beforeScale.y)  ($beforeScale.z);
+			setAttr ($wObj+".rotate")    ($beforeRotate.x) ($beforeRotate.y) ($beforeRotate.z);
+			setAttr ($wObj+".translate") ($beforeTranslate.x) ($beforeTranslate.y) ($beforeTranslate.z);
+			if($parents[0] != ""){
+				string $wObjParent[]=`parent  $wObj $parents[0]`;
+				$wObj = $wObjParent[0];
+				reorder -relative ($num+1) $wObj;
+				if($wObj != $obj){
+					string $sepa[];
+					tokenize $obj "|" $sepa;
+					string $baseName = $sepa[size($sepa)-1];
+					$wObj =`rename $wObjParent[0] $baseName`;
+				}
+			}
+			$boundPos[0] = $boundPos[0] - ($worldPos.x);
+			$boundPos[1] = $boundPos[1] - ($worldPos.y);
+			$boundPos[2] = $boundPos[2] - ($worldPos.z);
+			$boundPos[3] = $boundPos[3] - ($worldPos.x);
+			$boundPos[4] = $boundPos[4] - ($worldPos.y);
+			$boundPos[5] = $boundPos[5] - ($worldPos.z);
+		}
+	}
+	vector $center = << (($boundPos[0] + $boundPos[3]) * 0.5), (($boundPos[1] + $boundPos[4]) * 0.5), (($boundPos[2] + $boundPos[5]) * 0.5)   >>;
+	vector $scale  = << (($boundPos[3] - $boundPos[0])), (($boundPos[4] - $boundPos[1])), (($boundPos[5] - $boundPos[2]))>>;
+	$positionList[0] = <<$boundPos[0], ($pivPos.y),  ($pivPos.z) >>;
+	$positionList[1] = <<($pivPos.x),  $boundPos[1], ($pivPos.z) >>;
+	$positionList[2] = <<($pivPos.x),  ($pivPos.y),  $boundPos[2]>>;
+	$positionList[3] = <<$boundPos[3], ($pivPos.y),  ($pivPos.z) >>;
+	$positionList[4] = <<($pivPos.x),  $boundPos[4], ($pivPos.z) >>;
+	$positionList[5] = <<($pivPos.x),  ($pivPos.y),  $boundPos[5]>>;	
+	$positionList[6] = $pivPos; 
+	$positionList[7] = $center; 
+	$positionList[8]  = <<$center.x, $pivPos.y, $pivPos.z>>;
+	$positionList[9]  = <<$pivPos.x, $center.y, $pivPos.z>>;
+	$positionList[10] = <<$pivPos.x, $pivPos.y, $center.z>>;
+	$positionList[11] = <<$scale.x, $scale.y, $scale.z>>;
+	return $positionList;
+}
+proc int AriBoundingSizePrimitive_exHistory(string $obj, int $mode){
+	int $historyTrue;
+	string $shapes[]    = `listRelatives -s -pa $obj`;
+	string $cubes[]     = `listConnections -s true -p true -type "polyCube" $shapes[0]`;	
+	string $cylinders[] = `listConnections -s true -p true -type "polyCylinder" $shapes[0]`;
+	string $spheres[]   = `listConnections -s true -p true -type "polySphere" $shapes[0]`;
+	if($mode==0 && size($cubes)>0)     $historyTrue = true;
+	if($mode==1 && size($cylinders)>0) $historyTrue = true;
+	if($mode==2 && size($spheres)>0)   $historyTrue = true;
+	return $historyTrue;
+}
+proc string AriBoundingSizePrimitive_changeHistory(string $obj,int $primInt[], int $mode){
+	int $axisChangeTrue = false;
+	float $ax[];
+	int $sxyz[];
+	if($mode==0){
+		$ax = `polyCube -q -ax $obj`;
+		$sxyz[0] =`polyCube -q -sx $obj`;
+		$sxyz[1] =`polyCube -q -sy $obj`;
+		$sxyz[2] =`polyCube -q -sz $obj`;
+		if($sxyz[0] == $primInt[0] && $sxyz[1] == $primInt[1] && $sxyz[2] == $primInt[2])	$axisChangeTrue = true;
+	}
+	if($mode==1){
+		$ax = `polyCylinder -q -ax $obj`;
+		$sxyz[0] =`polyCylinder -q -sx $obj`;
+		$sxyz[1] =`polyCylinder -q -sy $obj`;
+		$sxyz[2] =`polyCylinder -q -sz $obj`;
+		if($sxyz[0] == $primInt[0] && $sxyz[1] == $primInt[1] && $sxyz[2] == $primInt[2])	$axisChangeTrue = true;
+	}
+	if($mode==2){
+		$ax = `polySphere   -q -ax $obj`;
+		$sxyz[0] =`polySphere -q -sx $obj`;
+		$sxyz[1] =`polySphere -q -sy $obj`;
+		if($sxyz[0] == $primInt[0] && $sxyz[1] == $primInt[1] )	$axisChangeTrue = true;
+	}
+	if($axisChangeTrue){
+		float $newAx[];
+		if($ax[1]==1)$newAx={1,0,0};
+		if($ax[0]==1)$newAx={0,0,1};
+		if($ax[2]==1)$newAx={0,1,0};
+		if($mode==0) polyCube     -e -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax $newAx[0] $newAx[1] $newAx[2]  $obj;
+		if($mode==1) polyCylinder -e -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax $newAx[0] $newAx[1] $newAx[2]  $obj;
+		if($mode==2) polySphere   -e -sx $primInt[0] -sy $primInt[1]                 -ax $newAx[0] $newAx[1] $newAx[2]  $obj;
+	}
+	else{
+		if($mode==0) polyCube     -e -sx $primInt[0] -sy $primInt[1] -sz $primInt[2]  $obj;
+		if($mode==1) polyCylinder -e -sx $primInt[0] -sy $primInt[1] -sz $primInt[2]  $obj;
+		if($mode==2) polySphere   -e -sx $primInt[0] -sy $primInt[1] $obj;
+	}
+	return $obj;
+}
+global proc AriBoundingSizePrimitive_GO(int $mode){
+	global string $AriBoundingSizePrimitive_UI_CubeInt[];
+	global string $AriBoundingSizePrimitive_UI_CylinderInt[];
+	global string $AriBoundingSizePrimitive_UI_SphereInt[];
+	global string $AriBoundingSizePrimitive_UI_worldCB;
+	global string $AriBoundingSizePrimitive_UI_oneObjCB;
+	global string $AriBoundingSizePrimitive_LastCreate[];
+	AriBoundingSizePrimitive_Save();
+	string $nameList[] = {"_pCube","_pCylinder","_pSphere"};
+	string $polyName;
+	$polyName = $nameList[$mode];
+	int $worldMode = false;
+	$worldMode = `checkBox -q -v $AriBoundingSizePrimitive_UI_worldCB`;
+	int $oneMode = false;
+	$oneMode = `checkBox -q -v $AriBoundingSizePrimitive_UI_oneObjCB`;
+	int $CubeInt[];
+	$CubeInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[0]`;
+	$CubeInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[1]`;
+	$CubeInt[2] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[2]`;
+	int $CylinderInt[];
+	$CylinderInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[0]`;
+	$CylinderInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[1]`;
+	$CylinderInt[2] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[2]`;
+	int $SphereInt[];
+	$SphereInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_SphereInt[0]`;
+	$SphereInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_SphereInt[1]`;
+	int $primInt[];
+	if($mode == 0)$primInt = $CubeInt;
+	if($mode == 1)$primInt = $CylinderInt;
+	if($mode == 2)$primInt = $SphereInt;
+	string $transformList[] = `ls -sl -tr`;
+	string $checkObjectList[] = getSelectToTransformList();
+	string $checkVerList[]    = getSelectToVertexList();   
+	if(size($checkObjectList)==0){
+		string $primitiveObjs[];
+		if($mode == 0)	$primitiveObjs = `polyCube     -w 1 -h 1 -d 1 -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax 0 1 0 -cuv 4 -ch 1`;
+		if($mode == 1)	$primitiveObjs = `polyCylinder -r 0.5 -h 1    -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax 0 1 0 -rcp 0 -cuv 3 -ch 1`;
+		if($mode == 2)	$primitiveObjs = `polySphere   -r 0.5         -sx $primInt[0] -sy $primInt[1]                 -ax 0 1 0 -cuv 2 -ch 1`;	
+		$AriBoundingSizePrimitive_LastCreate = $primitiveObjs;
+		return;
+	}
+	if($oneMode){
+		$worldMode = true;
+		string $obj = $checkObjectList[0];
+		clear $checkObjectList;
+		$checkObjectList[0] = $obj;
+		string $selects[] = `ls -sl`;
+		$checkVerList = `polyListComponentConversion -tv $selects`;
+		$checkVerList=`filterExpand -selectionMask 31 $checkVerList`;
+	}
+	string $createList[];
+	for($obj in $checkObjectList){
+		int $changeTrue = false;
+		int $historyTrue = false;
+		if(stringArrayContains($obj,$AriBoundingSizePrimitive_LastCreate)){
+			$changeTrue = true;
+			$historyTrue = AriBoundingSizePrimitive_exHistory($obj,$mode);
+		}
+		string $primObj;
+		if($historyTrue==false){
+			vector $sevenPosition[];
+			vector $center;
+			vector $scale = <<1,1,1>>;
+			if($oneMode==false){
+				$sevenPosition = getSevenPosition($obj, $transformList, $checkVerList, $worldMode);
+				$center = $sevenPosition[7];
+				$scale  = $sevenPosition[11];
+			}
+			else{
+				float $minmax[] = AriBoundingSizePrimitive_MimMax($checkVerList,true);
+				$scale  = <<($minmax[3]-$minmax[0]),($minmax[4]-$minmax[1]),($minmax[5]-$minmax[2])>>;
+				$center = <<($minmax[0]+($scale.x)/2),($minmax[1]+($scale.y)/2),($minmax[2]+($scale.z)/2)>>;
+			}
+			string $primitiveObjs[];
+			if($mode == 0)	$primitiveObjs = `polyCube     -w 1 -h 1 -d 1 -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax 0 1 0 -cuv 4 -ch 1`;
+			if($mode == 1)	$primitiveObjs = `polyCylinder -r 0.5 -h 1    -sx $primInt[0] -sy $primInt[1] -sz $primInt[2] -ax 0 1 0 -rcp 0 -cuv 3 -ch 1`;
+			if($mode == 2)	$primitiveObjs = `polySphere   -r 0.5         -sx $primInt[0] -sy $primInt[1]                 -ax 0 1 0 -cuv 2 -ch 1`;
+			$primObj = $primitiveObjs[0];
+			move -os ($center.x) ($center.y) ($center.z) $primObj;
+			setAttr ($primObj+ ".scale") ($scale.x) ($scale.y) ($scale.z);
+			string $objName = $obj;
+			string $endName = "";
+			for($name in $nameList){
+				if(endsWith($objName,$name)) $endName = $name;
+			}
+			if($endName!=""){
+				$objName = startString($objName,(size($objName)-size($endName)));
+			}
+			$primObj = `rename $primObj ($objName+$polyName)`;
+			if($worldMode==false){
+				string $group  =`group -n "AriBoundingSizePrimitive_Group" $primObj`;
+				string $parents[] = `parent $group $obj`;
+				$group = $parents[0];
+				setAttr ($group+".rotate")    0 0 0;
+				setAttr ($group+".scale")     1 1 1;
+				setAttr ($group+".shear")     0 0 0;
+				setAttr ($group+".translate") 0 0 0;
+				setAttr ($group+".rotatePivotTranslate") 0 0 0;
+				setAttr ($group+".scalePivotTranslate")  0 0 0;
+				$primitiveObjs = `parent -w $primObj`;
+				$primObj  = $primitiveObjs[0];
+				delete $group;
+			}
+		}
+		if($changeTrue==true){
+			if($historyTrue){
+				$primObj = AriBoundingSizePrimitive_changeHistory($obj,$primInt,$mode);
+			}
+			else{
+				delete $obj;
+			}
+		}
+		$createList[size($createList)] = $primObj;
+	}
+	$AriBoundingSizePrimitive_LastCreate = $createList;
+	select $createList;
+}
+global proc AriBoundingSizePrimitive_Save(){
+	global string $AriBoundingSizePrimitive_UI_CubeInt[];
+	global string $AriBoundingSizePrimitive_UI_CylinderInt[];
+	global string $AriBoundingSizePrimitive_UI_SphereInt[];
+	global string $AriBoundingSizePrimitive_UI_worldCB;
+	global string $AriBoundingSizePrimitive_UI_oneObjCB;
+	int $CubeInt[];
+	$CubeInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[0]`;
+	$CubeInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[1]`;
+	$CubeInt[2] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CubeInt[2]`;
+	int $CylinderInt[];
+	$CylinderInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[0]`;
+	$CylinderInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[1]`;
+	$CylinderInt[2] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_CylinderInt[2]`;
+	int $SphereInt[];
+	$SphereInt[0] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_SphereInt[0]`;
+	$SphereInt[1] = `intSliderGrp -q -v $AriBoundingSizePrimitive_UI_SphereInt[1]`;
+	optionVar -intValue  "AriBSizePrimitive_CubeIntX" $CubeInt[0];
+	optionVar -intValue  "AriBSizePrimitive_CubeIntY" $CubeInt[1];
+	optionVar -intValue  "AriBSizePrimitive_CubeIntZ" $CubeInt[2];
+	optionVar -intValue  "AriBSizePrimitive_CylinderIntX" $CylinderInt[0];
+	optionVar -intValue  "AriBSizePrimitive_CylinderIntY" $CylinderInt[1];
+	optionVar -intValue  "AriBSizePrimitive_CylinderIntZ" $CylinderInt[2];
+	optionVar -intValue  "AriBSizePrimitive_SphereIntX" $SphereInt[0];
+	optionVar -intValue  "AriBSizePrimitive_SphereIntY" $SphereInt[1];
+	int $intArray[];
+	$intArray[0] = `checkBox -q -v $AriBoundingSizePrimitive_UI_worldCB`;
+	$intArray[1] = `checkBox -q -v $AriBoundingSizePrimitive_UI_oneObjCB`;
+	int $seveInt = AriNumber2to10($intArray);
+	optionVar -intValue  "AriBSizePrimitive_WorldInt" $seveInt;
+}
+global proc AriBoundingSizePrimitive_Load(int $reset){
+	global string $AriBoundingSizePrimitive_UI_CubeInt[];
+	global string $AriBoundingSizePrimitive_UI_CylinderInt[];
+	global string $AriBoundingSizePrimitive_UI_SphereInt[];
+	global string $AriBoundingSizePrimitive_UI_worldCB;
+	global string $AriBoundingSizePrimitive_UI_oneObjCB;
+	int $CubeInt[];
+	$CubeInt[0] = 1;
+	$CubeInt[1] = 1;
+	$CubeInt[2] = 1;
+	int $CylinderInt[];
+	$CylinderInt[0] = 8;
+	$CylinderInt[1] = 1;
+	$CylinderInt[2] = 1;
+	int $SphereInt[];
+	$SphereInt[0] = 8;
+	$SphereInt[1] = 8;
+	int $intArray[];
+	$intArray[0] = 0;
+	$intArray[1] = 0;
+	int $seveInt = 0;
+	if($reset==false){
+		if(`optionVar -exists "AriBSizePrimitive_CubeIntX"`)  $CubeInt[0] = `optionVar -q "AriBSizePrimitive_CubeIntX"`;
+		if(`optionVar -exists "AriBSizePrimitive_CubeIntY"`)  $CubeInt[1] = `optionVar -q "AriBSizePrimitive_CubeIntY"`;
+		if(`optionVar -exists "AriBSizePrimitive_CubeIntZ"`)  $CubeInt[2] = `optionVar -q "AriBSizePrimitive_CubeIntZ"`;
+		if(`optionVar -exists "AriBSizePrimitive_CylinderIntX"`)  $CylinderInt[0] = `optionVar -q "AriBSizePrimitive_CylinderIntX"`;
+		if(`optionVar -exists "AriBSizePrimitive_CylinderIntY"`)  $CylinderInt[1] = `optionVar -q "AriBSizePrimitive_CylinderIntY"`;
+		if(`optionVar -exists "AriBSizePrimitive_CylinderIntZ"`)  $CylinderInt[2] = `optionVar -q "AriBSizePrimitive_CylinderIntZ"`;
+		if(`optionVar -exists "AriBSizePrimitive_SphereIntX"`)  $SphereInt[0] = `optionVar -q "AriBSizePrimitive_SphereIntX"`;
+		if(`optionVar -exists "AriBSizePrimitive_SphereIntY"`)  $SphereInt[1] = `optionVar -q "AriBSizePrimitive_SphereIntY"`;
+		if(`optionVar -exists "AriBSizePrimitive_WorldInt"`)  $seveInt = `optionVar -q "AriBSizePrimitive_WorldInt"`;
+		$intArray = AriNumber10to2($seveInt);
+	}
+	intSliderGrp -e -v $CubeInt[0] $AriBoundingSizePrimitive_UI_CubeInt[0];
+	intSliderGrp -e -v $CubeInt[1] $AriBoundingSizePrimitive_UI_CubeInt[1];
+	intSliderGrp -e -v $CubeInt[2] $AriBoundingSizePrimitive_UI_CubeInt[2];
+	intSliderGrp -e -v $CylinderInt[0] $AriBoundingSizePrimitive_UI_CylinderInt[0];
+	intSliderGrp -e -v $CylinderInt[1] $AriBoundingSizePrimitive_UI_CylinderInt[1];
+	intSliderGrp -e -v $CylinderInt[2] $AriBoundingSizePrimitive_UI_CylinderInt[2];
+	intSliderGrp -e -v $SphereInt[0] $AriBoundingSizePrimitive_UI_SphereInt[0];
+	intSliderGrp -e -v $SphereInt[1] $AriBoundingSizePrimitive_UI_SphereInt[1];
+	checkBox -e -v $intArray[0] $AriBoundingSizePrimitive_UI_worldCB;
+	checkBox -e -v $intArray[1] $AriBoundingSizePrimitive_UI_oneObjCB;
+	AriBoundingSizePrimitive_UIChange();
+}
+global proc AriBoundingSizePrimitive_IntValueChange(int $mode, int $field, int $value){
+	global string $AriBoundingSizePrimitive_UI_CubeInt[];
+	global string $AriBoundingSizePrimitive_UI_CylinderInt[];
+	global string $AriBoundingSizePrimitive_UI_SphereInt[];
+	if($mode==0) intSliderGrp -e -v $value $AriBoundingSizePrimitive_UI_CubeInt[$field];
+	if($mode==1) intSliderGrp -e -v $value $AriBoundingSizePrimitive_UI_CylinderInt[$field];
+	if($mode==2) intSliderGrp -e -v $value $AriBoundingSizePrimitive_UI_SphereInt[$field];
+}
+global proc AriBoundingSizePrimitive_UIChange(){
+	global string $AriBoundingSizePrimitive_UI_worldCB;
+	global string $AriBoundingSizePrimitive_UI_oneObjCB;
+	int $changeTrue = true;
+	if(`checkBox -q -v $AriBoundingSizePrimitive_UI_oneObjCB`)$changeTrue = false;
+	else $changeTrue = true;
+	checkBox -e -en $changeTrue $AriBoundingSizePrimitive_UI_worldCB;
+}
+global proc AriBoundingSizePrimitive(){
+	global string $AriBoundingSizePrimitive_UI_CubeInt[];
+	global string $AriBoundingSizePrimitive_UI_CylinderInt[];
+	global string $AriBoundingSizePrimitive_UI_SphereInt[];
+	global string $AriBoundingSizePrimitive_UI_worldCB;
+	global string $AriBoundingSizePrimitive_UI_oneObjCB;
+	int $jpTrue = false;
+	if(`about -uil`=="ja_JP")$jpTrue = true;
+	string $label_subWidth  = "Subdivisions Width";
+	string $label_subHeight = "Subdivisions Height";
+	string $label_subDepth  = "Subdivisions Depth";
+	string $label_subAxis   = "Subdivisions Axis";
+	string $label_subCaps   = "Subdivisions Caps";
+	if($jpTrue){
+		$label_subWidth  = "幅の分割数";
+		$label_subHeight = "高さの分割数";
+		$label_subDepth  = "深度の分割数";
+		$label_subAxis   = "軸の分割数";
+		$label_subCaps   = "キャップの分割数";
+	}
+	if((`window -ex AriBoundingSizePrimitive`)==true)deleteUI AriBoundingSizePrimitive;
+	window -tlb 1 -title "AriBoundingSizePrimitive"  -w 160 -h 200 -mxb 0  AriBoundingSizePrimitive;
+	string $mainform = `formLayout`;
+	string $primitiveUI = `scrollLayout -cr true`;
+	columnLayout -adj true;
+	rowLayout -nc 5 -adj 2;	
+	iconTextButton -i "polyCube.png" -c "AriBoundingSizePrimitive_GO(0)";
+	columnLayout -adj true;
+	$AriBoundingSizePrimitive_UI_CubeInt[0] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 1 -min 1 -max 10 -fmx 512 -ann $label_subWidth`;
+	$AriBoundingSizePrimitive_UI_CubeInt[1] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 1 -min 1 -max 10 -fmx 512 -ann $label_subHeight`;
+	$AriBoundingSizePrimitive_UI_CubeInt[2] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 1 -min 1 -max 10 -fmx 512 -ann $label_subDepth`;
+	setParent..;
+	setParent..;
+	separator;
+	rowLayout -nc 5 -adj 2;
+	iconTextButton -i "polyCylinder.png" -c "AriBoundingSizePrimitive_GO(1)";
+	columnLayout -adj true;
+	$AriBoundingSizePrimitive_UI_CylinderInt[0] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 8 -min 1 -max 64 -fmx 512 -ann $label_subAxis`;
+	popupMenu -button 3 ;
+		menuItem -l "4"  -c "AriBoundingSizePrimitive_IntValueChange(1,0,4)";
+		menuItem -l "6"  -c "AriBoundingSizePrimitive_IntValueChange(1,0,6)";
+		menuItem -l "8"  -c "AriBoundingSizePrimitive_IntValueChange(1,0,8)";
+		menuItem -l "10" -c "AriBoundingSizePrimitive_IntValueChange(1,0,10)";
+		menuItem -l "12" -c "AriBoundingSizePrimitive_IntValueChange(1,0,12)";
+		menuItem -l "16" -c "AriBoundingSizePrimitive_IntValueChange(1,0,16)";
+		menuItem -l "24" -c "AriBoundingSizePrimitive_IntValueChange(1,0,24)";
+		menuItem -l "32" -c "AriBoundingSizePrimitive_IntValueChange(1,0,32)";
+		menuItem -l "48" -c "AriBoundingSizePrimitive_IntValueChange(1,0,48)";
+		menuItem -l "64" -c "AriBoundingSizePrimitive_IntValueChange(1,0,64)";
+	$AriBoundingSizePrimitive_UI_CylinderInt[1] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 1 -min 1 -max 10 -fmx 512 -ann $label_subHeight`;
+	$AriBoundingSizePrimitive_UI_CylinderInt[2] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 1 -min 1 -max 10 -fmx 512 -ann $label_subCaps`;
+	setParent..;
+	setParent..;
+	separator;
+	rowLayout -nc 5 -adj 2;
+	iconTextButton -i "polySphere.png" -c "AriBoundingSizePrimitive_GO(2)";
+	columnLayout -adj true;
+	$AriBoundingSizePrimitive_UI_SphereInt[0] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 16 -min 1 -max 64 -fmx 512 -ann $label_subAxis`;
+	popupMenu -button 3 ;
+		menuItem -l "4"  -c "AriBoundingSizePrimitive_IntValueChange(2,0,4)";
+		menuItem -l "6"  -c "AriBoundingSizePrimitive_IntValueChange(2,0,6)";
+		menuItem -l "8"  -c "AriBoundingSizePrimitive_IntValueChange(2,0,8)";
+		menuItem -l "10" -c "AriBoundingSizePrimitive_IntValueChange(2,0,10)";
+		menuItem -l "12" -c "AriBoundingSizePrimitive_IntValueChange(2,0,12)";
+		menuItem -l "16" -c "AriBoundingSizePrimitive_IntValueChange(2,0,16)";
+		menuItem -l "24" -c "AriBoundingSizePrimitive_IntValueChange(2,0,24)";
+		menuItem -l "32" -c "AriBoundingSizePrimitive_IntValueChange(2,0,32)";
+		menuItem -l "48" -c "AriBoundingSizePrimitive_IntValueChange(2,0,48)";
+		menuItem -l "64" -c "AriBoundingSizePrimitive_IntValueChange(2,0,64)";
+	$AriBoundingSizePrimitive_UI_SphereInt[1] = `intSliderGrp -field true -cw 1 30 -w 30 -h 20 -v 16 -min 1 -max 64 -fmx 512 -ann $label_subHeight`;
+	popupMenu -button 3 ;
+		menuItem -l "4"  -c "AriBoundingSizePrimitive_IntValueChange(2,1,4)";
+		menuItem -l "6"  -c "AriBoundingSizePrimitive_IntValueChange(2,1,6)";
+		menuItem -l "8"  -c "AriBoundingSizePrimitive_IntValueChange(2,1,8)";
+		menuItem -l "10" -c "AriBoundingSizePrimitive_IntValueChange(2,1,10)";
+		menuItem -l "12" -c "AriBoundingSizePrimitive_IntValueChange(2,1,12)";
+		menuItem -l "16" -c "AriBoundingSizePrimitive_IntValueChange(2,1,16)";
+		menuItem -l "24" -c "AriBoundingSizePrimitive_IntValueChange(2,1,24)";
+		menuItem -l "32" -c "AriBoundingSizePrimitive_IntValueChange(2,1,32)";
+		menuItem -l "48" -c "AriBoundingSizePrimitive_IntValueChange(2,1,48)";
+		menuItem -l "64" -c "AriBoundingSizePrimitive_IntValueChange(2,1,64)";
+	setParent..;
+	setParent..;
+	separator;
+	setParent..;
+	setParent..;
+	string $settingUI = `columnLayout -adj true`;
+	rowLayout -nc 5 -adj 2;
+	button -h 20 -l "Reset" -c "AriBoundingSizePrimitive_Load(1)";
+	text -l "";
+	$AriBoundingSizePrimitive_UI_worldCB  = `checkBox -l "World"`;
+	$AriBoundingSizePrimitive_UI_oneObjCB = `checkBox -l "1 Primitive" -cc "AriBoundingSizePrimitive_UIChange()"`;
+	setParent..;
+	setParent..;
+	setParent..;
+	formLayout -e
+	-af $settingUI "bottom" 0
+	-af $settingUI "left"   0
+	-af $settingUI "right"  0
+	-af $primitiveUI "top"    0
+	-ac $primitiveUI "bottom" 0 $settingUI
+	-af $primitiveUI "left"   0
+	-af $primitiveUI "right"  0
+	$mainform;
+	showWindow;
+	AriBoundingSizePrimitive_Load(0);
+}
+
+
+

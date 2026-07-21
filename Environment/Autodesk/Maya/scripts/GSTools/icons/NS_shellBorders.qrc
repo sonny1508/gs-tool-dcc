@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_shellBorders_.png">NS_shellBorders_100.png</file>
+		<file>NS_shellBorders_150.png</file>
+		<file>NS_shellBorders_200.png</file>
+	</qresource>

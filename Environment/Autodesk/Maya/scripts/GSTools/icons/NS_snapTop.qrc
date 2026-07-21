@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_snapTop.png">NS_snapTop_100.png</file>
+		<file>NS_snapTop_150.png</file>
+		<file>NS_snapTop_200.png</file>
+	</qresource>

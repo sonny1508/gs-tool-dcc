@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_isoSelReset.png">NS_isoSelReset_100.png</file>
+		<file>NS_isoSelReset_150.png</file>
+		<file>NS_isoSelReset_200.png</file>
+	</qresource>

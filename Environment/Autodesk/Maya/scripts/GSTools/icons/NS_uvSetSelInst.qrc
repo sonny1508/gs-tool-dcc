@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_uvSetSelInst.png">NS_uvSetSelInst_100.png</file>
+		<file>NS_uvSetSelInst_150.png</file>
+		<file>NS_uvSetSelInst_200.png</file>
+	</qresource>

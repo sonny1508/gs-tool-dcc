@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_tdVarB.png">NS_tdVarB_100.png</file>
+		<file>NS_tdVarB_150.png</file>
+		<file>NS_tdVarB_200.png</file>
+	</qresource>

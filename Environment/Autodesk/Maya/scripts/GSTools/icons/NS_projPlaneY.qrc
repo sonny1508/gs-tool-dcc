@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_projPlaneY.png">NS_projPlaneY_100.png</file>
+		<file>NS_projPlaneY_150.png</file>
+		<file>NS_projPlaneY_200.png</file>
+	</qresource>

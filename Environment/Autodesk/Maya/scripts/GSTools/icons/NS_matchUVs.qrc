@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+	<qresource>
+		<file alias="NS_matchUVs.png">NS_matchUVs_100.png</file>
+		<file>NS_matchUVs_150.png</file>
+		<file>NS_matchUVs_200.png</file>
+	</qresource>

@@ -1,0 +1,15 @@
+[
+  {
+    "username": "Default", 
+    "botton_keep_tf": false, 
+    "botton_light": true, 
+    "Light_mult": 1, 
+    "botton_select": true, 
+    "renderer": "VRay", 
+    "botton_mesh": true, 
+    "botton_camera": true, 
+    "botton_invisible": false, 
+    "center_path": "C:/temp/", 
+    "botton_material": true
+  }
+]

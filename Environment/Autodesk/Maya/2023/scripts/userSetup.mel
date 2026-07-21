@@ -1,0 +1,6 @@
+// GSTools bootstrap. All startup work (menu + standalone menus + hotkeys) is
+// handled by gstools.boot() inside GSTools.mel, so this stays minimal.
+string $gstools_path = `getenv "USERPROFILE"` + "/Documents/maya/scripts/GSTools/common/scripts";
+putenv "MAYA_SCRIPT_PATH" (`getenv "MAYA_SCRIPT_PATH"` + ";" + $gstools_path);
+
+eval ("source \"" + $gstools_path + "/GSTools.mel\"");

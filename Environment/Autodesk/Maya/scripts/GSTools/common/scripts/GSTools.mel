@@ -1,0 +1,8 @@
+//----------------------------------------------------------------------------
+// GSTools - bootstrap
+//
+// The menu and shelf are entirely data-driven (see scripts/gstools/menu_config.py).
+// This file just puts the scripts root on sys.path and asks gstools to build the
+// menu. Every tool launch goes through gstools.launch(id), the telemetry chokepoint.
+//----------------------------------------------------------------------------
+python("import os, sys\nroot = os.path.join(os.environ.get('GSTOOLS', ''), 'scripts')\nif root and root not in sys.path:\n    sys.path.insert(0, root)\nimport gstools\ngstools.boot()");
