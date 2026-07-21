@@ -54,11 +54,19 @@ if not exist "%SRC%" (
     exit /b 1
 )
 
+:: Dev-only cruft that must never be deployed: VCS metadata, agent config, editor
+:: settings, Python bytecode caches, and the gitignored Library/ folder. Matched by
+:: bare name so they're excluded wherever they appear in the tree. Harmless for the
+:: per-DCC subtree copies (which don't contain these); essential for the full-root
+:: server push in install_server.bat.
+set "EXCLUDE_DIRS=.git .claude .vscode .idea __pycache__ __pycache_ Library"
+set "EXCLUDE_FILES=.gitignore .gitattributes *.pyc"
+
 :: robocopy flags:
 ::   /E       all subdirs incl. empty      /DCOPY:DA  copy dir timestamps+attrs
 ::   /XO      skip files older than dest   /R:2 /W:2  light retry on locked files
-::   /NP /NFL /NDL  quiet output
-robocopy "%SRC%" "%DST%" /E /DCOPY:DA /R:2 /W:2 /NP /NFL /NDL
+::   /XD/XF   exclude the dirs/files above /NP /NFL /NDL  quiet output
+robocopy "%SRC%" "%DST%" /E /DCOPY:DA /R:2 /W:2 /NP /NFL /NDL /XD %EXCLUDE_DIRS% /XF %EXCLUDE_FILES%
 
 :: robocopy exit codes 0-7 are success/informational; >=8 is a real failure
 if %ERRORLEVEL% GEQ 8 (
