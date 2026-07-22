@@ -3,7 +3,41 @@ global proc shelf_GSTools () {
     global string $gBuffStr0;
     global string $gBuffStr1;
 
-
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Detect and manage instances in a Maya scene." 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "Instance Utility" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -imageOverlayLabel "Instane" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "Modeling/instance_utility_icon.png" 
+        -image1 "Modeling/instance_utility_icon.png" 
+        -style "iconOnly" 
+        -marginWidth 1
+        -marginHeight 1
+        -command "import gstools; gstools.launch('instance_utility', 'shelf')" 
+        -sourceType "python" 
+        -commandRepeatable 1
+        -flat 1
+    ;
     shelfButton
         -enableCommandRepeat 1
         -flexibleWidthType 3
@@ -35,41 +69,6 @@ global proc shelf_GSTools () {
         -marginWidth 1
         -marginHeight 1
         -command "import gstools; gstools.launch('flatten_combine', 'shelf')" 
-        -sourceType "python" 
-        -commandRepeatable 1
-        -flat 1
-    ;
-    shelfButton
-        -enableCommandRepeat 1
-        -flexibleWidthType 3
-        -flexibleWidthValue 32
-        -enable 1
-        -width 35
-        -height 34
-        -manage 1
-        -visible 1
-        -preventOverride 0
-        -annotation "Replace objects with instances of a base object." 
-        -enableBackground 0
-        -backgroundColor 0 0 0 
-        -highlightColor 0.321569 0.521569 0.65098 
-        -align "center" 
-        -label "Instance Tool" 
-        -labelOffset 0
-        -rotation 0
-        -flipX 0
-        -flipY 0
-        -useAlpha 1
-        -font "plainLabelFont" 
-        -imageOverlayLabel "Instan" 
-        -overlayLabelColor 0.8 0.8 0.8 
-        -overlayLabelBackColor 0 0 0 0.5 
-        -image "instanceToObject.png" 
-        -image1 "instanceToObject.png" 
-        -style "iconOnly" 
-        -marginWidth 1
-        -marginHeight 1
-        -command "import gstools; gstools.launch('instance_tool', 'shelf')" 
         -sourceType "python" 
         -commandRepeatable 1
         -flat 1
