@@ -17,13 +17,8 @@ from mathutils import Matrix, Vector
 from bpy.types import Panel, PropertyGroup, Scene, WindowManager
 
 # Single source of truth for the blend file that ships the S4 custom shader
-# node groups. It is installed alongside this add-on under the user's Blender
-# AppData folder (%APPDATA%\Blender Foundation\Blender\common\scripts\addons).
-SHADER_BLEND_PATH = os.path.join(
-    os.environ["APPDATA"],
-    "Blender Foundation", "Blender", "common", "scripts", "addons",
-    "S4_Vehicle_Validator", "S4_Vehicle_Shaders.blend",
-)
+# node groups.
+SHADER_BLEND_PATH = r"C:\Dev\PROJECTS\GTR\SOURCE_ART\BLENDER\SHADERS\S4_Vehicle_Shaders.blend"
 
 meshes_to_check_CPIT = [
 ("CPIT", "_BODY_CPIT"),
