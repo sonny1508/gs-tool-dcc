@@ -138,8 +138,8 @@ global proc shelf_GSTools () {
         -style "iconOnly" 
         -marginWidth 1
         -marginHeight 1
-        -command "import gstools; gstools.launch('extract_tool', 'shelf')" 
-        -sourceType "python" 
+        -command "import gstools; gstools.launch('extract_tool', 'shelf')"
+        -sourceType "python"
         -commandRepeatable 1
         -flat 1
     ;
@@ -153,7 +153,42 @@ global proc shelf_GSTools () {
         -manage 1
         -visible 1
         -preventOverride 0
-        -annotation "Remove all non-reference namespaces." 
+        -annotation "Live mirror across a picked pivot, welded, with correct normals."
+        -enableBackground 0
+        -backgroundColor 0 0 0
+        -highlightColor 0.321569 0.521569 0.65098
+        -align "center"
+        -label "Mirror Tool"
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont"
+        -imageOverlayLabel "Mirror"
+        -overlayLabelColor 0.8 0.8 0.8
+        -overlayLabelBackColor 0 0 0 0.5
+        -image "polyMirrorGeometry.png"
+        -image1 "polyMirrorGeometry.png"
+        -style "iconOnly"
+        -marginWidth 1
+        -marginHeight 1
+        -command "import gstools; gstools.launch('gs_mirror', 'shelf')"
+        -sourceType "python"
+        -commandRepeatable 1
+        -flat 1
+    ;
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Remove all non-reference namespaces."
         -enableBackground 0
         -backgroundColor 0 0 0 
         -highlightColor 0.321569 0.521569 0.65098 

@@ -107,6 +107,9 @@ MENU = [
             {"id": "extract_tool", "label": "Extract Tool", "icon": "commandButton.png",
              "type": "mel_source", "source": "tools/modeling/extract_tool.mel",
              "command": "Extract;", "annotation": "Extract / duplicate / clone faces."},
+            {"id": "gs_mirror", "label": "Mirror Tool", "icon": "polyMirrorGeometry.png",
+             "type": "python", "module": "gs_mirror", "function": "show",
+             "annotation": "Live mirror across a picked pivot, welded, with correct normals."},
             {"divider": True},
             {"id": "select_every_n_edge", "label": "Select Every N-Edge in Loop/Ring",
              "icon": "NS_shortestPathTool.png", "type": "mel_source",
@@ -237,7 +240,7 @@ MENU = [
 # Ordered tool ids shown on the GSTools shelf. Shares ids (and therefore the
 # launch + telemetry path) with the menu above. None entries are separators.
 SHELF = [
-    "flatten_combine", "instance_tool", "force_cleanup", "extract_tool", "remove_namespace",
+    "flatten_combine", "instance_tool", "force_cleanup", "extract_tool", "gs_mirror", "remove_namespace",
     None,
     "straighten_uv", "transfer_uv", "rizomuv_tool",
     None,
