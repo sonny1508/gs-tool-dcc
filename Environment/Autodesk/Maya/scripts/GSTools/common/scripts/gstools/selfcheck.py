@@ -8,7 +8,8 @@ outside Maya (it imports no maya modules):
 
 Checks:
   * tool ids are unique (menu_config raises on duplicates),
-  * every "python" tool's module resolves to a .py / package on the tool paths,
+  * every "python" tool's module resolves to a .py / package on the tool paths
+    (unless it is marked "external", i.e. installed outside GSTools),
   * every "mel_source" tool's source file exists,
   * every shelf id exists in the menu,
   * every menu id resolves through get_tool().
@@ -57,7 +58,10 @@ def check(verbose=True):
             ids.append(tid)
             ttype = item.get("type")
             if ttype == "python":
-                if not _module_exists(item["module"], dirs):
+                # "external" tools are installed outside GSTools (vendor
+                # installers dropping into Maya's own scripts dir), so they are
+                # never on our paths and cannot be checked here.
+                if not item.get("external") and not _module_exists(item["module"], dirs):
                     problems.append("python module missing: '%s' (tool '%s')" % (item["module"], tid))
             elif ttype == "mel_source":
                 src = os.path.join(_ROOT, item["source"].replace("/", os.sep))

@@ -188,6 +188,41 @@ global proc shelf_GSTools () {
         -manage 1
         -visible 1
         -preventOverride 0
+        -annotation "Move the selected objects' pivots onto a picked source object."
+        -enableBackground 0
+        -backgroundColor 0 0 0
+        -highlightColor 0.321569 0.521569 0.65098
+        -align "center"
+        -label "Property Transfer"
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont"
+        -imageOverlayLabel "Pivot"
+        -overlayLabelColor 0.8 0.8 0.8
+        -overlayLabelBackColor 0 0 0 0.5
+        -image "CenterPivot.png"
+        -image1 "CenterPivot.png"
+        -style "iconOnly"
+        -marginWidth 1
+        -marginHeight 1
+        -command "import gstools; gstools.launch('gs_property_transfer', 'shelf')"
+        -sourceType "python"
+        -commandRepeatable 1
+        -flat 1
+    ;
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
         -annotation "Remove all non-reference namespaces."
         -enableBackground 0
         -backgroundColor 0 0 0 
@@ -863,12 +898,12 @@ global proc shelf_GSTools () {
         -imageOverlayLabel "QR" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
-        -image "C:/Users/sonny.nguyen.01/Documents/maya/scripts/GSTools/icons/QuadRemesher.png" 
-        -image1 "C:/Users/sonny.nguyen.01/Documents/maya/scripts/GSTools/icons/QuadRemesher.png" 
+        -image "QuadRemesher.png" 
+        -image1 "QuadRemesher.png" 
         -style "iconOnly" 
         -marginWidth 1
         -marginHeight 1
-        -command "import QuadRemesher\nqr = QuadRemesher.QuadRemesher()" 
+        -command "import gstools; gstools.launch('quad_remesher', 'shelf')" 
         -sourceType "python" 
         -commandRepeatable 1
         -flat 1
