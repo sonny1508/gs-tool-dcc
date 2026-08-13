@@ -213,7 +213,7 @@ class ValidationS4EnvToolMainPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Env Validator"
     bl_idname = "S4_Env_Validator"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Env Validator"
+    bl_category = "S4 Environment"
     bl_region_type = 'UI'
     
 
@@ -253,7 +253,7 @@ class S4EnvCheckToolPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Env Check Tool"
     bl_idname = "S4_Env_Check"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Env Validator"
+    bl_category = "S4 Environment"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
    
@@ -270,7 +270,7 @@ class S4EnvLODToolPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Env LOD Tool"
     bl_idname = "S4_Env_LOD"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Env Validator"
+    bl_category = "S4 Environment"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
    
@@ -297,7 +297,7 @@ class S4EnvUtilitiToolPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Env Utilities Tool"
     bl_idname = "S4_Env_Utilities"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Env Validator"
+    bl_category = "S4 Environment"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     

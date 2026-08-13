@@ -632,7 +632,7 @@ class ValidationToolMainPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Veh Validator"
     bl_idname = "OBJECT_PT_Validation"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Veh Validator"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     
 
@@ -672,7 +672,7 @@ class ShaderToolPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Shader Tool"
     bl_idname = "OBJECT_PT_Shader"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
    
@@ -755,7 +755,7 @@ class MATERIAL_PT_external_linker_panel(bpy.types.Panel):
     bl_idname = "MATERIAL_PT_external_linker_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'S4 Validation Tool'
+    bl_category = 'S4 Vehicle'
 
     # def draw(self, context):
     #     layout = self.layout
@@ -779,7 +779,7 @@ class UtilitiToolPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Utilities Tool"
     bl_idname = "OBJECT_PT_Utilities"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     
@@ -867,7 +867,7 @@ class TireDeformPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Tire Deform Tool"
     bl_idname = "OBJECT_PT_TireDeform"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     
@@ -902,7 +902,7 @@ class VertexAOPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 Vertex Ambient"
     bl_idname = "OBJECT_PT_VertexAO"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     
@@ -924,7 +924,7 @@ class S4VehLODRigging(bpy.types.Panel, globalVariables):
     bl_label = "S4 LOD Rigging"
     bl_idname = "S4Veh_LOD_Rig"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     
@@ -968,7 +968,7 @@ class LODValidPanel(bpy.types.Panel, globalVariables):
     bl_label = "S4 LOD Validation"
     bl_idname = "OBJECT_PT_Lodcheck"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_region_type = 'UI'
     bl_options = {"DEFAULT_CLOSED"}
     
@@ -992,7 +992,7 @@ class ExportPanel(bpy.types.Panel, globalVariables):
     bl_idname = "MY_TEST_PANEL_PT"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Vehicle"
     bl_options = {"DEFAULT_CLOSED"}
         
     def draw(self, context):
