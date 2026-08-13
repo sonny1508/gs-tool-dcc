@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "S4 Veh Validator",
+    "name": "S4 Vehicle Tools",
     "author": "Glenda Studio",
     "version": (1, 1),
     "blender": (3, 6, 10),
@@ -1735,7 +1735,7 @@ class CreareTireDeform(bpy.types.Operator, TireDeformPanel, globalVariables):
                 #C.scene.objects[wheel.name].select_set(False) #Deselect mesh
                 
             ##Create Tire Deform collection
-            filepath = os.path.join(os.path.dirname(__file__), "..\\addons\\S4_vehicle\\tire_deformation_rig.blend")
+            filepath = "C:\\Dev\\PROJECTS\\GTR\\SOURCE_ART\\VEHICLES\\_tires\\tire_deformation_rig.blend"
 
             with bpy.data.libraries.load(filepath) as (data_from, data_to):
                 data_to.collections.append("Tire Deformations")
