@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "S4 Environment Validator",
+    "name": "S4 Env Validator",
     "author": "Glenda Studio",
     "version": (1, 1),
     "blender": (3, 6, 10),

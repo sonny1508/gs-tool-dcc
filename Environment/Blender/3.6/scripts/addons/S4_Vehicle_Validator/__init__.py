@@ -1,7 +1,7 @@
 bl_info = {
-    "name": "S4 Vehicle Validator",
+    "name": "S4 Veh Validator",
     "author": "Glenda Studio",
-    "version": (1, 0),
+    "version": (1, 1),
     "blender": (3, 6, 10),
     "location": "Sidebar",
     "description": "Validates S4 assets requirements for uploading",
@@ -629,10 +629,10 @@ class MATERIAL_UL_matslots_example(bpy.types.UIList):
 
 
 class ValidationToolMainPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Vehicle Validation Tool"
+    bl_label = "S4 Veh Validator"
     bl_idname = "OBJECT_PT_Validation"
     bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Validation Tool"
+    bl_category = "S4 Veh Validator"
     bl_region_type = 'UI'
     
 
