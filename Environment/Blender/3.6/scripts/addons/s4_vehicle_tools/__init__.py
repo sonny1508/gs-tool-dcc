@@ -1,92 +1,71 @@
 bl_info = {
     "name": "S4 Vehicle Tools",
     "author": "Glenda Studio",
-    "version": (1, 1),
+    "version": (1, 2),
     "blender": (3, 6, 10),
     "location": "Sidebar",
     "description": "Validates S4 assets requirements for uploading",
     "category": "Object",
 }
 
-import bpy, math
 import os
+
+import bpy
 import numpy as np
-from mathutils.bvhtree import BVHTree
-from bpy.props import *
-from mathutils import Matrix, Vector
-from bpy.types import Panel, PropertyGroup, Scene, WindowManager
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
+from bpy.types import PropertyGroup
+from mathutils import Vector
+
+ADDON_VERSION = "Version 1.2"
 
 # Single source of truth for the blend file that ships the S4 custom shader
 # node groups.
 SHADER_BLEND_PATH = r"C:\Dev\PROJECTS\GTR\SOURCE_ART\BLENDER\SHADERS\S4_Vehicle_Shaders.blend"
+TIRE_RIG_BLEND_PATH = r"C:\Dev\PROJECTS\GTR\SOURCE_ART\VEHICLES\_tires\tire_deformation_rig.blend"
 
-meshes_to_check_CPIT = [
-("CPIT", "_BODY_CPIT"),
-("CPIT", "_BONNET_CPIT"),
-("CPIT", "_BUMPER_F_CPIT"),
-("CPIT", "_CHASSIS_CPIT"),
-("CPIT", "_DISPLAY_CPIT"),
-("CPIT", "_EXTANIM_CPIT"),
-("CPIT", "_INTANIM_CPIT"),
-("CPIT", "_INTERIOR_CPIT"),
-("CPIT", "_STEERINGWHEEL_CPIT"),
-("CPIT", "_WINDOWS_CPIT"),
-]
 
-meshes_to_check_LODA = [
-("LODA", "_CHASSIS_LODA"),
-("LODA", "_CALIPER_LF_LODA"),
-("LODA", "_CALIPER_RF_LODA"),
-("LODA", "_CALIPER_LR_LODA"),
-("LODA", "_CALIPER_RR_LODA"),
-("LODA", "_DISC_LF_LODA"),
-("LODA", "_DISC_LR_LODA"),
-("LODA", "_DISC_RF_LODA"),
-("LODA", "_DISC_RR_LODA"),
-("LODA", "_TIRE_LF_LODA"),
-("LODA", "_TIRE_LR_LODA"),
-("LODA", "_TIRE_RF_LODA"),
-("LODA", "_TIRE_RR_LODA"),
-("LODA", "_WHEEL_LF_LODA"),
-("LODA", "_WHEEL_LR_LODA"),
-("LODA", "_WHEEL_RF_LODA"),
-("LODA", "_WHEEL_RR_LODA"),
+# ---------------------------------------------------------------------------
+# Scene layout constants
+# ---------------------------------------------------------------------------
+
+LOD_COLLECTIONS = ("LODA", "LODB", "LODC", "LODD", "CPIT")
+
+# Parts every LOD of the wheel assembly has to ship.
+_BRAKE_PARTS = [
+    "CALIPER_LF", "CALIPER_LR", "CALIPER_RF", "CALIPER_RR",
+    "DISC_LF", "DISC_LR", "DISC_RF", "DISC_RR",
 ]
-meshes_to_check_LODB = [
-("LODB", "_CHASSIS_LODB"),
-("LODB", "_CALIPER_LF_LODB"),
-("LODB", "_CALIPER_LR_LODB"),
-("LODB", "_CALIPER_RF_LODB"),
-("LODB", "_CALIPER_RR_LODB"),
-("LODB", "_DISC_LF_LODB"),
-("LODB", "_DISC_LR_LODB"),
-("LODB", "_DISC_RF_LODB"),
-("LODB", "_DISC_RR_LODB"),
-("LODB", "_TIRE_LF_LODB"),
-("LODB", "_TIRE_LR_LODB"),
-("LODB", "_TIRE_RF_LODB"),
-("LODB", "_TIRE_RR_LODB"),
-("LODB", "_WHEEL_LF_LODB"),
-("LODB", "_WHEEL_LR_LODB"),
-("LODB", "_WHEEL_RF_LODB"),
-("LODB", "_WHEEL_RR_LODB"),
-]
-meshes_to_check_LODC = [
-("LODC", "_CHASSIS_LODC"),
-("LODC", "_TIRE_LF_LODC"),
-("LODC", "_TIRE_LR_LODC"),
-("LODC", "_TIRE_RF_LODC"),
-("LODC", "_TIRE_RR_LODC"),
-("LODC", "_WHEEL_LF_LODC"),
-("LODC", "_WHEEL_LR_LODC"),
-("LODC", "_WHEEL_RF_LODC"),
-("LODC", "_WHEEL_RR_LODC"),
-]
-meshes_to_check_LODD = [
-("LODD", "_CHASSIS_LODD"),
+_WHEEL_PARTS = [
+    "TIRE_LF", "TIRE_LR", "TIRE_RF", "TIRE_RR",
+    "WHEEL_LF", "WHEEL_LR", "WHEEL_RF", "WHEEL_RR",
 ]
 
-mapping = {
+# Object names are expected to read "<anything>_<part>_<collection>".
+REQUIRED_MESHES = {
+    "LODA": ["CHASSIS"] + _BRAKE_PARTS + _WHEEL_PARTS,
+    "LODB": ["CHASSIS"] + _BRAKE_PARTS + _WHEEL_PARTS,
+    "LODC": ["CHASSIS"] + _WHEEL_PARTS,
+    "LODD": ["CHASSIS"],
+    "CPIT": [
+        "BODY", "BONNET", "BUMPER_F", "CHASSIS", "DISPLAY", "EXTANIM",
+        "INTANIM", "INTERIOR", "STEERINGWHEEL", "WINDOWS",
+    ],
+}
+
+# LOD pairs checked for parts that exist in the lower LOD but went missing
+# in the higher one.
+LOD_COMPLETENESS_PAIRS = (("LODA", "LODB"), ("LODB", "LODC"), ("LODC", "LODD"))
+
+# Mesh part name -> armature bone it gets parented to on export.
+BONE_MAPPING = {
     "CALIPER_LF": "FixedWheel_LF",
     "CALIPER_LR": "FixedWheel_LR",
     "CALIPER_RF": "FixedWheel_RF",
@@ -107,175 +86,402 @@ mapping = {
     "": "Root",
 }
 
-class globalVariables():
-    bl_idname = "mesh.globalvariables"
-    bl_label = "Global Variables"
+ARMATURE_NAME = "Armature_LOD"
+TIRE_DEFORM_COLLECTIONS = ("Tire Deformations", "Deformations")
+TIRE_CORNERS = ("LF", "LR", "RF", "RR")
 
-    wrongPositions_Attachment = []
-    wrongNames_Attachment = []
-    wrongTransformObjs = {}
-    wrongObjName = {}
-    objectsWithKeys = []
-    ResultMessage = "Hello World"
-    meshObjs = []
-    version = "Version 1.0"
+# Any object whose name contains one of these is a known-good vehicle part.
+VALID_MESH_NAMES = (
+    "BODY_LOD", "BONNET_LOD", "BUMPER_F_LOD", "BUMPER_LR_LOD",
+    "BUMPER_RR_LOD", "CALIPER_LF_LOD", "CALIPER_LR_LOD", "CALIPER_RF_LOD",
+    "CALIPER_RR_LOD", "CHASSIS_LOD", "DISC_LF_LOD", "DISC_LR_LOD",
+    "DISC_RF_LOD", "DISC_RR_LOD", "DIVEPLANE_R1_LOD", "DIVEPLANE_L1_LOD", "INTERIOR_LOD",
+    "LIGHTS_LOD", "STEERINGWHEEL_LOD", "TIRE_LF_LOD", "TIRE_LR_LOD", "TIRE_RF_LOD",
+    "TIRE_RR_LOD", "WHEEL_LF_BLUR_LOD", "WHEEL_LF_LOD", "WHEEL_LR_BLUR_LOD", "WHEEL_LR_LOD",
+    "WHEEL_RF_BLUR_LOD", "WHEEL_RF_LOD", "WHEEL_RR_BLUR_LOD", "WHEEL_RR_LOD", "WING_LOD", "BODY_CPIT",
+    "BONNET_CPIT", "BUMPER_F_CPIT", "CHASSIS_CPIT", "DISPLAY_CPIT", "EXTANIM_CPIT", "INTANIM_CPIT",
+    "INTERIOR2_CPIT", "INTERIOR_CPIT", "STEERINGWHEEL_CPIT", "TIRE_LF_CPIT", "TIRE_RF_CPIT", "WHEEL_LF_CPIT",
+    "WHEEL_RF_CPIT", "WINDOWS_CPIT", "DRIVERNAME_CPIT", "WIPER_LOD", "DISC_LF_CPIT", "CALIPER_LF_CPIT", "DISC_RF_CPIT",
+    "CALIPER_RF_CPIT", "LIGHTS_CPIT", "NEEDLE_TACH_CPIT", "NEEDLE_WATER_CPIT", "NEEDLE_OILT_CPIT", "GEARSHIFT_CPIT",
+    "NEEDLE_OILP_CPIT", "NEEDLE_FUELP_CPIT", "GAUGE_GLASS_CPIT", "REARWING_CPIT", "PANEL_R_LOD", "PANEL_L_LOD", "MIRROR_R_LOD",
+    "MIRROR_L_LOD",
+)
 
-def checkTransform(meshObjs):
-    wrongPositionObjs = {}
+# Materials that are allowed to keep a stock Principled BSDF.
+PRINCIPLED_ALLOWED_MATERIALS = (
+    "Dots Stroke", "LCDisplay", "VirtualMirror", "virtualmirror", "Master deform tire",
+)
 
-    for meshObj in meshObjs:
-        wrongValues = []
-        if meshObj.type == 'MESH' and not "deformation" in meshObj.name:
-            lx = meshObj.location[0]
-            if lx != 0.0000:
-                wrongValues.append("location X")
+# Every S4 shader group that is a valid surface root for a material.
+S4_SHADER_GROUPS = (
+    "S4 Vehicle Glass Shader",
+    "S4 Vehicle Bodywork Shader",
+    "S4 Vehicle Basic Shader",
+    "S4 Vehicle Tire Shader",
+    "S4 Vehicle Wheels Shader",
+    "S4 Vehicle LightGlass Shader",
+    "str4_vehicleBodyworkShader",
+)
 
-            ly = meshObj.location[1]
-            if ly != 0.0000:
-                wrongValues.append("location Y")
+DIRT_GROUP_NAME = "Dirt/Damage_Group"
+DIRT_GROUP_INPUTS = {"dirt": 0, "dust": 1, "mud": 2, "deform": 3}
+SPEED_NODE_GROUPS = ("SpeedNodeGroup", "SpeedNodeGroup.001", "SpeedNodeGroup.002")
+LIGHTS_INPUT_INDEX = 33
+LIGHT_MATERIAL_KEYWORDS = ("light", "interior", "cockpit")
 
-            lz = meshObj.location[2]
-            if lz != 0.0000:
-                wrongValues.append("location Z")
-
-            rx = meshObj.rotation_euler[0]
-            if rx != 0.0000:
-                wrongValues.append("rotation X")
-
-            ry = meshObj.rotation_euler[1]
-            if ry != 0.0000:
-                wrongValues.append("rotation Y")
-
-            rz = meshObj.rotation_euler[2]
-            if rz != 0.0000:
-                wrongValues.append("rotation Z")
-
-            sx = meshObj.scale[0]
-            if sx != 1.000:
-                wrongValues.append("scale X")
-
-            sy = meshObj.scale[1]
-            if sy != 1.000:
-                wrongValues.append("scale Y")
-
-            sz = meshObj.scale[2]
-            if sz != 1.000:
-                wrongValues.append("scale Z")
-
-            if len(wrongValues) != 0:
-                wrongPositionObjs[meshObj.name] = wrongValues
-                print(meshObj.name, wrongValues)
-
-    if len(wrongPositionObjs) != 0:
-        return wrongPositionObjs
-    else:
-        return True
+VIEWPORT_DEFAULT_COLOR = (0.2392, 0.2392, 0.2392)
+VIEWPORT_CHECK_COLOR = (1.0, 0.0, 0.815)
 
 
-def checkUnusedData():
-    unusedData = []
+# ---------------------------------------------------------------------------
+# Generic helpers
+# ---------------------------------------------------------------------------
 
-    datatypeList = [
-        bpy.data.actions,
-        bpy.data.armatures,
-        #                bpy.data.brushes,
-        bpy.data.cache_files,
-        bpy.data.cameras,
-        bpy.data.collections,
-        bpy.data.curves,
-        bpy.data.fonts,
-        bpy.data.grease_pencils,
-        bpy.data.images,
-        bpy.data.lattices,
-        bpy.data.libraries,
-        bpy.data.lightprobes,
-        bpy.data.lights,
-        bpy.data.linestyles,
-        bpy.data.masks,
-        bpy.data.materials,
-        bpy.data.metaballs,
-        bpy.data.meshes,
-        bpy.data.movieclips,
-        bpy.data.node_groups,
-        bpy.data.objects,
-        bpy.data.paint_curves,
-        bpy.data.palettes,
-        bpy.data.particles,
-        bpy.data.scenes,
-        bpy.data.screens,
-        bpy.data.shape_keys,
-        bpy.data.sounds,
-        bpy.data.speakers,
-        #                bpy.data.texts,
-        bpy.data.textures,
-        bpy.data.volumes,
-        bpy.data.window_managers,
-        bpy.data.worlds,
-        bpy.data.workspaces, ]
-
-    for datatype in datatypeList:
-        for bpy_data_iter in datatype:
-            if bpy_data_iter.users == bpy_data_iter.use_fake_user:
-                unusedData.append(bpy_data_iter)
-                print(bpy_data_iter)
-
-    results = []
-    if len(unusedData) == 0:
-        return True
-    else:
-        return False
-
-
-def ShowMessageBox(message, title, icon):
+def show_message_box(lines, title, icon):
     def draw(self, context):
-        for line in message:
+        for line in lines:
             self.layout.label(text=line)
 
-    bpy.context.window_manager.popup_menu(draw, title= title, icon= icon)
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
-def add_item(collection, itemname, message):
+def add_item(collection, item_type, message):
+    """Append one row to the check-result list shown in the validator panel."""
     item = collection.add()
-    item.name = itemname
-    item.type = itemname
+    item.name = item_type
+    item.type = item_type
     item.message = message
 
 
-def remove_item(collection, itemname):
-    for i in collection.keys():
-        if i == itemname:
-            collection.remove(collection.find(itemname))
+def iter_view3d_spaces():
+    """Every 3D viewport space across every open window."""
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    yield space
 
-    if len(collection) == 0:
-        bpy.context.scene.checkResult_all = False
+
+def active_view3d_space(context):
+    """The viewport the operator was run from, else the first one open."""
+    space = context.space_data
+    if space is not None and space.type == 'VIEW_3D':
+        return space
+    return next(iter_view3d_spaces(), None)
 
 
-def getmeshObjs():
-    meshObjs = []
-    objs = bpy.context.scene.objects
-    for obj in objs:
-        meshObjs.append(obj)
+def purge_orphans():
+    """Drop the datablocks left behind by linking a node group in."""
+    try:
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=False)
+    except RuntimeError as error:
+        print(f"S4 Vehicle Tools: orphan purge skipped ({error})")
 
-    return meshObjs
 
-    
-###S4Export Part
+def clear_selection():
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False)
+
+
+def selected_mesh_materials(context):
+    """Every material assigned to a selected mesh object.
+
+    The PBR check is scoped to the selection rather than the whole scene, so an
+    artist can validate one part without waiting on the rest of the vehicle.
+    """
+    materials = {}
+    for obj in context.selected_objects:
+        if obj.type != 'MESH':
+            continue
+        for slot in obj.material_slots:
+            if slot.material is not None:
+                materials.setdefault(slot.material.name_full, slot.material)
+    return list(materials.values())
+
+
+# ---------------------------------------------------------------------------
+# Shader value drivers (scene property update callbacks)
+# ---------------------------------------------------------------------------
+
+def iter_group_nodes(material, group_name):
+    """Top level group nodes in `material` that instance `group_name`."""
+    if not material.use_nodes or material.node_tree is None:
+        return
+    for node in material.node_tree.nodes:
+        if node.bl_idname != 'ShaderNodeGroup':
+            continue
+        if node.node_tree is not None and node.node_tree.name == group_name:
+            yield node
+
+
+def set_dirt_group_input(input_index, value):
+    """Push one Dirt/Damage_Group slider value onto every material using it."""
+    for material in bpy.data.materials:
+        material.use_nodes = True
+        for node in iter_group_nodes(material, DIRT_GROUP_NAME):
+            node.inputs[input_index].default_value = value
+
+
+def wheel_speed(self, context):
+    for group_name in SPEED_NODE_GROUPS:
+        group = bpy.data.node_groups.get(group_name)
+        if group is None:
+            continue
+        output = group.nodes.get("Group Output")
+        if output is not None:
+            output.inputs[0].default_value = self.wheel_speed
+
+
+def dirt_value(self, context):
+    set_dirt_group_input(DIRT_GROUP_INPUTS["dirt"], self.dirt_value)
+
+
+def dust_value(self, context):
+    set_dirt_group_input(DIRT_GROUP_INPUTS["dust"], self.dust_value)
+
+
+def mud_value(self, context):
+    set_dirt_group_input(DIRT_GROUP_INPUTS["mud"], self.mud_value)
+
+
+def deform_value(self, context):
+    """Drive both the body shape keys and the shader's deform input."""
+    for collection_name in ("LODA", "LODB", "LODC", "CPIT"):
+        collection = bpy.data.collections.get(collection_name)
+        if collection is None:
+            continue
+        for obj in collection.all_objects:
+            if obj.type != 'MESH' or not obj.data.shape_keys:
+                continue
+            for shape in obj.data.shape_keys.key_blocks:
+                shape.value = self.deform_value
+
+    set_dirt_group_input(DIRT_GROUP_INPUTS["deform"], self.deform_value)
+
+
+def lights_value(self, context):
+    for material in bpy.data.materials:
+        if not any(keyword in material.name for keyword in LIGHT_MATERIAL_KEYWORDS):
+            continue
+        material.use_nodes = True
+        for node in iter_group_nodes(material, "S4 Vehicle Basic Shader"):
+            if len(node.inputs) > LIGHTS_INPUT_INDEX:
+                node.inputs[LIGHTS_INPUT_INDEX].default_value = self.lights_value
+
+
+def object_search_poll(self, object):
+    return object.type in ('MESH', 'CURVE')
+
+
+# ---------------------------------------------------------------------------
+# PBR albedo range check
+# ---------------------------------------------------------------------------
+
+PBR_LUMA_MIN = 0.2
+PBR_LUMA_MAX = 0.8
+
+# The S4 shader groups publish the material's albedo on one of these output
+# pins - which one depends on the shader, but never both at once. The value is
+# computed by the shader, so it cannot be read straight off the node graph:
+# S4CheckPBR routes it through a temporary Emission node and bakes it.
+PBR_ALBEDO_SOCKETS = ("db_albedo", "Preview Albedo", "tmp_viewer")
+
+# Names for the throwaway node and colour attribute the bake needs. Both are
+# removed again once the check finishes, including when it fails part way.
+PBR_PROBE_NODE_NAME = "S4_PBR_ALBEDO_PROBE"
+PBR_PROBE_ATTRIBUTE_NAME = "S4_PBR_ALBEDO"
+
+
+def linear_to_srgb(values):
+    """Scene-linear -> sRGB display values, for a triplet or an array of rows."""
+    values = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
+    return np.where(
+        values <= 0.0031308,
+        values * 12.92,
+        1.055 * np.power(values, 1.0 / 2.4) - 0.055,
+    )
+
+
+def srgb_luma(srgb):
+    """Rec.709 luminance of an sRGB triplet or array of triplets."""
+    srgb = np.asarray(srgb, dtype=np.float32)
+    return srgb[..., 0] * 0.2126 + srgb[..., 1] * 0.7152 + srgb[..., 2] * 0.0722
+
+
+def albedo_luma_range(colors):
+    """(min, max) sRGB luminance over an array of scene-linear RGBA rows."""
+    luma = srgb_luma(linear_to_srgb(colors[:, :3]))
+    return float(luma.min()), float(luma.max())
+
+
+def material_output_node(node_tree):
+    """The active Material Output, falling back to the first one found."""
+    try:
+        node = node_tree.get_output_node('EEVEE')
+    except (AttributeError, TypeError):
+        node = None
+    if node is None:
+        node = next((n for n in node_tree.nodes if n.type == 'OUTPUT_MATERIAL'), None)
+    return node
+
+
+def find_albedo_socket(shader):
+    """The albedo output on a shader group, whichever of the names it uses."""
+    for name in PBR_ALBEDO_SOCKETS:
+        socket = shader.outputs.get(name)
+        if socket is not None:
+            return socket
+
+    # Fall back to a case and spacing insensitive match, so a group that spells
+    # the pin "Preview_Albedo" or "DB Albedo" still gets measured.
+    wanted = {name.lower().replace(" ", "").replace("_", "") for name in PBR_ALBEDO_SOCKETS}
+    for socket in shader.outputs:
+        if socket.name.lower().replace(" ", "").replace("_", "") in wanted:
+            return socket
+    return None
+
+
+def albedo_output_socket(material):
+    """Locate the albedo pin on the group feeding the Material Output.
+
+    Returns (socket, surface_input, note). A None socket means the material is
+    not wired the way the S4 shaders are, and `note` says which part is off.
+    """
+    if not material.use_nodes or material.node_tree is None:
+        return None, None, "material has no node tree"
+
+    output = material_output_node(material.node_tree)
+    if output is None:
+        return None, None, "no Material Output node"
+
+    surface = output.inputs.get("Surface")
+    if surface is None or not surface.is_linked:
+        return None, None, "nothing connected to Material Output"
+
+    shader = surface.links[0].from_node
+    socket = find_albedo_socket(shader)
+    if socket is None:
+        wanted = " or ".join(PBR_ALBEDO_SOCKETS)
+        return None, None, f"'{shader.name}' has no {wanted} output"
+    return socket, surface, ""
+
+
+def attach_albedo_probe(material, albedo_socket, surface_input):
+    """Send the albedo pin to the Material Output through a temporary Emission.
+
+    Baking that emission yields the evaluated albedo. Returns (probe node, the
+    socket that was driving the output) so the material can be put back.
+    """
+    node_tree = material.node_tree
+    original_source = surface_input.links[0].from_socket
+
+    probe = node_tree.nodes.new('ShaderNodeEmission')
+    probe.name = PBR_PROBE_NODE_NAME
+    probe.label = PBR_PROBE_NODE_NAME
+    probe.inputs['Strength'].default_value = 1.0
+    node_tree.links.new(albedo_socket, probe.inputs['Color'])
+    node_tree.links.new(probe.outputs['Emission'], surface_input)
+    return probe, original_source
+
+
+def detach_albedo_probe(material, probe, original_source, surface_input):
+    """Undo attach_albedo_probe and restore the original surface link."""
+    node_tree = material.node_tree
+    if probe is not None:
+        try:
+            node_tree.nodes.remove(probe)
+        except (ReferenceError, RuntimeError):
+            pass
+
+    # Safety net, in case the reference above went stale.
+    for node in list(node_tree.nodes):
+        if node.label == PBR_PROBE_NODE_NAME:
+            node_tree.nodes.remove(node)
+
+    if original_source is not None:
+        node_tree.links.new(original_source, surface_input)
+
+
+def add_probe_attribute(mesh):
+    """Add and activate the colour attribute the bake writes into."""
+    previous = mesh.color_attributes.active_color_name
+    attribute = mesh.color_attributes.new(
+        name=PBR_PROBE_ATTRIBUTE_NAME, type='FLOAT_COLOR', domain='CORNER')
+    mesh.color_attributes.active_color = attribute
+    return attribute, previous
+
+
+def remove_probe_attribute(mesh, attribute, previous_active):
+    if attribute is not None:
+        try:
+            mesh.color_attributes.remove(attribute)
+        except (ReferenceError, RuntimeError):
+            pass
+    if previous_active and previous_active in mesh.color_attributes:
+        mesh.color_attributes.active_color_name = previous_active
+
+
+def read_baked_albedo(obj, attribute):
+    """{material name: (min luma, max luma)} from one object's baked loops."""
+    mesh = obj.data
+    loop_count = len(mesh.loops)
+    if loop_count == 0 or len(attribute.data) != loop_count:
+        return {}
+
+    colors = np.empty(loop_count * 4, dtype=np.float32)
+    attribute.data.foreach_get('color', colors)
+    colors = colors.reshape(-1, 4)
+
+    # Loops are stored per polygon and in order, so repeating each polygon's
+    # material index by its loop count lines the two arrays up.
+    polygon_count = len(mesh.polygons)
+    material_index = np.empty(polygon_count, dtype=np.int32)
+    mesh.polygons.foreach_get('material_index', material_index)
+    loop_total = np.empty(polygon_count, dtype=np.int32)
+    mesh.polygons.foreach_get('loop_total', loop_total)
+    loop_material = np.repeat(material_index, loop_total)
+
+    if len(loop_material) != loop_count:
+        return {}
+
+    results = {}
+    for slot_index in np.unique(loop_material):
+        if slot_index >= len(obj.material_slots):
+            continue
+        material = obj.material_slots[slot_index].material
+        if material is None:
+            continue
+        rows = colors[loop_material == slot_index]
+        if rows.size:
+            results[material.name_full] = albedo_luma_range(rows)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Export helpers
+# ---------------------------------------------------------------------------
+
 def process_collection(collection_name):
-    if collection_name in bpy.data.collections:
-        collection = bpy.data.collections[collection_name]
-        # Move object to export and remove suffix
-        for obj in collection.objects:
-            remove_suffix(obj, collection_name)
-            for part_name, target_bone in mapping.items():
-                if part_name in obj.name:
-                    parent_to_bone(obj.name, target_bone)
-                    break
-        #export collection
-        export_to_fbx(collection_name)
-        #Reset objects to initial state
-        for obj in collection.objects:
-            clear_bone_parent(obj)
-            add_suffix(obj, collection_name)
+    collection = bpy.data.collections.get(collection_name)
+    if collection is None:
+        return
+
+    # Move object to export and remove suffix
+    for obj in collection.objects:
+        remove_suffix(obj, collection_name)
+        for part_name, target_bone in BONE_MAPPING.items():
+            if part_name in obj.name:
+                parent_to_bone(obj.name, target_bone)
+                break
+
+    export_to_fbx(collection_name)
+
+    # Reset objects to initial state
+    for obj in collection.objects:
+        clear_bone_parent(obj)
+        add_suffix(obj, collection_name)
 
 
 def clear_bone_parent(obj):
@@ -289,17 +495,16 @@ def clear_bone_parent(obj):
 
 def parent_to_bone(mesh_name, bone_name):
     mesh_obj = bpy.data.objects[mesh_name]
-    armature_obj = bpy.data.objects["Armature_LOD"]
-    bone_obj = armature_obj.pose.bones.get(bone_name)
-    if mesh_obj.parent_bone is bone_name:
+    armature_obj = bpy.data.objects[ARMATURE_NAME]
+    if mesh_obj.parent_bone == bone_name:
         print(f"Warning: Bone {bone_name} already parented to armature.")
         return
-    if not bone_obj:
+    if armature_obj.pose.bones.get(bone_name) is None:
         print(f"Error: Bone {bone_name} not found in armature.")
         return
-    # Save the mesh's current location and rotation
+
+    # Parenting moves the mesh, so restore its world matrix afterwards.
     mesh_matrix = mesh_obj.matrix_world.copy()
-    # Set the mesh's location and rotation to the bone's location and rotation
     mesh_obj.parent = armature_obj
     mesh_obj.parent_type = 'BONE'
     mesh_obj.parent_bone = bone_name
@@ -308,27 +513,20 @@ def parent_to_bone(mesh_name, bone_name):
 
 
 def export_to_fbx(collection_name):
-    # Get the current Blender file path
-    file_path = bpy.data.filepath
-    # Create the export directory if it doesn't exist
-    export_dir = os.path.join(os.path.dirname(file_path), "ExportedFBX")
-    if not os.path.exists(export_dir):
-        os.makedirs(export_dir)
+    export_dir = os.path.join(os.path.dirname(bpy.data.filepath), "ExportedFBX")
+    os.makedirs(export_dir, exist_ok=True)
 
     clear_selection()
-    collection_obj = bpy.data.collections[collection_name]
-    for obj in collection_obj.all_objects:
+    for obj in bpy.data.collections[collection_name].all_objects:
         obj.select_set(True)
 
-    armature_name = "Armature_LOD"
-    armature_obj = bpy.data.objects[armature_name]
+    armature_obj = bpy.data.objects[ARMATURE_NAME]
     bpy.context.view_layer.objects.active = armature_obj
     armature_obj.select_set(True)
     bpy.ops.object.mode_set(mode='POSE')
     for bone in armature_obj.pose.bones:
         bone.bone.select = True
 
-    # Set the export settings
     bpy.ops.export_scene.fbx(
         filepath=os.path.join(export_dir, f"{collection_name}.fbx"),
         check_existing=False,
@@ -356,9 +554,9 @@ def export_to_fbx(collection_name):
         path_mode='AUTO',
         embed_textures=False,
         use_selection=True,
-        use_active_collection=False
+        use_active_collection=False,
     )
-    
+
     clear_selection()
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"{collection_name} exported to {export_dir}.")
@@ -370,236 +568,387 @@ def remove_suffix(obj, collection_name):
         obj.name = obj.name[:-len(suffix)]
         obj.data.update()
     else:
-        print("Error!")
-    
-    
+        print(f"Error: {obj.name} does not end in {suffix}")
+
+
 def add_suffix(obj, collection_name):
     suffix = "_" + collection_name
     if obj.name.endswith(suffix):
-        print("Error!")
+        print(f"Error: {obj.name} already ends in {suffix}")
     obj.name += suffix
     obj.data.update()
 
 
-def check_mesh_in_collection(collection_name, mesh_name):
-    if collection_name in bpy.data.collections:
-        collection = bpy.data.collections[collection_name]
-        for obj in collection.objects:
-            if obj.name.endswith(mesh_name):
-                return (mesh_name + " found!", 'CHECKMARK')
-    return (mesh_name + " not found in " + collection_name, 'ERROR')
+def missing_meshes(collection_name):
+    """Required part suffixes that no object in `collection_name` matches."""
+    collection = bpy.data.collections.get(collection_name)
+    missing = []
+    for part in REQUIRED_MESHES[collection_name]:
+        suffix = f"_{part}_{collection_name}"
+        found = collection is not None and any(
+            obj.name.endswith(suffix) for obj in collection.objects
+        )
+        if not found:
+            missing.append(f"{suffix} not found in {collection_name}")
+    return missing
 
 
 def find_missing_meshes(higher_collection_name, lower_collection_name):
+    """Parts present in the lower LOD but absent from the higher one."""
     lower_collection = bpy.data.collections.get(lower_collection_name)
     higher_collection = bpy.data.collections.get(higher_collection_name)
     if lower_collection is None:
         print(f"Error: Collection {lower_collection_name} not found.")
-        return
+        return []
     if higher_collection is None:
         print(f"Error: Collection {higher_collection_name} not found.")
-        return
-    errors = []
-    for lower_obj in lower_collection.all_objects:
-        if lower_obj.type == 'MESH':
-            # Remove the last character of the mesh name to ignore suffixes
-            lower_mesh_name = lower_obj.name[:-5]
-            found = False
-            for higher_obj in higher_collection.all_objects:
-                if higher_obj.type == 'MESH':
-                    higher_mesh_name = higher_obj.name[:-5]
-                    if lower_mesh_name == higher_mesh_name:
-                        found = True
-                        break
-            if not found:
-                errors.append(f"{lower_mesh_name} present in {lower_collection_name} but not in {higher_collection_name}")
-    return errors;
+        return []
 
-def clear_selection():
-    for obj in bpy.context.selected_objects:
-        obj.select_set(False)
+    # Names are compared with the trailing "_LODx" removed.
+    higher_names = {
+        obj.name[:-5] for obj in higher_collection.all_objects if obj.type == 'MESH'
+    }
+    return [
+        f"{obj.name[:-5]} present in {lower_collection_name} but not in {higher_collection_name}"
+        for obj in lower_collection.all_objects
+        if obj.type == 'MESH' and obj.name[:-5] not in higher_names
+    ]
 
 
-### S4Export End
+# ---------------------------------------------------------------------------
+# Tire deformation helpers
+# ---------------------------------------------------------------------------
 
-##Set wheel speed
-def wheel_speed(self, context):
-    for material in bpy.data.materials:
-        material.use_nodes = True
-        #if "Tire" in material.name or "tire" in material.name:
-        for node in material.node_tree.nodes:
-            name = ["SpeedNodeGroup", "SpeedNodeGroup.001", "SpeedNodeGroup.002"]
-            for n in name:
-                bpy.data.node_groups[n].nodes["Group Output"].inputs[0].default_value = self.wheel_speed
-
-def dirt_value(self, context):               
-    for mat in bpy.data.materials:
-        mat.use_nodes = True
-        material = mat.node_tree
-        nodes = mat.node_tree.nodes
-            
-        for n in nodes:
-            if n.bl_idname == 'ShaderNodeGroup':
-                if n.node_tree.name == "Dirt/Damage_Group":
-                    bpy.data.materials[mat.name].node_tree.nodes[n.name].inputs[0].default_value = self.dirt_value
-
-def dust_value(self, context):               
-    for mat in bpy.data.materials:
-        mat.use_nodes = True
-        material = mat.node_tree
-        nodes = mat.node_tree.nodes
-            
-        for n in nodes:
-            if n.bl_idname == 'ShaderNodeGroup':
-                if n.node_tree.name == "Dirt/Damage_Group":
-                    bpy.data.materials[mat.name].node_tree.nodes[n.name].inputs[1].default_value = self.dust_value
-
-def mud_value(self, context):               
-    for mat in bpy.data.materials:
-        mat.use_nodes = True
-        material = mat.node_tree
-        nodes = mat.node_tree.nodes
-            
-        for n in nodes:
-            if n.bl_idname == 'ShaderNodeGroup':
-                if n.node_tree.name == "Dirt/Damage_Group":
-                    bpy.data.materials[mat.name].node_tree.nodes[n.name].inputs[2].default_value = self.mud_value
-                
-def deform_value(self, context):
-    collection_names = ["LODA", "LODB", "LODC","CPIT"]
-    collections = bpy.data.collections if not collection_names else [col for col in bpy.data.collections if col.name in collection_names]
-    mesh_shape = []
-    for col in collections:
-        for obj in [o for o in col.all_objects if o.type == 'MESH']:
-            #for obj in [o for o in bpy.context.scene.objects if o.type == 'MESH']:
-            mesh = obj.data
-            if mesh.shape_keys:
-                mesh_shape.append(obj)
-                for shape in obj.data.shape_keys.key_blocks:
-                    shape.value = self.deform_value
-                    
-    for mat in bpy.data.materials:
-        mat.use_nodes = True
-        material = mat.node_tree
-        nodes = mat.node_tree.nodes
-            
-        for n in nodes:
-            if n.bl_idname == 'ShaderNodeGroup':
-                if n.node_tree.name == "Dirt/Damage_Group":
-                    bpy.data.materials[mat.name].node_tree.nodes[n.name].inputs[3].default_value = self.deform_value 
-
-def lights_value(self, context):
-    for mat in bpy.data.materials:
-        mat.use_nodes = True
-        material = mat.node_tree
-        nodes = mat.node_tree.nodes
-        if "light" in mat.name or "interior" in mat.name or "cockpit" in mat.name:   
-            for n in nodes:
-                if n.bl_idname == 'ShaderNodeGroup':
-                    if n.node_tree.name == "S4 Vehicle Basic Shader":
-                        bpy.data.materials[mat.name].node_tree.nodes[n.name].inputs[33].default_value = self.lights_value
-
-                   
-def object_search_poll(self, object):
-    return object.type in ['MESH', 'CURVE']
-    
 def check_and_unlink_objects(object_array):
+    """Give every object its own mesh data so deforms do not bleed across."""
     for index, mesh in enumerate(object_array):
-        for other_mesh in object_array[index+1:]:
+        for other_mesh in object_array[index + 1:]:
             if mesh.data == other_mesh.data:
                 other_mesh.data = mesh.data.copy()
-                
+
+
 def clear_old_armature_modifiers(mesh):
-        for modifier in mesh.modifiers:
-            if modifier.type == 'ARMATURE':
-                mesh.modifiers.remove(modifier)
-                
-def position_tire_deform(t_name, lodA_all_tire):
-    context = bpy.context
-    scene = context.scene 
+    for modifier in list(mesh.modifiers):
+        if modifier.type == 'ARMATURE':
+            mesh.modifiers.remove(modifier)
 
+
+def tire_deform_collection():
+    for name in TIRE_DEFORM_COLLECTIONS:
+        collection = bpy.data.collections.get(name)
+        if collection is not None:
+            return collection
+    return None
+
+
+def position_tire_deform(corner, lod_a_tires):
+    """Snap the deform rig for one corner onto its matching tire mesh."""
+    context = bpy.context
+    scene = context.scene
     deform_collection = bpy.data.collections["Tire Deformations"]
-    for obj_A in lodA_all_tire:
-        if obj_A.type == "MESH" and t_name in obj_A.name:
-            bpy.context.scene.objects[obj_A.name].select_set(True)
-            obs = context.selected_objects
-            n = len(obs)
-            assert(n)
-            scene.cursor.location = sum([o.matrix_world.translation for o in obs], Vector()) / n
-            bpy.context.scene.objects[obj_A.name].select_set(False)
 
-            for obj in deform_collection.all_objects:
-                if obj.type == "ARMATURE" and t_name in obj.name:
-                    #print(obj.name)
-                    bpy.context.scene.objects[obj.name].select_set(True)
-                    bpy.context.view_layer.objects.active = obj
-                    bpy.ops.object.select_grouped(extend=True, type='CHILDREN_RECURSIVE')
-                
-                    for area in bpy.context.screen.areas:
-                        if area.type == 'VIEW_3D':
-                            override = bpy.context.copy()
-                            override['area'] = area
-                            override['region'] = area.regions[4]
-                            bpy.ops.view3d.snap_selected_to_cursor(override, use_offset=False)
-                bpy.context.scene.objects[obj.name].select_set(False)
-           
-def transfer_tire_weight(t_name, lodA_all_tire):
+    for tire in lod_a_tires:
+        if tire.type != 'MESH' or corner not in tire.name:
+            continue
+
+        # Park the 3D cursor on the tire, then snap the rig to the cursor.
+        tire.select_set(True)
+        selected = context.selected_objects
+        assert len(selected)
+        scene.cursor.location = sum(
+            (obj.matrix_world.translation for obj in selected), Vector()
+        ) / len(selected)
+        tire.select_set(False)
+
+        for obj in deform_collection.all_objects:
+            if obj.type == 'ARMATURE' and corner in obj.name:
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+                bpy.ops.object.select_grouped(extend=True, type='CHILDREN_RECURSIVE')
+
+                for area in context.screen.areas:
+                    if area.type != 'VIEW_3D':
+                        continue
+                    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+                    if region is None:
+                        continue
+                    with context.temp_override(area=area, region=region):
+                        bpy.ops.view3d.snap_selected_to_cursor(use_offset=False)
+            obj.select_set(False)
+
+
+def transfer_tire_weight(corner, lod_a_tires):
     context = bpy.context
-    scene = context.scene 
-
     deform_collection = bpy.data.collections["Tire Deformations"]
-    for obj_A in lodA_all_tire:
-        bpy.ops.object.select_all(action='DESELECT') #deselecting everything
-        if obj_A.type == "MESH" and t_name in obj_A.name:
-            bpy.context.scene.objects[obj_A.name].select_set(True) #selecting target
-            for obj in deform_collection.all_objects:
-                if t_name in obj.name:
-                    for o in bpy.data.objects:
-                        if o.parent == bpy.data.objects[obj.name]:
-                            bpy.data.objects[o.name].select_set(True)
-                            bpy.context.view_layer.objects.active = bpy.data.objects[obj_A.name] #setting target as active
-                            bpy.ops.paint.weight_paint_toggle() #entering Weight Paint mode
-                            bpy.ops.object.data_transfer(use_reverse_transfer=True, data_type='VGROUP_WEIGHTS', vert_mapping='POLYINTERP_NEAREST', layers_select_src='NAME', layers_select_dst='ALL', mix_mode='REPLACE') #transferring weights
-                            bpy.ops.paint.weight_paint_toggle() #exit Weight Paint Mode
-                            
-def addmodifier_linktire_deform(t_name, lodA_all_tire):
-    context = bpy.context
-    scene = context.scene 
 
+    for tire in lod_a_tires:
+        bpy.ops.object.select_all(action='DESELECT')
+        if tire.type != 'MESH' or corner not in tire.name:
+            continue
+
+        tire.select_set(True)
+        for rig in deform_collection.all_objects:
+            if corner not in rig.name:
+                continue
+            for child in bpy.data.objects:
+                if child.parent != rig:
+                    continue
+                child.select_set(True)
+                context.view_layer.objects.active = tire
+                bpy.ops.paint.weight_paint_toggle()
+                bpy.ops.object.data_transfer(
+                    use_reverse_transfer=True,
+                    data_type='VGROUP_WEIGHTS',
+                    vert_mapping='POLYINTERP_NEAREST',
+                    layers_select_src='NAME',
+                    layers_select_dst='ALL',
+                    mix_mode='REPLACE',
+                )
+                bpy.ops.paint.weight_paint_toggle()
+
+
+def addmodifier_linktire_deform(corner, lod_a_tires):
+    context = bpy.context
     deform_collection = bpy.data.collections["Tire Deformations"]
-    for obj_A in lodA_all_tire:
-        if obj_A.type == "MESH" and t_name in obj_A.name:
-            bpy.context.scene.objects[obj_A.name].select_set(True) #selecting target
-            bpy.context.view_layer.objects.active = obj_A
-            bpy.ops.object.modifier_add(type="ARMATURE")
-            bpy.context.object.modifiers["Armature"].name = "Armature"
-            for obj in deform_collection.all_objects:
-                if obj.type == "ARMATURE" and t_name in obj.name:
-                    bpy.context.object.modifiers["Armature"].object = obj
-                    bpy.context.scene.objects[obj_A.name].select_set(False) #deselect target
 
-def transfer_vertex_ao(src_obj):
-    context = bpy.context
-    scene = context.scene 
-    bpy.ops.object.modifier_add(type='DATA_TRANSFER')
-    bpy.context.object.modifiers["DataTransfer"].object = src_obj
-    bpy.context.object.modifiers["DataTransfer"].use_vert_data = True
-    bpy.context.object.modifiers["DataTransfer"].data_types_verts = {'COLOR_VERTEX'}
-    bpy.context.object.modifiers["DataTransfer"].vert_mapping = 'POLYINTERP_NEAREST'
+    for tire in lod_a_tires:
+        if tire.type != 'MESH' or corner not in tire.name:
+            continue
+
+        tire.select_set(True)
+        context.view_layer.objects.active = tire
+        bpy.ops.object.modifier_add(type='ARMATURE')
+        modifier = context.object.modifiers["Armature"]
+        for rig in deform_collection.all_objects:
+            if rig.type == 'ARMATURE' and corner in rig.name:
+                modifier.object = rig
+                tire.select_set(False)
 
 
-    bpy.ops.object.datalayout_transfer(modifier="DataTransfer")
+# ---------------------------------------------------------------------------
+# Property groups and lists
+# ---------------------------------------------------------------------------
 
-    bpy.ops.object.modifier_apply(modifier="DataTransfer")
-    
-                    
-
-class CUSTOM_objectCollection(bpy.types.PropertyGroup):
+class S4VehCheckResult(bpy.types.PropertyGroup):
     # name: StringProperty() -> Instantiated by default
     type: StringProperty()
     message: StringProperty()
-    id: IntProperty()
 
+
+class SwitchLODValue(PropertyGroup):
+    lod_list: EnumProperty(
+        items=(
+            ("A", "LODA", "Switch beween LODA and B"),
+            ("B", "LODB", "Switch beween LODB and C"),
+            ("C", "LODC", "Switch beween LODC and D"),
+            ("CP", "CPIT", "Switch beween LODA and CPIT"),
+        ),
+        name="Select LOD to check",
+    )
+
+
+class S4VEH_UL_check_results(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        layout.prop(item, "message", text=item.type, emboss=False, icon_value=icon)
+
+
+# ---------------------------------------------------------------------------
+# Panels
+# ---------------------------------------------------------------------------
+
+class S4VehPanel:
+    """Shared sidebar placement for every S4 Vehicle panel.
+
+    Subclasses must list this mix-in *before* bpy.types.Panel so these plain
+    strings win the attribute lookup over Panel's own RNA properties.
+    """
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "S4 Vehicle"
+
+
+class ValidationToolMainPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Veh Validator"
+    bl_idname = "OBJECT_PT_Validation"
+
+    def draw(self, context):
+        scn = context.scene
+        layout = self.layout
+
+        layout.label(text="Run all check")
+
+        column = layout.column(align=True)
+        column.operator("mesh.initialcheck", text="Check Scene")
+        column.operator("s4veh.checkpbr", text="Check PBR (0.2 - 0.8)")
+
+        if scn.checkResult_all:
+            layout.template_list("S4VEH_UL_check_results", "", scn, "custom", scn, "custom_index")
+            layout.operator("custom.clear_list", text="Clear and hide result box.")
+
+        layout.label(text=ADDON_VERSION)
+
+
+class ShaderToolPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Shader Tool"
+    bl_idname = "OBJECT_PT_Shader"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        column = layout.column(align=True)
+        column.operator("mesh.basicshader", text="S4 Vehicle Basic Shader")
+        column.operator("mesh.bodyworkshader", text="S4 Vehicle Bodywork Shader")
+        column.operator("mesh.glassshader", text="S4 Vehicle Glass Shader")
+        column.operator("mesh.lightglassshader", text="S4 Vehicle LightGlass Shader")
+        column.operator("mesh.tireshader", text="S4 Vehicle Tire Shader")
+        column.operator("mesh.wheelshader", text="S4 Vehicle Wheels Shader")
+
+        layout.label(text="Other Node")
+        column = layout.column(align=True)
+        column.operator("mesh.dirtshader", text="S4 Vehicle Dirt/Damage")
+        column.operator("mesh.speednode", text="S4 Wheel Speed")
+
+
+class UtilitiesToolPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Utilities Tool"
+    bl_idname = "OBJECT_PT_Utilities"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        scn = context.scene
+        layout = self.layout
+        space = active_view3d_space(context)
+
+        row = layout.row()
+        row.alert = bool(space and space.shading.show_backface_culling)
+        row.operator("mesh.backface", text="Toggle Backface Culling")
+
+        row = layout.row()
+        row.alert = any(s.overlay.show_wireframes for s in iter_view3d_spaces())
+        row.operator("mesh.viewwireframe", text="Toggle Wireframe")
+
+        layout.operator("mesh.viewportcol", text="Change Viewport Color")
+        layout.operator("mesh.selngon", text="Select N-Gons Face")
+
+        layout.label(text="Other Check:")
+        column = layout.column()
+        for prop_name in ("dirt_value", "dust_value", "mud_value", "deform_value",
+                          "wheel_speed", "lights_value"):
+            column.prop(scn, prop_name, slider=True)
+
+        layout.label(text="Other tools")
+        column = layout.column(align=True)
+        column.operator("s4veh.setupscene", text="Setup S4 Scene")
+        column.operator("s4veh.correctmat", text="Correct Duplicate Material")
+        column.operator("s4veh.removeshapekey", text="Remove Shapekey")
+        column.operator("s4veh.applylattice", text="Apply Lattice as Shapekey")
+        column.operator("s4veh.keyshapekey", text="Keyframe for all Shapekey")
+
+
+class TireDeformPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Tire Deform Tool"
+    bl_idname = "OBJECT_PT_TireDeform"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        scn = context.scene
+        layout = self.layout
+
+        for label, prop_name in (("Tire RF", "tire_RF"), ("Tire RR", "tire_RR"),
+                                 ("Tire LF", "tire_LF"), ("Tire LR", "tire_LR")):
+            row = layout.row()
+            row.label(text=label)
+            row.prop(scn, prop_name, text="")
+
+        column = layout.column(align=True)
+        column.operator("mesh.createtiredeform", text="Create Tire Deform Objects")
+        column.operator("mesh.applytireweight", text="Apply Weight")
+
+
+class VertexAOPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Vertex Ambient"
+    bl_idname = "OBJECT_PT_VertexAO"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        column = self.layout.column(align=True)
+        column.operator("mesh.bakevertexao", text="Bake Vertex AO")
+        column.operator("mesh.exitbakevertexao", text="Restore Node Connection")
+
+
+class S4VehLODRigging(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 LOD Rigging"
+    bl_idname = "S4Veh_LOD_Rig"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        scn = context.scene
+        layout = self.layout
+
+        layout.label(text="Select Part Rig:")
+        for label, prop_name in (("Body Base", "s4veh_body_base"),
+                                 ("WHEEL LF", "s4veh_wheel_lf"),
+                                 ("WHEEL LR", "s4veh_wheel_lr"),
+                                 ("WHEEL RF", "s4veh_wheel_rf"),
+                                 ("WHEEL RR", "s4veh_wheel_rr"),
+                                 ("STEERINGWHEEL", "s4veh_steeringwheel")):
+            row = layout.row()
+            row.label(text=label)
+            row.prop(scn, prop_name, text="")
+
+        layout.operator("s4veh.riglod", text="Rig Vehicle")
+
+
+class LODValidPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 LOD Validation"
+    bl_idname = "OBJECT_PT_Lodcheck"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.prop(context.scene.lod_holder, "lod_list", text="Select LOD")
+        column = layout.column(align=True)
+        column.operator("mesh.switchlod", text="Swap")
+        column.operator("mesh.enablelod", text="Enable All LOD Viewport")
+
+
+class ExportPanel(S4VehPanel, bpy.types.Panel):
+    bl_label = "S4 Exporter"
+    bl_idname = "MY_TEST_PANEL_PT"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        box = layout.box()
+
+        missing = []
+        for collection_name in REQUIRED_MESHES:
+            missing.extend(missing_meshes(collection_name))
+        for message in missing:
+            box.label(text=message, icon='ERROR')
+        if not missing:
+            box.label(text="All meshes present.", icon='CHECKMARK')
+
+        lod_errors = []
+        for higher, lower in LOD_COMPLETENESS_PAIRS:
+            lod_errors.extend(find_missing_meshes(higher, lower))
+        for message in lod_errors:
+            box.label(text=message, icon='CANCEL')
+
+        row = layout.row()
+        if lod_errors:
+            row.enabled = False
+            row.operator("mesh.export_vehicle_operator", icon="CANCEL")
+        else:
+            box.label(text="LOD structure is valid.", icon='CHECKMARK')
+            row.operator("mesh.export_vehicle_operator", icon="EXPORT")
+
+
+# ---------------------------------------------------------------------------
+# Validation operators
+# ---------------------------------------------------------------------------
 
 class CUSTOM_OT_clearList(bpy.types.Operator):
     bl_idname = "custom.clear_list"
@@ -614,7 +963,7 @@ class CUSTOM_OT_clearList(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        if bool(context.scene.custom):
+        if context.scene.custom:
             context.scene.custom.clear()
             context.scene.checkResult_all = False
             self.report({'INFO'}, "All items removed")
@@ -623,1764 +972,888 @@ class CUSTOM_OT_clearList(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class MATERIAL_UL_matslots_example(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        layout.prop(item, "message", text=item.type, emboss=False, icon_value=icon)
-
-
-class ValidationToolMainPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Veh Validator"
-    bl_idname = "OBJECT_PT_Validation"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    
-
-    bpy.types.Scene.checkResult_Transform = BoolProperty(name = "Boolean", description = "None")
-    bpy.types.Scene.checkResult_UnusedData = BoolProperty( name = "Boolean", description = "None")
-    bpy.types.Scene.checkResult_all = BoolProperty( name = "Boolean", description = "None")
-    
-    def initSceneProperties(scn):
-        scn.checkResult_Transform = True
-        scn.checkResult_UnusedData = True
-        scn.checkResult_all = False
-        return
-
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-
-        row = layout.row()
-        row.label(text="Run all check")
-
-        row1 = layout.row()
-        row1.operator("mesh.initialcheck", text="Check Scene")
-        
-              
-        if scn.checkResult_all == True:
-            layout.template_list("MATERIAL_UL_matslots_example", "", scn, "custom", scn, "custom_index")
-
-            row = layout.row()
-            row.operator("custom.clear_list", text="Clear and hide result box.")
-
-        row11 = layout.row()
-        row11.label(text= globalVariables.version)
-        
-class ShaderToolPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Shader Tool"
-    bl_idname = "OBJECT_PT_Shader"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-   
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-        
-        row3 = layout.row()
-        row3.operator("mesh.basicshader", text="S4 Vehicle Basic Shader")
-        row4 = layout.row()
-        row4.operator("mesh.bodyworkshader", text="S4 Vehicle Bodywork Shader")
-        row5 = layout.row()
-        row5.operator("mesh.glassshader", text="S4 Vehicle Glass Shader")
-        row5 = layout.row()
-        row5.operator("mesh.lightglassshader", text="S4 Vehicle LightGlass Shader")
-        row6 = layout.row()
-        row6.operator("mesh.tireshader", text="S4 Vehicle Tire Shader")
-        row7 = layout.row()
-        row7.operator("mesh.wheelshader", text="S4 Vehicle Wheels Shader")
-        row8 = layout.row()
-        row8.label(text="Other Node")
-        row9 = layout.row()
-        row9.operator("mesh.dirtshader", text="S4 Vehicle Dirt/Damage")
-        row10 = layout.row()
-        row10.operator("mesh.speednode", text="S4 Wheel Speed")
-
-###########################################################################################################
-
-# Operator to link the selected material to the selected material slot of the active object
-class MATERIAL_OT_link_external_to_slot(bpy.types.Operator):
-    bl_idname = "material.link_external_to_slot"
-    bl_label = "Link External Material to Slot"
-    bl_description = "Link the selected external material to the selected material slot of the active object"
-    
-    material_name: bpy.props.StringProperty()
-
-    def execute(self, context):
-        filepath = SHADER_BLEND_PATH
-        if not os.path.isfile(filepath):
-            self.report({'ERROR'}, "File not found")
-            return {'CANCELLED'}
-        
-        with bpy.data.libraries.load(filepath, link=True) as (data_from, data_to):
-            if self.material_name in data_from.materials:
-                data_to.materials = [self.material_name]
-            else:
-                self.report({'ERROR'}, f"Material {self.material_name} not found in the file")
-                return {'CANCELLED'}
-
-        material = data_to.materials[0]
-        if material is None:
-            self.report({'ERROR'}, f"Material {self.material_name} could not be loaded")
-            return {'CANCELLED'}
-        
-        obj = context.active_object
-        if obj is not None and obj.type == 'MESH':
-            slot_index = obj.active_material_index
-            if 0 <= slot_index < len(obj.material_slots):
-                obj.material_slots[slot_index].material = material
-                self.report({'INFO'}, f"Material {material.name} linked to slot {slot_index} of {obj.name}")
-            else:
-                self.report({'ERROR'}, f"Invalid material slot index: {slot_index}")
-                return {'CANCELLED'}
-        else:
-            self.report({'ERROR'}, "No active mesh object")
-            return {'CANCELLED'}
-        
-        return {'FINISHED'}
-
-# Property Group to hold external material data
-class ExternalMaterialItem(bpy.types.PropertyGroup):
-    name: bpy.props.StringProperty()
-
-
-# Panel to display external materials
-class MATERIAL_PT_external_linker_panel(bpy.types.Panel):
-    bl_label = "S4 Material Linker"
-    bl_idname = "MATERIAL_PT_external_linker_panel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'S4 Vehicle'
-
-    # def draw(self, context):
-    #     layout = self.layout
-    #     scene = context.scene
-
-    #     col = layout.column()
-    #     col.operator("material.load_external_materials", text="Load Materials")
-        
-    #     col.separator()
-    #     col.label(text="Materials:")
-        
-    #     for mat in scene.external_materials:
-    #         row = col.row()
-    #         row.label(text=mat.name)
-    #         op = row.operator("material.link_external_to_slot", text="Link")
-    #         op.material_name = mat.name
-
-#############################################################################################################
-
-class UtilitiToolPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Utilities Tool"
-    bl_idname = "OBJECT_PT_Utilities"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-        
-        row1 = layout.row()
-        allmat = bpy.data.materials
-
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas: # iterate through areas in current screen
-                if area.type == 'VIEW_3D':
-                    for space in area.spaces: # iterate through spaces in current VIEW_3D area
-                        if space.type == 'VIEW_3D': # check if space is a 3D view
-                            if space.shading.type == 'SOLID':   
-                                backface = bpy.context.space_data.shading.show_backface_culling
-                            else:
-                                for mat in allmat:
-                                    backface = bpy.data.materials[mat.name].use_backface_culling
-        if backface == False :
-            row1.alert = False
-        else:
-            row1.alert = True
-        row1.operator("mesh.backface", text="Toggle Backface Culling")
-        
-        row2 = layout.row()
-        for area in bpy.context.workspace.screens[0].areas:
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    if space.overlay.show_wireframes == True:
-                        row2.alert = True
-                    else:
-                        row2.alert = False
-        row2.operator("mesh.viewwireframe", text="Toggle Wireframe")
-        
-        row3 = layout.row()
-        row3.operator("mesh.viewportcol", text="Change Viewport Color")
-        
-        row3 = layout.row()
-        row3.operator("mesh.selngon", text="Select N-Gons Face")
-        
-        row4 = layout.row()
-        row4.label(text="Other Check:")
-        
-        row5 = layout.row()
-        row5.prop(scn, 'dirt_value', slider=True)
-        
-        row5 = layout.row()
-        row5.prop(scn, 'dust_value', slider=True)
-        
-        row5 = layout.row()
-        row5.prop(scn, 'mud_value', slider=True)
-        
-        row5 = layout.row()
-        row5.prop(scn, 'deform_value', slider=True)
-        
-        row6 = layout.row()
-        row6.prop(scn, 'wheel_speed', slider=True)
-        
-        row6 = layout.row()
-        row6.prop(scn, 'lights_value', slider=True)
-        
-        row7 = layout.row()
-        row7.label(text="Other tools")
-        
-        row3 = layout.row()
-        row3.operator("s4veh.setupscene", text="Setup S4 Scene")
-        
-        row3 = layout.row()
-        row3.operator("s4veh.correctmat", text="Correct Duplicate Material")
-        
-        row3 = layout.row()
-        row3.operator("s4veh.removeshapekey", text="Remove Shapekey")
-        
-        row3 = layout.row()
-        row3.operator("s4veh.applylattice", text="Apply Lattice as Shapekey")
-        
-        row3 = layout.row()
-        row3.operator("s4veh.keyshapekey", text="Keyframe for all Shapekey")
-
-class TireDeformPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Tire Deform Tool"
-    bl_idname = "OBJECT_PT_TireDeform"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-        
-        row1 = layout.row()
-        row1.label(text = "Tire RF")
-        row1.prop(scn, 'tire_RF', text = "")
-
-        row2 = layout.row()
-        row2.label(text = "Tire RR")
-        row2.prop(scn, 'tire_RR', text = "")
-
-        row3 = layout.row()
-        row3.label(text = "Tire LF")
-        row3.prop(scn, 'tire_LF', text = "")
-
-        row4 = layout.row()
-        row4.label(text = "Tire LR")
-        row4.prop(scn, 'tire_LR', text = "")
-        
-        row5 = layout.row()
-        row5.operator('mesh.createtiredeform', text = "Create Tire Deform Objects")
-        row6 = layout.row()
-        row6.operator('mesh.applytireweight', text = "Apply Weight")
-        
-class VertexAOPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Vertex Ambient"
-    bl_idname = "OBJECT_PT_VertexAO"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-        
-        row1 = layout.row()
-        row1.operator('mesh.bakevertexao', text = "Bake Vertex AO")
-        
-        row1 = layout.row()
-        row1.operator('mesh.exitbakevertexao', text = "Restore Node Connection")
-        
-        
-
-class S4VehLODRigging(bpy.types.Panel, globalVariables):
-    bl_label = "S4 LOD Rigging"
-    bl_idname = "S4Veh_LOD_Rig"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-        
-        row1 = layout.row()       
-        row1.label(text = "Select Part Rig:")
-        
-        row3 = layout.row()
-        row3.label(text = "Body Base")
-        row3.prop(scn, 's4veh_body_base', text = "")
-        
-        row3 = layout.row()
-        row3.label(text = "WHEEL LF")
-        row3.prop(scn, 's4veh_wheel_lf', text = "")
-        
-        row3 = layout.row()
-        row3.label(text = "WHEEL LR")
-        row3.prop(scn, 's4veh_wheel_lr', text = "")
-        
-        row3 = layout.row()
-        row3.label(text = "WHEEL RF")
-        row3.prop(scn, 's4veh_wheel_rf', text = "")
-        
-        row3 = layout.row()
-        row3.label(text = "WHEEL RR")
-        row3.prop(scn, 's4veh_wheel_rr', text = "")
-        
-        row3 = layout.row()
-        row3.label(text = "STEERINGWHEEL")
-        row3.prop(scn, 's4veh_steeringwheel', text = "")
-        
-        row4 = layout.row()
-        row4.operator('s4veh.riglod', text = "Rig Vehicle")
-        
-class LODValidPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 LOD Validation"
-    bl_idname = "OBJECT_PT_Lodcheck"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Vehicle"
-    bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-        lod_holder = scn.lod_holder
-        
-        row1 = layout.row()
-        row1.prop(lod_holder, "lod_list", text="Select LOD")
-        
-        row2 = layout.row()
-        row2.operator('mesh.switchlod', text = "Swap")
-        
-        row2 = layout.row()
-        row2.operator('mesh.enablelod', text = "Enable All LOD Viewport")
-           
-             
-class ExportPanel(bpy.types.Panel, globalVariables):
-    bl_label = "S4 Exporter"
-    bl_idname = "MY_TEST_PANEL_PT"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "S4 Vehicle"
-    bl_options = {"DEFAULT_CLOSED"}
-        
-    def draw(self, context):
-        layout = self.layout        
-        box = layout.box()
-        
-        error_messages = ""
-        for mesh in meshes_to_check_LODA:
-            result, icon = check_mesh_in_collection(*mesh)
-            if icon == 'ERROR':
-                error_messages = result
-                box.label(text=result, icon='ERROR')
-                
-        for mesh in meshes_to_check_LODB:
-            result, icon = check_mesh_in_collection(*mesh)
-            if icon == 'ERROR':
-                error_messages = result
-                box.label(text=result, icon='ERROR')
-                
-        for mesh in meshes_to_check_LODC:
-            result, icon = check_mesh_in_collection(*mesh)
-            if icon == 'ERROR':
-                error_messages = result
-                box.label(text=result, icon='ERROR')
-        
-        for mesh in meshes_to_check_LODD:
-            result, icon = check_mesh_in_collection(*mesh)
-            if icon == 'ERROR':
-                error_messages = result
-                box.label(text=result, icon='ERROR')
-        
-        for mesh in meshes_to_check_CPIT:
-            result, icon = check_mesh_in_collection(*mesh)
-            if icon == 'ERROR':
-                error_messages = result
-                box.label(text=result, icon='ERROR')
-        
-        if not error_messages:
-            box.label(text="All meshes present.", icon='CHECKMARK')
-                
-        lod_erros = []
-        lod_erros.extend(find_missing_meshes("LODA", "LODB"))
-        lod_erros.extend(find_missing_meshes("LODB", "LODC"))
-        lod_erros.extend(find_missing_meshes("LODC", "LODD"))
-        for error in lod_erros:
-            box.label(text=error, icon='CANCEL')
-        
-        row = layout.row()
-        if not lod_erros:
-            box.label(text="LOD structure is valid.", icon='CHECKMARK')
-            row.operator("mesh.export_vehicle_operator", icon="EXPORT")
-        else:
-            row.operator("mesh.export_vehicle_operator", icon="CANCEL", emboss=False).enabled = False
- 
-class ExportVehicleOperator(bpy.types.Operator, ExportPanel):
-    bl_idname = "mesh.export_vehicle_operator"
-    bl_label = "Export Vehicle"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        process_collection("LODA")
-        process_collection("LODB")
-        process_collection("LODC")
-        process_collection("LODD")
-        print("Finished")
-        return {'FINISHED'} 
-
-
-class InitialCheck(bpy.types.Operator, ValidationToolMainPanel, globalVariables):
+class InitialCheck(bpy.types.Operator):
     bl_idname = "mesh.initialcheck"
     bl_label = "Initial Check"
     bl_description = "Run through all check processes"
 
-    def execute(self, context):
-        if bool(context.scene.custom):
-            context.scene.custom.clear()
+    def check_mesh_names(self, results):
+        for collection in bpy.data.collections:
+            if collection.name not in LOD_COLLECTIONS:
+                continue
+            for obj in collection.objects:
+                if obj.type == 'ARMATURE' or "deformation" in obj.name:
+                    continue
+                if not any(valid in obj.name for valid in VALID_MESH_NAMES):
+                    add_item(results, "Mesh Name", obj.name)
 
-        #        if len(globalVariables.meshObjs) == 0:
+    def check_material_nodes(self, results):
+        for material in bpy.data.materials:
+            if any(allowed in material.name for allowed in PRINCIPLED_ALLOWED_MATERIALS):
+                continue
+            if not material.use_nodes or material.node_tree is None:
+                add_item(results, "MaterialNode", f"{material.name} (no node tree)")
+                continue
+            if any(node.type == 'BSDF_PRINCIPLED' for node in material.node_tree.nodes):
+                add_item(results, "MaterialNode", material.name)
+
+    def check_uv_names(self, results):
+        for collection in bpy.data.collections:
+            if collection.name not in LOD_COLLECTIONS:
+                continue
+            for obj in collection.objects:
+                if obj.type != 'MESH':
+                    continue
+                if any("UVMap" not in uv.name for uv in obj.data.uv_layers):
+                    add_item(results, "UVChannel", obj.name)
+
+    def check_ngons(self, results, scene):
+        for obj in scene.objects:
+            if obj.type != 'MESH':
+                continue
+            if any(len(polygon.vertices) > 4 for polygon in obj.data.polygons):
+                add_item(results, "N-Gons mesh", obj.name)
+
+    def check_units(self, results, scene):
+        units = scene.unit_settings
+        if units.scale_length != 1:
+            add_item(results, "Unit Scale", "Unit Scale must be 1")
+        if units.length_unit != "METERS":
+            add_item(results, "Unit Scale", "Length Unit must be Meters")
+        if units.system != "METRIC":
+            add_item(results, "Unit System", "Unit System must be Metric")
+
+    def execute(self, context):
+        scene = context.scene
+        scene.custom.clear()
+
         try:
             bpy.ops.object.mode_set(mode='OBJECT')
-        except:
+        except RuntimeError:
             pass
-        #        bpy.ops.object.mode_set(mode='OBJECT')
-        scn = context.scene
-        objs = bpy.context.scene.objects
-        #path = context.scene.texture_folder
-        globalVariables.meshObjs = getmeshObjs()
 
-        if len(globalVariables.meshObjs) != 0:
-            bpy.context.view_layer.objects.active = globalVariables.meshObjs[0]
+        scene_objects = list(scene.objects)
+        if not scene_objects:
+            scene.checkResult_all = True
+            show_message_box(["Scene in empty."], "S4 Validation", "ERROR")
+            return {'FINISHED'}
 
-            #        bpy.context.view_layer.objects.active = None
-            
-            colname = ["LODA", "LODB", "LODC", "LODD", "CPIT"]
-            
-            ##Check meshname
-            MeshnameList = ["BODY_LOD", "BONNET_LOD", "BUMPER_F_LOD", "BUMPER_LR_LOD",
-                            "BUMPER_RR_LOD", "CALIPER_LF_LOD", "CALIPER_LR_LOD", "CALIPER_RF_LOD",
-                            "CALIPER_RR_LOD", "CHASSIS_LOD", "DISC_LF_LOD", "DISC_LR_LOD",
-                            "DISC_RF_LOD", "DISC_RR_LOD", "DIVEPLANE_R1_LOD", "DIVEPLANE_L1_LOD", "INTERIOR_LOD",
-                            "LIGHTS_LOD", "STEERINGWHEEL_LOD", "TIRE_LF_LOD", "TIRE_LR_LOD", "TIRE_RF_LOD",
-                            "TIRE_RR_LOD", "WHEEL_LF_BLUR_LOD", "WHEEL_LF_LOD", "WHEEL_LR_BLUR_LOD", "WHEEL_LR_LOD",
-                            "WHEEL_RF_BLUR_LOD", "WHEEL_RF_LOD","WHEEL_RR_BLUR_LOD", "WHEEL_RR_LOD", "WING_LOD", "BODY_CPIT",
-                            "BONNET_CPIT","BUMPER_F_CPIT", "CHASSIS_CPIT", "DISPLAY_CPIT", "EXTANIM_CPIT", "INTANIM_CPIT",
-                            "INTERIOR2_CPIT", "INTERIOR_CPIT", "STEERINGWHEEL_CPIT", "TIRE_LF_CPIT", "TIRE_RF_CPIT", "WHEEL_LF_CPIT",
-                            "WHEEL_RF_CPIT", "WINDOWS_CPIT", "DRIVERNAME_CPIT", "WIPER_LOD", "DISC_LF_CPIT", "CALIPER_LF_CPIT", "DISC_RF_CPIT",
-                            "CALIPER_RF_CPIT", "LIGHTS_CPIT", "NEEDLE_TACH_CPIT", "NEEDLE_WATER_CPIT", "NEEDLE_OILT_CPIT", "GEARSHIFT_CPIT",
-                            "NEEDLE_OILP_CPIT", "NEEDLE_FUELP_CPIT", "GAUGE_GLASS_CPIT", "REARWING_CPIT", "PANEL_R_LOD", "PANEL_L_LOD", "MIRROR_R_LOD",
-                            "MIRROR_L_LOD"]
-            
-            
-            # Iterate through each collection
-            for collection in bpy.data.collections:
-                # Check if the collection name contains any of the specified substrings
-                if any(col == collection.name for col in colname):
-                    for meshObj in collection.objects:
-                        if meshObj.type == 'ARMATURE' or "deformation" in meshObj.name:
-                            continue
-                        isCarname = False
-                        for meshname in MeshnameList:
-                            if meshname in meshObj.name:
-                                isCarname = True
-                                break
-                        if isCarname:
-                            continue
-                        message = str(meshObj.name)
-                        add_item(scn.custom, "Mesh Name", message)
+        context.view_layer.objects.active = scene_objects[0]
 
-            ##Check Material node type
-            allmat = bpy.data.materials
-            for mat in allmat:
-                if "Dots Stroke" in mat.name or "LCDisplay" in mat.name or "VirtualMirror" in mat.name or "virtualmirror" in mat.name or "Master deform tire" in mat.name:
+        self.check_mesh_names(scene.custom)
+        self.check_material_nodes(scene.custom)
+        self.check_uv_names(scene.custom)
+        self.check_ngons(scene.custom, scene)
+        self.check_units(scene.custom, scene)
+
+        scene.checkResult_all = True
+        show_message_box(["Checking Finished."], "S4 Validation", "CHECKMARK")
+        return {'FINISHED'}
+
+
+class S4CheckPBR(bpy.types.Operator):
+    bl_idname = "s4veh.checkpbr"
+    bl_label = "Check PBR (0.2 - 0.8)"
+    bl_description = (
+        "Bake the albedo output of every material on the selected meshes and "
+        "flag any whose sRGB luminance falls outside the 0.2 - 0.8 PBR range"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return any(obj.type == 'MESH' for obj in context.selected_objects)
+
+    def capture_render_state(self, scene):
+        bake = scene.render.bake
+        return {
+            'engine': scene.render.engine,
+            'target': bake.target,
+            'use_selected_to_active': bake.use_selected_to_active,
+            'bake_type': scene.cycles.bake_type,
+            'samples': scene.cycles.samples,
+            'use_adaptive_sampling': scene.cycles.use_adaptive_sampling,
+            'time_limit': scene.cycles.time_limit,
+        }
+
+    def apply_bake_state(self, scene):
+        """An emission bake needs a single sample, it is not integrating light."""
+        scene.render.engine = 'CYCLES'
+        scene.render.bake.target = 'VERTEX_COLORS'
+        scene.render.bake.use_selected_to_active = False
+        scene.cycles.bake_type = 'EMIT'
+        scene.cycles.samples = 1
+        scene.cycles.use_adaptive_sampling = False
+        scene.cycles.time_limit = 0
+
+    def restore_render_state(self, scene, state):
+        bake = scene.render.bake
+        bake.target = state['target']
+        bake.use_selected_to_active = state['use_selected_to_active']
+        scene.cycles.bake_type = state['bake_type']
+        scene.cycles.samples = state['samples']
+        scene.cycles.use_adaptive_sampling = state['use_adaptive_sampling']
+        scene.cycles.time_limit = state['time_limit']
+        scene.render.engine = state['engine']
+
+    def execute(self, context):
+        scene = context.scene
+        scene.custom.clear()
+
+        if not hasattr(scene, "cycles"):
+            self.report({'ERROR'}, "The Cycles addon must be enabled to bake the albedo")
+            return {'CANCELLED'}
+
+        if context.object is not None and context.object.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        objects = [
+            obj for obj in context.selected_objects
+            if obj.type == 'MESH' and len(obj.data.polygons)
+        ]
+        if not objects:
+            scene.checkResult_all = True
+            show_message_box(
+                ["Select the meshes you want to check first."], "S4 PBR Check", "ERROR")
+            return {'FINISHED'}
+
+        skipped = {}
+        probes = []
+        prepared = []
+        hidden = []
+        active_object = context.view_layer.objects.active
+        state = self.capture_render_state(scene)
+
+        try:
+            for material in selected_mesh_materials(context):
+                socket, surface, note = albedo_output_socket(material)
+                if socket is None:
+                    skipped[material.name] = note
                     continue
-                mat.use_nodes = True
-                nodes = mat.node_tree.nodes
-                for n in nodes:
-                    if "Principled BSDF" in n.name:
-                        message = str(mat.name)
-                        add_item(scn.custom, "MaterialNode", message)
-                        
-            
-            ##Check UVset name
-            uvmesh = []
-            # Iterate through each collection
-            for collection in bpy.data.collections:
-                # Check if the collection name contains any of the specified substrings
-                if any(col == collection.name for col in colname):
-                    for meshObj in collection.objects:
-                        if meshObj.type == "MESH":
-                            for u in meshObj.data.uv_layers:
-                                if not "UVMap" in u.name:
-                                    if not meshObj in uvmesh:
-                                        uvmesh.append(meshObj)
-            for o in uvmesh:
-                message = str(o.name)
-                add_item(scn.custom,"UVChannel", message)
-            
-            #Check N-gon mesh
-            mesh_n_gon = []
-            for meshngon in objs:
-                if meshngon.type == "MESH":
-                    for p in meshngon.data.polygons:
-                        if len(p.vertices) > 4:
-                            if not meshngon in mesh_n_gon:
-                                mesh_n_gon.append(meshngon)
-            for ngon_obj in mesh_n_gon:
-                message = str(ngon_obj.name)
-                add_item(scn.custom,"N-Gons mesh", message)
-                
-            ##Check Unit
-            scale_unit = bpy.context.scene.unit_settings.scale_length
-            leng_unit = bpy.context.scene.unit_settings.length_unit
-            system_unit = bpy.context.scene.unit_settings.system
-            
-            if scale_unit != 1:
-                message = "Unit Scale must be 1"
-                add_item(scn.custom, "Unit Scale", message)
-    
-            if leng_unit != "METERS":
-                message = "Length Unit must be Meters"
-                add_item(scn.custom, "Unit Scale", message)
+                probe, original_source = attach_albedo_probe(material, socket, surface)
+                probes.append((material, probe, original_source, surface))
 
-            if system_unit != "METRIC":
-                message = "Unit System must be Metric"
-                add_item(scn.custom, "Unit System", message)
-                
-            ##Finish check result
-            scn.checkResult_all = True
-            confmessage = ["Checking Finished."]
-            ShowMessageBox(confmessage, "S4 Validation", "CHECKMARK")
-            return {"FINISHED"}
-            
-        else:
-            scn.checkResult_all = True
-            confmessage = ["Scene in empty."]
-            ShowMessageBox(confmessage, "S4 Validation", "ERROR")
-            return {"FINISHED"}
+            if not probes:
+                return self.report_results(scene, {}, skipped)
 
-class BasicShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+            measurable = {material.name_full for material, _, _, _ in probes}
+
+            for obj in objects:
+                if obj.hide_render:
+                    obj.hide_render = False
+                    hidden.append(obj)
+                try:
+                    attribute, previous = add_probe_attribute(obj.data)
+                except RuntimeError as error:
+                    self.report({'ERROR'}, f"{obj.name}: no bake target ({error})")
+                    return {'CANCELLED'}
+                prepared.append((obj, attribute, previous))
+
+            if active_object not in objects:
+                context.view_layer.objects.active = objects[0]
+
+            self.apply_bake_state(scene)
+            try:
+                bpy.ops.object.bake(type='EMIT')
+            except RuntimeError as error:
+                self.report({'ERROR'}, f"Albedo bake failed: {error}")
+                return {'CANCELLED'}
+
+            ranges = {}
+            for obj, attribute, _ in prepared:
+                for name, (low, high) in read_baked_albedo(obj, attribute).items():
+                    if name not in measurable:
+                        continue
+                    if name in ranges:
+                        previous_low, previous_high = ranges[name]
+                        low, high = min(low, previous_low), max(high, previous_high)
+                    ranges[name] = (low, high)
+        finally:
+            for obj, attribute, previous in prepared:
+                remove_probe_attribute(obj.data, attribute, previous)
+            for material, probe, original_source, surface in probes:
+                detach_albedo_probe(material, probe, original_source, surface)
+            for obj in hidden:
+                obj.hide_render = True
+            context.view_layer.objects.active = active_object
+            self.restore_render_state(scene, state)
+
+        return self.report_results(scene, ranges, skipped)
+
+    def report_results(self, scene, ranges, skipped):
+        failed = 0
+        for name in sorted(ranges, key=str.lower):
+            low, high = ranges[name]
+            too_dark = low < PBR_LUMA_MIN
+            too_bright = high > PBR_LUMA_MAX
+            if not (too_dark or too_bright):
+                continue
+
+            failed += 1
+            if too_dark and too_bright:
+                detail = f"{low:.2f}-{high:.2f} too dark and too bright"
+            elif too_dark:
+                detail = f"{low:.2f} too dark"
+            else:
+                detail = f"{high:.2f} too bright"
+            add_item(scene.custom, "PBR Range", f"{name}: {detail}")
+
+        for name in sorted(skipped, key=str.lower):
+            add_item(scene.custom, "PBR Unreadable", f"{name}: {skipped[name]}")
+
+        scene.checkResult_all = True
+        summary = [
+            f"Measured {len(ranges)} material(s) on the selection.",
+            f"{failed} outside {PBR_LUMA_MIN} - {PBR_LUMA_MAX} sRGB luminance.",
+        ]
+        if skipped:
+            summary.append(f"{len(skipped)} could not be measured, see the list.")
+        show_message_box(summary, "S4 PBR Check", "ERROR" if failed else "CHECKMARK")
+        return {'FINISHED'}
+
+
+class ExportVehicleOperator(bpy.types.Operator):
+    bl_idname = "mesh.export_vehicle_operator"
+    bl_label = "Export Vehicle"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        for collection_name in ("LODA", "LODB", "LODC", "LODD"):
+            process_collection(collection_name)
+        print("Finished")
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# Shader generation operators
+# ---------------------------------------------------------------------------
+
+class ShaderNodeGroupOperator(bpy.types.Operator):
+    """Links one S4 node group in from the shader library and drops an
+    instance of it into the active material.
+
+    Subclasses only supply `bl_idname`, `node_group_name` and `report_title`.
+    """
+    bl_label = "Generate Shader"
+    bl_description = "Auto Generate S4 Custom Shader Node"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    node_group_name = ""
+    report_title = "S4 Shader"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.active_material is not None
+
+    def import_node_group(self):
+        if not os.path.isfile(SHADER_BLEND_PATH):
+            show_message_box(
+                ["S4 Shader source file not found:", SHADER_BLEND_PATH],
+                self.report_title, "ERROR",
+            )
+            return False
+
+        with bpy.data.libraries.load(SHADER_BLEND_PATH, link=True) as (data_from, data_to):
+            if self.node_group_name in data_from.node_groups:
+                data_to.node_groups = [self.node_group_name]
+
+        if not data_to.node_groups or not data_to.node_groups[0]:
+            show_message_box(["Failed to Generate Shader Node"], self.report_title, "ERROR")
+            return False
+
+        show_message_box(["Successfully Generate Shader Node"], self.report_title, "CHECKMARK")
+        return True
+
+    def execute(self, context):
+        if not self.import_node_group():
+            return {'CANCELLED'}
+
+        nodes = context.object.active_material.node_tree.nodes
+        group = nodes.new(type='ShaderNodeGroup')
+        group.node_tree = bpy.data.node_groups[self.node_group_name]
+
+        purge_orphans()
+        return {'FINISHED'}
+
+
+class BasicShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.basicshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    '''
-    def import_file(self):
-        # Check if the file exists
-        if not os.path.isfile(self.source_file):
-            self.report({'ERROR'}, "S4 Shader Source Node not found {}".format(self.source_file))
-            return {'CANCELLED'}
-        return {'FINISHED'}
-    '''
+    node_group_name = "S4 Vehicle Basic Shader"
+    report_title = "S4 Basic Shader"
 
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
-
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Basic Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Basic Shader"]
-        ShowMessageBox(confmessage, "S4 Basic Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle Basic Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle Basic Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-        
-class BodyworkShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class BodyworkShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.bodyworkshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "S4 Vehicle Bodywork Shader"
+    report_title = "S4 Bodywork Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Bodywork Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Bodywork Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle Bodywork Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle Bodywork Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-        
-class GlassShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class GlassShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.glassshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "S4 Vehicle Glass Shader"
+    report_title = "S4 Glass Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Glass Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Glass Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle Glass Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle Glass Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-        
-class LightGlassShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class LightGlassShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.lightglassshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "S4 Vehicle LightGlass Shader"
+    report_title = "S4 Light Glass Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Light Glass Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Glass Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle LightGlass Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle LightGlass Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-        
-class TireShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class TireShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.tireshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "S4 Vehicle Tire Shader"
+    report_title = "S4 Tire Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Tire Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Tire Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle Tire Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle Tire Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-
-class WheelShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class WheelShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.wheelshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "S4 Vehicle Wheels Shader"
+    report_title = "S4 Wheel Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Wheel Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Wheel Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("S4 Vehicle Wheels Shader")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'S4 Vehicle Wheels Shader')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-
-class DirtShader(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class DirtShader(ShaderNodeGroupOperator):
     bl_idname = "mesh.dirtshader"
-    bl_label = "Generate Shader"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = DIRT_GROUP_NAME
+    report_title = "S4 Dirt Shader"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 Dirt Shader", "ERROR")
-            return {'CANCELLED'}
-
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 Dirt Shader", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("Dirt/Damage_Group")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'Dirt/Damage_Group')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-        
-class SpeedNode(bpy.types.Operator, ShaderToolPanel, globalVariables):
+class SpeedNode(ShaderNodeGroupOperator):
     bl_idname = "mesh.speednode"
     bl_label = "Generate Speed Node"
-    bl_description = "Auto Generate S4 Custom Shader Node"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def __init__(self):
-        # Define the path to the blend file containing the custom node
-        self.source_file = SHADER_BLEND_PATH  
-    
-    def instantiate_group(self, nodes, data_block_name):
-        group = nodes.new(type='ShaderNodeGroup')
-        group.node_tree = bpy.data.node_groups[data_block_name]
-        return group
+    node_group_name = "SpeedNodeGroup"
+    report_title = "S4 SpeedNode"
 
-    def import_node_group(self, node_group_name):
-        # Load the custom node group from the blend file
-        with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
-            if node_group_name in data_from.node_groups:
-                data_to.node_groups = [node_group_name]
 
-        # Check if the node group was successfully loaded
-        if not data_to.node_groups or not data_to.node_groups[0]:
-            confmessage = ["Failed to Generate Shader Node"]
-            ShowMessageBox(confmessage, "S4 SpeedNode", "ERROR")
-            return {'CANCELLED'}
+# ---------------------------------------------------------------------------
+# Viewport utility operators
+# ---------------------------------------------------------------------------
 
-        # Report successful import
-        confmessage = ["Successfully Generate Shader Node"]
-        ShowMessageBox(confmessage, "S4 SpeedNode", "CHECKMARK")
-        return {'FINISHED'}
-
-    def execute(self, context):
-        # Import the custom node group
-        self.import_node_group("SpeedNodeGroup")
-        idx = bpy.context.object.active_material_index
-        self.instantiate_group(bpy.context.object.material_slots[idx].material.node_tree.nodes, 'SpeedNodeGroup')
-        
-        #Orphans Purge
-        override = bpy.context.copy()
-        override["area.type"] = ['OUTLINER']
-        override["display_mode"] = ['ORPHAN_DATA']
-        bpy.ops.outliner.orphans_purge(override) 
-        return {'FINISHED'}
-
-class ToggleBackFace(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+class ToggleBackFace(bpy.types.Operator):
     bl_idname = "mesh.backface"
     bl_label = "Toggle Backface"
     bl_description = "Toggle Backface Culling For Checking"
     bl_options = {'REGISTER', 'UNDO'}
-    
-    def backface_to_fail(self):
-        space_shading = True
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas: # iterate through areas in current screen
-                if area.type == 'VIEW_3D':
-                    for space in area.spaces: # iterate through spaces in current VIEW_3D area
-                        if space.type == 'VIEW_3D': # check if space is a 3D view
-                            if space.shading.type == 'SOLID':
-                                space_shading = True
-                            if space.shading.type == 'MATERIAL':
-                                space_shading = False
-        area_type = 'VIEW_3D'
-        areas  = [area for area in bpy.context.window.screen.areas if area.type == area_type]
-        
-        if len(areas) <= 0:
-            raise Exception(f"Make sure an Area of type {area_type} is open or visible in your screen!")
-        if space_shading == True:
-            with bpy.context.temp_override(area=areas[0]):
-                bpy.context.space_data.shading.show_backface_culling = False
-               
-        else:
-            allmat = bpy.data.materials
-            for mat in allmat:               
-                bpy.data.materials[mat.name].use_backface_culling = False
-    
+
     def execute(self, context):
-        #turn all too false
-        #self.backface_to_fail()
-        
-        space_shading = True
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas: # iterate through areas in current screen
-                if area.type == 'VIEW_3D':
-                    for space in area.spaces: # iterate through spaces in current VIEW_3D area
-                        if space.type == 'VIEW_3D': # check if space is a 3D view
-                            if space.shading.type == 'SOLID':
-                                space_shading = True
-                            if space.shading.type == 'MATERIAL':
-                                space_shading = False
-        area_type = 'VIEW_3D'
-        areas  = [area for area in bpy.context.window.screen.areas if area.type == area_type]
-        
-        if len(areas) <= 0:
-            raise Exception(f"Make sure an Area of type {area_type} is open or visible in your screen!")
-        if space_shading == True:
-            with bpy.context.temp_override(area=areas[0]):
-                bpy.context.space_data.shading.show_backface_culling = not bpy.context.space_data.shading.show_backface_culling
-                
-        #else:
-            #allmat = bpy.data.materials
-            #for mat in allmat:               
-                #bpy.data.materials[mat.name].use_backface_culling = not bpy.data.materials[mat.name].use_backface_culling
-                
-                  
+        space = active_view3d_space(context)
+        if space is None:
+            self.report({'ERROR'}, "Make sure a 3D Viewport is open or visible in your screen!")
+            return {'CANCELLED'}
+
+        space.shading.show_backface_culling = not space.shading.show_backface_culling
         return {'FINISHED'}
-        
-class ToggleViewColor(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+
+
+class ToggleViewColor(bpy.types.Operator):
     bl_idname = "mesh.viewportcol"
     bl_label = "Toggle Viewport Color"
     bl_description = "Change Viewport Color for backface checking"
     bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        '''
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas: # iterate through areas in current screen
-                if area.type == 'VIEW_3D':
-                    for space in area.spaces: # iterate through spaces in current VIEW_3D area
-                        if space.type == 'VIEW_3D': # check if space is a 3D view
-                            space.shading.type = 'SOLID'
-        '''
-        area_type = 'VIEW_3D'
-        areas  = [area for area in bpy.context.window.screen.areas if area.type == area_type]
-        
-        default_color = (0.2392,0.2392,0.2392)
-        new_color = (1,0,0.815)
-        current_color = str(bpy.context.preferences.themes[0].view_3d.space.gradients.high_gradient)
-        
-        if len(areas) <= 0:
-            raise Exception(f"Make sure an Area of type {area_type} is open or visible in your screen!")
 
-        with bpy.context.temp_override(area=areas[0]):
-            if current_color == "<Color (r=0.2392, g=0.2392, b=0.2392)>":
-                bpy.context.preferences.themes[0].view_3d.space.gradients.background_type = "SINGLE_COLOR"
-                bpy.context.preferences.themes[0].view_3d.space.gradients.high_gradient = new_color
-            else:
-                bpy.context.preferences.themes[0].view_3d.space.gradients.high_gradient = default_color
-                  
+    def execute(self, context):
+        gradients = context.preferences.themes[0].view_3d.space.gradients
+        current = tuple(round(channel, 4) for channel in gradients.high_gradient)
+
+        if current == VIEWPORT_DEFAULT_COLOR:
+            gradients.background_type = 'SINGLE_COLOR'
+            gradients.high_gradient = VIEWPORT_CHECK_COLOR
+        else:
+            gradients.high_gradient = VIEWPORT_DEFAULT_COLOR
         return {'FINISHED'}
 
-class ToggleWireFrame(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+
+class ToggleWireFrame(bpy.types.Operator):
     bl_idname = "mesh.viewwireframe"
     bl_label = "Toggle Viewport Wire Frame"
     bl_description = "Toggle Mesh Wireframe"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     def execute(self, context):
-        for area in bpy.context.workspace.screens[0].areas:
-            for space in area.spaces:
-                if space.type == 'VIEW_3D':
-                    if space.overlay.show_wireframes == True:
-                        space.overlay.show_wireframes = False
-                    else:
-                        space.overlay.show_wireframes = True            
+        for space in iter_view3d_spaces():
+            space.overlay.show_wireframes = not space.overlay.show_wireframes
         return {'FINISHED'}
-        
-class CreareTireDeform(bpy.types.Operator, TireDeformPanel, globalVariables):
-    bl_idname = "mesh.createtiredeform"
-    bl_label = "Toggle Viewport Wire Frame"
-    bl_description = "Toggle Mesh Wireframe"
+
+
+class SelectNgon(bpy.types.Operator):
+    bl_idname = "mesh.selngon"
+    bl_label = "Select N-Gons"
+    bl_description = "Select every face with more than four vertices"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        return (((context.scene.tire_RF is not None   
-            and context.scene.tire_RR is not None 
-            and context.scene.tire_LF is not None 
-            and context.scene.tire_LR is not None ))) 
-    
+        return context.active_object is not None and context.active_object.type == 'MESH'
+
+    def execute(self, context):
+        # Selection flags can only be set from object mode.
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        for polygon in context.active_object.data.polygons:
+            polygon.select = len(polygon.vertices) > 4
+
+        bpy.ops.object.mode_set(mode='EDIT')
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# LOD operators
+# ---------------------------------------------------------------------------
+
+# Selection -> the pair of collections the Swap button flips between.
+LOD_SWAP_PAIRS = {
+    "A": ("LODA", "LODB"),
+    "B": ("LODB", "LODC"),
+    "C": ("LODC", "LODD"),
+    "CP": ("CPIT", "LODA"),
+}
+
+
+class SwitchLOD(bpy.types.Operator):
+    bl_idname = "mesh.switchlod"
+    bl_label = "Swap LOD"
+    bl_description = "Show one LOD collection at a time and flip between the selected pair"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def swap_lod(self, lod_sel, lod_next):
+        collections = bpy.data.collections
+        if lod_sel not in collections or lod_next not in collections:
+            print('Missing collection')
+            return
+
+        selected_hidden = collections[lod_sel].hide_viewport
+        collections[lod_sel].hide_viewport = not selected_hidden
+        collections[lod_next].hide_viewport = selected_hidden
+
+    def execute(self, context):
+        primary, secondary = LOD_SWAP_PAIRS[context.scene.lod_holder.lod_list]
+
+        # Everything outside the pair gets hidden first.
+        for name in LOD_COLLECTIONS:
+            if name in (primary, secondary):
+                continue
+            collection = bpy.data.collections.get(name)
+            if collection is not None:
+                collection.hide_viewport = True
+
+        self.swap_lod(primary, secondary)
+        return {'FINISHED'}
+
+
+class EnableLOD(bpy.types.Operator):
+    bl_idname = "mesh.enablelod"
+    bl_label = "Enable All LOD Viewport"
+    bl_description = "Un-hide every LOD collection in the viewport"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        for name in LOD_COLLECTIONS:
+            collection = bpy.data.collections.get(name)
+            if collection is not None:
+                collection.hide_viewport = False
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# Tire deform operators
+# ---------------------------------------------------------------------------
+
+class CreateTireDeform(bpy.types.Operator):
+    bl_idname = "mesh.createtiredeform"
+    bl_label = "Create Tire Deform Objects"
+    bl_description = "Link the tire deformation rig in and bind it to the four tires"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        scene = context.scene
+        return None not in (scene.tire_RF, scene.tire_RR, scene.tire_LF, scene.tire_LR)
+
     def execute(self, context):
         scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #Set variables for vehicle tire meshes
-        tire_RF = scene.tire_RF
-        tire_RR = scene.tire_RR
-        tire_LF = scene.tire_LF
-        tire_LR = scene.tire_LR
-        
-        #Select all tire meshes
-        tire_RF.select_set(state=True)
-        tire_RR.select_set(state=True)
-        tire_LF.select_set(state=True)
-        tire_LR.select_set(state=True)
-        
-        #Set object mode
-        O.object.mode_set(mode='OBJECT', toggle=True)
-        
-        #Check tire deform data exist
-        tiredeformFound = False
-        for tireCol in bpy.data.collections:
-            if tireCol.name == "Tire Deformations" or tireCol.name == "Deformations":
-                tiredeformFound = True
-                break
-                
-        #set scene frame
+        tires = [scene.tire_RF, scene.tire_RR, scene.tire_LF, scene.tire_LR]
+
+        for tire in tires:
+            tire.select_set(True)
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=True)
+
         if scene.frame_end != 65:
             scene.frame_start = 1
-            scene.frame_end = 65  
-        
-        if tiredeformFound == False:
-            #Set all object origins to geometry center
-            O.object.origin_set(type='ORIGIN_GEOMETRY', center = 'BOUNDS')
+            scene.frame_end = 65
 
-            #making wheel mesh array
+        if tire_deform_collection() is not None:
+            show_message_box(
+                ["Tire Deformation Exist, please cleanup first"],
+                "Tire Deform Generate", "ERROR",
+            )
+            return {'FINISHED'}
 
-            wheel_mesh_array = [tire_RF, tire_RR, tire_LF, tire_LR]
-            tire_name = ["LF", "LR", "RF", "RR"]
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
 
-            #checking for linked meshes and unlinking them
-            check_and_unlink_objects(wheel_mesh_array)
-        
-            #remove old armature modifiers from meshes
-            for wheel in wheel_mesh_array:
-                clear_old_armature_modifiers(wheel)
-                #C.scene.objects[wheel.name].select_set(False) #Deselect mesh
-                
-            ##Create Tire Deform collection
-            filepath = "C:\\Dev\\PROJECTS\\GTR\\SOURCE_ART\\VEHICLES\\_tires\\tire_deformation_rig.blend"
+        check_and_unlink_objects(tires)
+        for tire in tires:
+            clear_old_armature_modifiers(tire)
 
-            with bpy.data.libraries.load(filepath) as (data_from, data_to):
-                data_to.collections.append("Tire Deformations")
-    
-            collection = bpy.data.collections.get("Tire Deformations")
-            bpy.context.scene.collection.children.link(collection)
-            
-            #create armature modifiers from meshes
-            for n in tire_name:
-                addmodifier_linktire_deform(n, wheel_mesh_array)
-            
-            #position tire mesh
-            for name in tire_name:
-                position_tire_deform(name, wheel_mesh_array)
-               
-            #Clear object position transformresult
-            for wheel in wheel_mesh_array:
-                C.scene.objects[wheel.name].select_set(True)
-                O.object.transform_apply(location=True, rotation=False, scale=False)
-                
-        else:
-            confmessage = ["Tire Deformation Exist, please cleanup first"]
-            ShowMessageBox(confmessage, "Tire Deform Generate", "ERROR")
-   
+        with bpy.data.libraries.load(TIRE_RIG_BLEND_PATH) as (data_from, data_to):
+            data_to.collections.append("Tire Deformations")
+        context.scene.collection.children.link(bpy.data.collections["Tire Deformations"])
+
+        for corner in TIRE_CORNERS:
+            addmodifier_linktire_deform(corner, tires)
+        for corner in TIRE_CORNERS:
+            position_tire_deform(corner, tires)
+
+        # Bake the offsets that snapping introduced back into the meshes.
+        for tire in tires:
+            tire.select_set(True)
+            bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+
         return {'FINISHED'}
-        
-class ApplyTireWeight(bpy.types.Operator, TireDeformPanel, globalVariables):
+
+
+class ApplyTireWeight(bpy.types.Operator):
     bl_idname = "mesh.applytireweight"
     bl_label = "Transfer Weight"
-    bl_description = "Toggle Mesh Wireframe"
+    bl_description = "Transfer the deform rig's vertex weights onto the tire meshes"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        amatireOb = []
-        tiredeformFound = False
-        for tireCol in bpy.data.collections:
-            if tireCol.name == "Tire Deformations" or tireCol.name == "Deformations":
-                for o in bpy.context.scene.objects:
-                    if o.name == "tire_deformation_rig LF" or o.name == "tire_deformation_rig LR" or o.name == "tire_deformation_rig RF" or o.name == "tire_deformation_rig RR":
-                        if not o in amatireOb:
-                            amatireOb.append(o)
-        if len(amatireOb) == 4:
-            tiredeformFound = True
-        return (((tiredeformFound == True))) 
-    
+        if tire_deform_collection() is None:
+            return False
+        rig_names = {f"tire_deformation_rig {corner}" for corner in TIRE_CORNERS}
+        found = {obj.name for obj in context.scene.objects} & rig_names
+        return len(found) == len(rig_names)
+
     def execute(self, context):
         scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #Set variables for vehicle tire meshes
-        tire_RF = scene.tire_RF
-        tire_RR = scene.tire_RR
-        tire_LF = scene.tire_LF
-        tire_LR = scene.tire_LR
-        
-        #Select all tire meshes
-        tire_RF.select_set(state=True)
-        tire_RR.select_set(state=True)
-        tire_LF.select_set(state=True)
-        tire_LR.select_set(state=True)
-        
-        #Set object mode
-        O.object.mode_set(mode='OBJECT', toggle=True)
-        
-        #making wheel mesh array
+        tires = [scene.tire_RF, scene.tire_RR, scene.tire_LF, scene.tire_LR]
 
-        wheel_mesh_array = [tire_RF, tire_RR, tire_LF, tire_LR]
-        
-        #transfer weight mesh
-        tire_name = ["LF", "LR", "RF", "RR"]
-        for name in tire_name:
-            transfer_tire_weight(name, wheel_mesh_array)
-        
-   
+        for tire in tires:
+            tire.select_set(True)
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=True)
+
+        for corner in TIRE_CORNERS:
+            transfer_tire_weight(corner, tires)
         return {'FINISHED'}
-        
-class S4SetupRenderScene(bpy.types.Operator, VertexAOPanel, globalVariables):
+
+
+# ---------------------------------------------------------------------------
+# Scene setup / vertex AO operators
+# ---------------------------------------------------------------------------
+
+class S4SetupRenderScene(bpy.types.Operator):
     bl_idname = "s4veh.setupscene"
     bl_label = "Setup Render Scene"
-    bl_description = ""
+    bl_description = "Apply the standard S4 EEVEE render settings to this scene"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     def execute(self, context):
         scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #reparing render scene
-        if not C.scene.render.engine == 'BLENDER_EEVEE':
-            C.scene.render.engine = 'BLENDER_EEVEE'
-            
-        bpy.context.scene.eevee.taa_render_samples = 128
-        #Ambient Occlusion
-        bpy.context.scene.eevee.use_gtao = True
-        bpy.context.scene.eevee.gtao_distance = 200.0
-        bpy.context.scene.eevee.gtao_factor = 1
-        bpy.context.scene.eevee.gtao_quality = 0.25
-        bpy.context.scene.eevee.use_gtao_bent_normals = True
-        bpy.context.scene.eevee.use_gtao_bounce = True
+        scene.render.engine = 'BLENDER_EEVEE'
+        eevee = scene.eevee
+        eevee.taa_render_samples = 128
 
-        
-        #Screen Space Reflections
-        bpy.context.scene.eevee.use_ssr = True
-        bpy.context.scene.eevee.use_ssr_halfres = False
-        bpy.context.scene.eevee.use_ssr_refraction = True
-        bpy.context.scene.eevee.ssr_quality = 1
-        bpy.context.scene.eevee.ssr_max_roughness = 0.758
-        bpy.context.scene.eevee.ssr_thickness = 10
-        bpy.context.scene.eevee.ssr_border_fade = 0.079
-        bpy.context.scene.eevee.ssr_firefly_fac = 0
-        
-        #Color Manag
-        bpy.context.scene.view_settings.view_transform = 'Filmic'
-        
-        
+        # Ambient Occlusion
+        eevee.use_gtao = True
+        eevee.gtao_distance = 200.0
+        eevee.gtao_factor = 1
+        eevee.gtao_quality = 0.25
+        eevee.use_gtao_bent_normals = True
+        eevee.use_gtao_bounce = True
+
+        # Screen Space Reflections
+        eevee.use_ssr = True
+        eevee.use_ssr_halfres = False
+        eevee.use_ssr_refraction = True
+        eevee.ssr_quality = 1
+        eevee.ssr_max_roughness = 0.758
+        eevee.ssr_thickness = 10
+        eevee.ssr_border_fade = 0.079
+        eevee.ssr_firefly_fac = 0
+
+        # Color Management
+        scene.view_settings.view_transform = 'Filmic'
         return {'FINISHED'}
 
-class BakeVertexAO(bpy.types.Operator, VertexAOPanel, globalVariables):
+
+class BakeVertexAO(bpy.types.Operator):
     bl_idname = "mesh.bakevertexao"
     bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
+    bl_description = "Switch the scene to a raw Cycles AO bake and start baking to vertex colours"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        isObj_selected = False
-        sel_obj = bpy.context.selected_objects
-        if sel_obj:
-            isObj_selected = True
-        return (((isObj_selected == True)))
+        return bool(context.selected_objects)
 
     def assign_ambient_node(self, obj):
-        for mat in obj.data.materials:
-            mat.use_nodes = True
-            material = mat.node_tree
-            nodes = mat.node_tree.nodes
+        """Wire an Ambient Occlusion node straight into each Material Output."""
+        for material in obj.data.materials:
+            if material is None:
+                continue
+            material.use_nodes = True
+            nodes = material.node_tree.nodes
 
-            #Find Output node
-            material_output = None
-            for node in nodes:
-                if node.type == "OUTPUT_MATERIAL":
-                    material_output = node
-                    break
-                
-            # Perhaps the nodes hasn't been found then you'll have to create it
-            if material_output is None:
-                material_output = nodes.new("ShaderNodeOutputMaterial")
-    
+            output = next((n for n in nodes if n.type == 'OUTPUT_MATERIAL'), None)
+            if output is None:
+                output = nodes.new("ShaderNodeOutputMaterial")
 
-            #Find Ambient node
-            group = None
-            for ao_node in nodes:
-                if ao_node.type == "AMBIENT_OCCLUSION":
-                    group = ao_node
-                    break
-            if group is None:
-                group = nodes.new('ShaderNodeAmbientOcclusion')
-                group.location = (300, 600)
-                group.inputs[1].default_value = 1000
+            ao_node = next((n for n in nodes if n.type == 'AMBIENT_OCCLUSION'), None)
+            if ao_node is None:
+                ao_node = nodes.new('ShaderNodeAmbientOcclusion')
+                ao_node.location = (300, 600)
+                ao_node.inputs[1].default_value = 1000
 
+            material.node_tree.links.new(ao_node.outputs[0], output.inputs[0])
 
-            material.links.new(group.outputs[0], material_output.inputs[0])
-    
     def execute(self, context):
         scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #reparing render scene
-        if not C.scene.render.engine == 'CYCLES':
-            C.scene.render.engine = 'CYCLES'
-        bpy.context.scene.cycles.device = 'CPU'
-        if not C.scene.cycles.bake_type == 'COMBINED':
-            C.scene.cycles.bake_type = 'COMBINED'
-        if not C.scene.render.bake.target == 'VERTEX_COLORS':
-            C.scene.render.bake.target = 'VERTEX_COLORS'
-        bpy.context.scene.display_settings.display_device = 'sRGB'
-        bpy.context.scene.view_settings.view_transform = 'Raw'
-        bpy.context.scene.view_settings.look = 'None'
-        bpy.context.scene.view_settings.exposure = 0
-        bpy.context.scene.view_settings.gamma = 1
-        bpy.context.scene.sequencer_colorspace_settings.name = 'Linear'
-        if not C.scene.cycles.adaptive_threshold == 0.001:
-            C.scene.cycles.adaptive_threshold = 0.001
-        if not C.scene.cycles.samples == 4096:
-            C.scene.cycles.samples = 4096
-        if not C.scene.cycles.adaptive_min_samples == 1024:
-            C.scene.cycles.adaptive_min_samples = 1024
-        if not C.scene.cycles.time_limit == 0:
-            C.scene.cycles.time_limit = 0
-        
-        #set vertex color
-        for obj in bpy.context.selected_objects:
-            if obj.type != 'MESH': 
+
+        scene.render.engine = 'CYCLES'
+        scene.cycles.device = 'CPU'
+        scene.cycles.bake_type = 'COMBINED'
+        scene.render.bake.target = 'VERTEX_COLORS'
+        scene.cycles.adaptive_threshold = 0.001
+        scene.cycles.samples = 4096
+        scene.cycles.adaptive_min_samples = 1024
+        scene.cycles.time_limit = 0
+
+        # Bake the raw AO signal, no view transform baked into the colours.
+        scene.display_settings.display_device = 'sRGB'
+        scene.view_settings.view_transform = 'Raw'
+        scene.view_settings.look = 'None'
+        scene.view_settings.exposure = 0
+        scene.view_settings.gamma = 1
+        scene.sequencer_colorspace_settings.name = 'Linear'
+
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
                 continue
-            #if obj.data.color_attributes:
-                #attrs = obj.data.color_attributes
-                #for r in range(len(obj.data.color_attributes)-1, -1, -1):
-                    #attrs.remove(attrs[r])
-            if bpy.context.object.hide_render == True:
-                bpy.context.object.hide_render = False
-            #obj.data.color_attributes.new("Color", 'FLOAT_COLOR', 'POINT')
-            #assign ambient node to selected objects
+            obj.hide_render = False
             self.assign_ambient_node(obj)
-              
-        #Change viewport shading
-        my_areas = bpy.context.workspace.screens[0].areas
-        for area in my_areas:
-            for space in area.spaces:
-                if space.type == "VIEW_3D":
-                    space.shading.light = "FLAT"
-                    space.shading.color_type = "VERTEX"
-                    space.shading.type = 'SOLID'
-      
-        #Render
+
+        for space in iter_view3d_spaces():
+            space.shading.type = 'SOLID'
+            space.shading.light = 'FLAT'
+            space.shading.color_type = 'VERTEX'
+
         bpy.ops.object.bake('INVOKE_DEFAULT', type='COMBINED')
         return {'FINISHED'}
-        
-class ExitVertexAO(bpy.types.Operator, VertexAOPanel, globalVariables):
+
+
+class ExitVertexAO(bpy.types.Operator):
     bl_idname = "mesh.exitbakevertexao"
     bl_label = "Exit Vertex AO Mode"
-    bl_description = ""
+    bl_description = "Restore EEVEE and reconnect each material's shader to its output"
     bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #reparing render scene
-        if not C.scene.render.engine == 'BLENDER_EEVEE':
-            C.scene.render.engine = 'BLENDER_EEVEE'
-        bpy.context.scene.view_settings.view_transform = 'Filmic'
-        
-        #link default node
-        list_shading_node = ['S4 Vehicle Glass Shader', 'S4 Vehicle Bodywork Shader', 
-                            'S4 Vehicle Basic Shader', 'S4 Vehicle Tire Shader', 
-                            'S4 Vehicle Wheels Shader', 'S4 Vehicle LightGlass Shader',
-                            'str4_vehicleBodyworkShader'
-                           ]
-        material_output = None
-        material_root = None
-        for mat in D.materials:
-            mat.use_nodes = True
-            material = mat.node_tree
-            nodes = mat.node_tree.nodes
-            
-            for n in nodes:
-                if n.bl_idname == 'ShaderNodeOutputMaterial':
-                    material_output = n.inputs['Surface']
-                elif n.bl_idname == 'ShaderNodeGroup':
-                    if n.node_tree.name in list_shading_node:
-                        material_root = n.outputs['BSDF']
-                elif n.bl_idname == 'ShaderNodeBsdfPrincipled':
-                    material_root = n.outputs['BSDF']
-            
-            try:
-                mat.node_tree.links.new(material_root,material_output)              
-            except: 
-                pass
-                    
-        return {'FINISHED'}
-          
-        
-class SwitchLODValue(PropertyGroup):
-    lod_list: EnumProperty(
-        items=(
-            ("A", "LODA", "Switch beween LODA and B"),
-            ("B", "LODB", "Switch beween LODB and C"),
-            ("C", "LODC", "Switch beween LODC and D"),
-            ("CP", "CPIT", "Switch beween LODA and CPIT"),
-        ),
-        name="Select LOD to check",
-        )
 
-class SwitchLOD(bpy.types.Operator, LODValidPanel, globalVariables):
-    bl_idname = "mesh.switchlod"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def swap_lod(self, lod_sel, lod_next):
-        lod_found = False
-        all_coll = bpy.data.collections
-        if lod_sel in all_coll and lod_next in all_coll:
-            lod_found = True
-        if lod_found == True:
-            if bpy.data.collections[lod_sel].hide_viewport == True:
-                bpy.data.collections[lod_sel].hide_viewport = False
-                bpy.data.collections[lod_next].hide_viewport = True 
-            else:
-                bpy.data.collections[lod_sel].hide_viewport = True
-                bpy.data.collections[lod_next].hide_viewport = False
-        else:
-            print('Missing collection')
     def execute(self, context):
-        lod_sel = context.scene.lod_holder.lod_list
-        lod_list = ['LODA', 'LODB','LODC','LODD', 'CPIT']
-        if lod_sel == "A":
-            for myCol in bpy.data.collections:
-                for lod in lod_list:
-                    if myCol.name == lod:
-                        if lod == 'LODC' or lod == 'LODD' or lod == 'CPIT':
-                            bpy.data.collections[lod].hide_viewport = True
-            self.swap_lod('LODA', 'LODB')
-        if lod_sel == "B":
-            for myCol in bpy.data.collections:
-                for lod in lod_list:
-                    if myCol.name == lod:
-                        if lod == 'LODA' or lod == 'LODD' or lod == 'CPIT':
-                            bpy.data.collections[lod].hide_viewport = True
-            self.swap_lod('LODB', 'LODC')
-        if lod_sel == "C":
-            for myCol in bpy.data.collections:
-                for lod in lod_list:
-                    if myCol.name == lod:
-                        if lod == 'LODA' or lod == 'LODB' or lod == 'CPIT':
-                            bpy.data.collections[lod].hide_viewport = True
-            self.swap_lod('LODC', 'LODD')
-        if lod_sel == "CP":
-            for myCol in bpy.data.collections:
-                for lod in lod_list:
-                    if myCol.name == lod:
-                        if lod == 'LODB' or lod == 'LODC' or lod == 'LODD':
-                            bpy.data.collections[lod].hide_viewport = True
-            self.swap_lod('CPIT', 'LODA') 
-            
+        context.scene.render.engine = 'BLENDER_EEVEE'
+        context.scene.view_settings.view_transform = 'Filmic'
+
+        for material in bpy.data.materials:
+            material.use_nodes = True
+            surface = None
+            shader = None
+
+            for node in material.node_tree.nodes:
+                if node.bl_idname == 'ShaderNodeOutputMaterial':
+                    surface = node.inputs['Surface']
+                elif node.bl_idname == 'ShaderNodeGroup':
+                    if node.node_tree is not None and node.node_tree.name in S4_SHADER_GROUPS:
+                        shader = node.outputs['BSDF']
+                elif node.bl_idname == 'ShaderNodeBsdfPrincipled':
+                    shader = node.outputs['BSDF']
+
+            if surface is not None and shader is not None:
+                material.node_tree.links.new(shader, surface)
+
         return {'FINISHED'}
 
-class EnableLOD(bpy.types.Operator, LODValidPanel, globalVariables):
-    bl_idname = "mesh.enablelod"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        lod_list = ['LODA', 'LODB','LODC','LODD', 'CPIT']
-        
-        for myCol in bpy.data.collections:
-            if myCol.name in lod_list:
-                bpy.data.collections[myCol.name].hide_viewport = False
-                 
-        return {'FINISHED'}
 
-class SelectNgon(bpy.types.Operator, UtilitiToolPanel, globalVariables):
-    bl_idname = "mesh.selngon"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        # Go to object mode so that we can select
-        bpy.ops.object.mode_set(mode = 'OBJECT')
+# ---------------------------------------------------------------------------
+# Material / shape key utility operators
+# ---------------------------------------------------------------------------
 
-        # Get active object
-        obj = bpy.context.active_object
-        if obj:
-            # Select non quad faces (polygons)
-            for p in obj.data.polygons:
-                p.select = len(p.vertices) > 4
-
-            # Go in edit mode to show the result    
-            bpy.ops.object.mode_set(mode = 'EDIT')
-                 
-        return {'FINISHED'}
-
-class S4CorrectMat(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+class S4CorrectMat(bpy.types.Operator):
     bl_idname = "s4veh.correctmat"
     bl_label = "Correct Duplicate Material"
-    bl_description = ""
+    bl_description = "Repoint every '.001' style duplicate material slot back at the base material"
     bl_options = {'REGISTER', 'UNDO'}
-    
-    def remove_suffix(self, name):
-        # This function removes numerical suffixes like ".001", ".002", etc.
-        if name[-4] == '.' and name[-3:].isdigit():
+
+    @staticmethod
+    def remove_suffix(name):
+        """Strip a numerical suffix like '.001' from a material name."""
+        if len(name) > 4 and name[-4] == '.' and name[-3:].isdigit():
             return name[:-4]
         return name
-    
+
     def execute(self, context):
-        scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
         for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                # Iterate over the materials assigned to the object
-                for i, mat_slot in enumerate(obj.material_slots):
-                    if mat_slot.material:
-                        original_name = mat_slot.material.name
-                        # Check if the material has a numerical suffix
-                        base_name = self.remove_suffix(original_name)
-                
-                        # Try to find the base material in the scene
-                        base_material = bpy.data.materials.get(base_name)
-                
-                        if base_material:
-                            # Replace the material in the slot with the base material
-                            obj.material_slots[i].material = base_material
-                            print(f"Replaced {original_name} with {base_material.name} on {obj.name}")
-        
+            if obj.type != 'MESH':
+                continue
+            for slot in obj.material_slots:
+                if slot.material is None:
+                    continue
+                original_name = slot.material.name
+                base_material = bpy.data.materials.get(self.remove_suffix(original_name))
+                if base_material is not None and base_material is not slot.material:
+                    slot.material = base_material
+                    print(f"Replaced {original_name} with {base_material.name} on {obj.name}")
         return {'FINISHED'}
 
-class S4RemoveShapekey(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+
+class S4RemoveShapekey(bpy.types.Operator):
     bl_idname = "s4veh.removeshapekey"
     bl_label = "Remove Shapekey Selected Object"
-    bl_description = ""
+    bl_description = "Remove every shape key from the selected meshes"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        isObj_selected = False
-        sel_obj = bpy.context.selected_objects
-        if sel_obj:
-            isObj_selected = True
-        return (((isObj_selected == True)))
-    
-    def execute(self, context):
-        scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        # Get all selected objects
-        selected_objects = C.selected_objects
+        return bool(context.selected_objects)
 
-        #Iterate through each selected object
-        for obj in selected_objects:
-            # Ensure we are working with a mesh object
-            if obj.type == 'MESH':
-                # Get the shape key data
-                shape_keys = obj.data.shape_keys
-                if shape_keys:
-                    # Iterate through the shape keys from last to first and remove them
-                    for index in reversed(range(len(shape_keys.key_blocks))):
-                        obj.shape_key_remove(shape_keys.key_blocks[index])
-        
+    def execute(self, context):
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
+                continue
+            shape_keys = obj.data.shape_keys
+            if not shape_keys:
+                continue
+            # Removing from the end keeps the remaining indices valid.
+            for index in reversed(range(len(shape_keys.key_blocks))):
+                obj.shape_key_remove(shape_keys.key_blocks[index])
         return {'FINISHED'}
-        
-class S4ApplyLattice(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+
+
+class S4ApplyLattice(bpy.types.Operator):
     bl_idname = "s4veh.applylattice"
     bl_label = "Apply Lattice as Shapekey Selected Object"
-    bl_description = ""
+    bl_description = "Apply every modifier on the selected objects as a shape key"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        isObj_selected = False
-        sel_obj = bpy.context.selected_objects
-        if sel_obj:
-            isObj_selected = True
-        return (((isObj_selected == True)))
-    
+        return bool(context.selected_objects)
+
     def execute(self, context):
-        scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        for ob in C.selected_objects:
-            C.view_layer.objects.active = ob
-            for name in [m.name for m in ob.modifiers]:
-                O.object.modifier_apply_as_shapekey(modifier = name, keep_modifier=False)
-        
+        for obj in context.selected_objects:
+            context.view_layer.objects.active = obj
+            for name in [modifier.name for modifier in obj.modifiers]:
+                bpy.ops.object.modifier_apply_as_shapekey(modifier=name, keep_modifier=False)
         return {'FINISHED'}
-        
-class S4VehKeyShapekey(bpy.types.Operator, UtilitiToolPanel, globalVariables):
+
+
+class S4VehKeyShapekey(bpy.types.Operator):
     bl_idname = "s4veh.keyshapekey"
     bl_label = "Keyframe for Shapekey"
-    bl_description = ""
+    bl_description = "Key every shape key that sits at 0 on frame 1 and every one at 1 on frame 100"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        isObj_selected = False
-        sel_obj = bpy.context.selected_objects
-        if sel_obj:
-            isObj_selected = True
-        return (((isObj_selected == True)))
-    
-    def add_all_keyframe(self, obj):
-        if obj.type != 'MESH': return
+        return bool(context.selected_objects)
 
-        blocks = obj.data.shape_keys.key_blocks
-        if not blocks: return
-        for k in blocks:
-            if k.value == 0.00:
-                frame = 1
-                attr = "value"
-                k.keyframe_insert(attr, frame=frame)
-            if k.value == 1.00:
-                frame = 100
-                attr = "value"
-                k.keyframe_insert(attr, frame=frame)
-    
+    def add_all_keyframe(self, obj):
+        if obj.type != 'MESH' or not obj.data.shape_keys:
+            return
+        for key in obj.data.shape_keys.key_blocks:
+            if key.value == 0.00:
+                key.keyframe_insert("value", frame=1)
+            elif key.value == 1.00:
+                key.keyframe_insert("value", frame=100)
+
     def execute(self, context):
-        scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        for obj in C.selected_objects:
+        for obj in context.selected_objects:
             self.add_all_keyframe(obj)
-         
-        C.scene.frame_set(C.scene.frame_current)
-        
+        context.scene.frame_set(context.scene.frame_current)
         return {'FINISHED'}
 
-class S4VehLodRig(bpy.types.Operator, S4VehLODRigging, globalVariables):
+
+class S4VehLodRig(bpy.types.Operator):
     bl_idname = "s4veh.riglod"
     bl_label = "LOD Rigging"
-    bl_description = "Toggle Mesh Wireframe"
+    bl_description = "Build the export armature and place a bone on each wheel"
     bl_options = {'REGISTER', 'UNDO'}
-    
-    def add_child_bone(self, bone_name, parent_bone, wheel_mesh, armature_data):
-        #Create a new bone
-        new_bone = armature_data.data.edit_bones.new(bone_name)
-        #Set bone's size
-        new_bone.head = (0,0,0)
-        new_bone.tail = (0,40,0)
-        #Set bone's parent
-        new_bone.parent = parent_bone
-        #Set bone's location to wheel
-        new_bone.matrix = wheel_mesh.matrix_world
-        return new_bone
-    
+
     @classmethod
     def poll(cls, context):
-        return (((context.scene.s4veh_wheel_lf is not None   
-            and context.scene.s4veh_wheel_lr is not None 
-            and context.scene.s4veh_wheel_rf is not None
-            and context.scene.s4veh_wheel_rr is not None
-            and context.scene.s4veh_body_base is not None
-            and context.scene.s4veh_steeringwheel is not None )))
-    
+        scene = context.scene
+        return None not in (
+            scene.s4veh_wheel_lf, scene.s4veh_wheel_lr,
+            scene.s4veh_wheel_rf, scene.s4veh_wheel_rr,
+            scene.s4veh_body_base, scene.s4veh_steeringwheel,
+        )
+
+    def add_child_bone(self, bone_name, parent_bone, wheel_mesh, armature_object):
+        new_bone = armature_object.data.edit_bones.new(bone_name)
+        new_bone.head = (0, 0, 0)
+        new_bone.tail = (0, 40, 0)
+        new_bone.parent = parent_bone
+        new_bone.matrix = wheel_mesh.matrix_world
+        return new_bone
+
     def execute(self, context):
         scene = context.scene
-        C = bpy.context 
-        D = bpy.data
-        O = bpy.ops
-        
-        #Set variables for vehicle wheel meshes
         wheel_LF = scene.s4veh_wheel_lf
         wheel_LR = scene.s4veh_wheel_lr
         wheel_RF = scene.s4veh_wheel_rf
         wheel_RR = scene.s4veh_wheel_rr
         steeringwheel = scene.s4veh_steeringwheel
-        bodybaselod = scene.s4veh_body_base
-        
-        #Select all part rig meshes
-        wheel_LF.select_set(state=True)
-        wheel_LR.select_set(state=True)
-        wheel_RF.select_set(state=True)
-        wheel_RR.select_set(state=True)
-        steeringwheel.select_set(state=False)
-        
-        #Set object mode
-        O.object.mode_set(mode='OBJECT', toggle=True)
+        body_base = scene.s4veh_body_base
 
-        #Set all object origins to geometry center
-        O.object.origin_set(type='ORIGIN_GEOMETRY', center = 'BOUNDS')
+        for wheel in (wheel_LF, wheel_LR, wheel_RF, wheel_RR):
+            wheel.select_set(True)
+        steeringwheel.select_set(False)
 
-        #making rig part mesh array
-        wheel_mesh_array = [wheel_LF, wheel_LR, wheel_RF, wheel_RR, steeringwheel]
-        
-        #Apply object transform
-        O.object.transform_apply(location = False, rotation = True, scale = True)
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=True)
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
-        #Create armature object
-        armature = D.armatures.new('Armature')
-        bpy.data.armatures['Armature'].name = "Armature_LOD"
-        armature.name = ('Armature_LOD')
-        armature_object = D.objects.new('Armature', armature)
-        
-        #Link armature object to our scene
-        C.collection.objects.link(armature_object)
+        armature = bpy.data.armatures.new('Armature')
+        armature.name = ARMATURE_NAME
+        armature_object = bpy.data.objects.new('Armature', armature)
+        context.collection.objects.link(armature_object)
 
-        #Make armature variable
-        armature_data = D.objects[armature_object.name]
+        context.view_layer.objects.active = armature_object
+        armature_object.select_set(True)
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
-        #Set armature active
-        C.view_layer.objects.active = armature_data
+        armature_object.show_in_front = True
+        armature_object.data.show_axes = True
 
-        #Set armature selceted
-        armature_data.select_set(state=True)
+        root_bone = armature_object.data.edit_bones.new('Root')
+        root_bone.head = (0, 0, 0)
+        root_bone.tail = (0, 40, 0)
+        root_bone.matrix = body_base.matrix_world
 
-        #Set edit mode
-        O.object.mode_set(mode='EDIT', toggle=False)
+        for bone_name, wheel in (
+            ('PhysWheel_LF', wheel_LF), ('PhysWheel_LR', wheel_LR),
+            ('PhysWheel_RF', wheel_RF), ('PhysWheel_RR', wheel_RR),
+            ('FixedWheel_LF', wheel_LF), ('FixedWheel_LR', wheel_LR),
+            ('FixedWheel_RF', wheel_RF), ('FixedWheel_RR', wheel_RR),
+            ('SteeringWheel', steeringwheel),
+        ):
+            self.add_child_bone(bone_name, root_bone, wheel, armature_object)
 
-        #Set bones In front and show axis
-        armature_data.show_in_front = True
-        armature_data.data.show_axes = True
-        
-        #Add root bone
-        root_bone = armature_data.data.edit_bones.new('Root')
-        #Set its orientation and size
-        root_bone.head = (0,0,0)
-        root_bone.tail = (0,40,0)
-        #Set its location to vehicle base mesh
-        root_bone.matrix = bodybaselod.matrix_world
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=True)
+        bpy.ops.object.select_all(action='DESELECT')
+        return {'FINISHED'}
 
-        #Add wheel bones to armature
-        self.add_child_bone('PhysWheel_LF', root_bone, wheel_LF, armature_data)
-        self.add_child_bone('PhysWheel_LR', root_bone, wheel_LR, armature_data)
-        self.add_child_bone('PhysWheel_RF', root_bone, wheel_RF, armature_data)
-        self.add_child_bone('PhysWheel_RR', root_bone, wheel_RR, armature_data)
-        self.add_child_bone('FixedWheel_LF', root_bone, wheel_LF, armature_data)
-        self.add_child_bone('FixedWheel_LR', root_bone, wheel_LR, armature_data)
-        self.add_child_bone('FixedWheel_RF', root_bone, wheel_RF, armature_data)
-        self.add_child_bone('FixedWheel_RR', root_bone, wheel_RR, armature_data)
-        self.add_child_bone('SteeringWheel', root_bone, steeringwheel, armature_data)
 
-        #Set object mode
-        O.object.mode_set(mode='OBJECT', toggle=True)
-        
-        ##Select all part rig meshes
-        wheel_LF.select_set(state=True)
-        wheel_LR.select_set(state=True)
-        wheel_RF.select_set(state=True)
-        wheel_RR.select_set(state=True)
-        steeringwheel.select_set(state=False)
-        
-        #Clear object position transformresult
-        #for wheel in wheel_mesh_array:
-            #C.scene.objects[wheel.name].select_set(True)
-            #O.object.transform_apply(location=True, rotation=False, scale=False)
-                
-        #Deselect all objects
-        O.object.select_all(action='DESELECT')
-                 
-        return {'FINISHED'}        
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
 
 classes = [
-    CUSTOM_objectCollection,
+    S4VehCheckResult,
+    SwitchLODValue,
+    S4VEH_UL_check_results,
     CUSTOM_OT_clearList,
-    MATERIAL_UL_matslots_example,
     ValidationToolMainPanel,
     ShaderToolPanel,
-    UtilitiToolPanel,
+    UtilitiesToolPanel,
     TireDeformPanel,
     VertexAOPanel,
     S4VehLODRigging,
@@ -2388,6 +1861,7 @@ classes = [
     ExportPanel,
     ExportVehicleOperator,
     InitialCheck,
+    S4CheckPBR,
     BasicShader,
     BodyworkShader,
     GlassShader,
@@ -2399,12 +1873,11 @@ classes = [
     ToggleBackFace,
     ToggleViewColor,
     ToggleWireFrame,
-    CreareTireDeform,
+    CreateTireDeform,
     S4SetupRenderScene,
     ApplyTireWeight,
     BakeVertexAO,
     ExitVertexAO,
-    SwitchLODValue,
     SwitchLOD,
     EnableLOD,
     SelectNgon,
@@ -2412,59 +1885,80 @@ classes = [
     S4CorrectMat,
     S4RemoveShapekey,
     S4ApplyLattice,
-    S4VehKeyShapekey
+    S4VehKeyShapekey,
 ]
+
+
+def scene_properties():
+    """Every property this addon hangs off bpy.types.Scene.
+
+    Built in one place so register and unregister can never drift apart.
+    """
+    def object_pointer(name, description):
+        return PointerProperty(
+            type=bpy.types.Object, poll=object_search_poll,
+            name=name, description=description,
+        )
+
+    return {
+        "custom": CollectionProperty(type=S4VehCheckResult),
+        "custom_index": IntProperty(default=5),
+        "checkResult_all": BoolProperty(
+            name="Show check results", description="Result list is populated"),
+        "wheel_speed": FloatProperty(
+            name="Wheel Speed", description="Check wheel speed node",
+            min=0.0, max=1.0, default=0.0, update=wheel_speed),
+        "dirt_value": FloatProperty(
+            name="Dirt Level", description="Adjust dirt value",
+            min=0.0, max=1.0, default=0.0, update=dirt_value),
+        "dust_value": FloatProperty(
+            name="Dust Level", description="Adjust dust value",
+            min=0.0, max=1.0, default=0.0, update=dust_value),
+        "mud_value": FloatProperty(
+            name="Mud Level", description="Adjust mud value",
+            min=0.0, max=1.0, default=0.0, update=mud_value),
+        "deform_value": FloatProperty(
+            name="Deform Level", description="Adjust deformation value",
+            min=0.0, max=1.0, default=0.0, update=deform_value),
+        "lights_value": FloatProperty(
+            name="Lights Intensity", description="Adjust lighting value",
+            min=0.0, max=10.0, default=0.0, update=lights_value),
+        "tire_RF": object_pointer("Tire RF", "Front Right Vehicle Tire Mesh"),
+        "tire_RR": object_pointer("Tire RR", "Rear Right Vehicle Tire Mesh"),
+        "tire_LF": object_pointer("Tire LF", "Front Left Vehicle Tire Mesh"),
+        "tire_LR": object_pointer("Tire LR", "Rear Left Vehicle Tire Mesh"),
+        "s4veh_wheel_lf": object_pointer("Pick Wheel LF", "Select LF Wheel"),
+        "s4veh_wheel_lr": object_pointer("Pick Wheel LR", "Select LR Wheel"),
+        "s4veh_wheel_rf": object_pointer("Pick Wheel RF", "Select RF Wheel"),
+        "s4veh_wheel_rr": object_pointer("Pick Wheel RR", "Select RR Wheel"),
+        "s4veh_steeringwheel": object_pointer("Pick SteeringWheel", "Select Steering Wheel"),
+        "s4veh_body_base": object_pointer("Pick Body Part", "Select Body Base Mesh"),
+        "lod_holder": PointerProperty(type=SwitchLODValue),
+    }
+
+
+# Names actually attached to bpy.types.Scene, so unregister only removes what
+# register managed to add.
+_registered_scene_props = []
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    
-    bpy.types.Scene.custom = CollectionProperty(type=CUSTOM_objectCollection)
-    bpy.types.Scene.custom_index = IntProperty(default=5)
-    bpy.types.Scene.wheel_speed = bpy.props.FloatProperty(name = "Wheel Speed", description = "Check wheel speed node",min = 0.0, max = 1.0, default =  0.0, update=wheel_speed)
-    bpy.types.Scene.dirt_value = bpy.props.FloatProperty(name = "Dirt Level", description = "Adjust dirt value",min = 0.0, max = 1.0, default =  0.0, update=dirt_value)
-    bpy.types.Scene.dust_value = bpy.props.FloatProperty(name = "Dust Level", description = "Adjust dust value",min = 0.0, max = 1.0, default =  0.0, update=dust_value)
-    bpy.types.Scene.mud_value = bpy.props.FloatProperty(name = "Mud Level", description = "Adjust mud value",min = 0.0, max = 1.0, default =  0.0, update=mud_value)
-    bpy.types.Scene.deform_value = bpy.props.FloatProperty(name = "Deform Level", description = "Adjust deformation value",min = 0.0, max = 1.0, default =  0.0, update=deform_value)
-    bpy.types.Scene.lights_value = bpy.props.FloatProperty(name = "Lights Intensity", description = "Adjust lighting value",min = 0.0, max = 10.0, default =  0.0, update=lights_value)
-    bpy.types.Scene.tire_RF = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Tire RF", description = "Front Right Vehicle Tire Mesh")
-    bpy.types.Scene.tire_RR = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Tire RR", description = "Rear Right Vehicle Tire Mesh")
-    bpy.types.Scene.tire_LF = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Tire LF", description = "Front Left Vehicle Tire Mesh")
-    bpy.types.Scene.tire_LR = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Tire LF", description = "Rear Left Vehicle Tire Mesh")
-    bpy.types.Scene.s4veh_wheel_lf = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick Wheel LF", description = "Select LF Wheel")
-    bpy.types.Scene.s4veh_wheel_lr = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick Wheel LR", description = "Select LF Wheel")
-    bpy.types.Scene.s4veh_wheel_rf = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick Wheel RF", description = "Select LF Wheel")
-    bpy.types.Scene.s4veh_wheel_rr = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick Wheel RR", description = "Select LF Wheel")
-    bpy.types.Scene.s4veh_steeringwheel = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick SteeringWheel", description = "Select LF Wheel")
-    bpy.types.Scene.s4veh_body_base = bpy.props.PointerProperty(type=bpy.types.Object, poll = object_search_poll, name= "Pick Body Part", description = "Select LF Wheel")
-    bpy.types.Scene.lod_holder = bpy.props.PointerProperty(type=SwitchLODValue)
+
+    for name, prop in scene_properties().items():
+        setattr(bpy.types.Scene, name, prop)
+        _registered_scene_props.append(name)
 
 
 def unregister():
+    while _registered_scene_props:
+        name = _registered_scene_props.pop()
+        if hasattr(bpy.types.Scene, name):
+            delattr(bpy.types.Scene, name)
+
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-
-    # del bpy.types.Scene.external_materials
-    del bpy.types.Scene.custom
-    del bpy.types.Scene.custom_index
-    del bpy.types.Scene.wheel_speed
-    del bpy.types.Scene.dirt_value
-    del bpy.types.Scene.dust_value
-    del bpy.types.Scene.mud_value
-    del bpy.types.Scene.deform_value
-    del bpy.types.Scene.lights_value
-    del bpy.types.Scene.tire_RF
-    del bpy.types.Scene.tire_RR
-    del bpy.types.Scene.tire_LF
-    del bpy.types.Scene.tire_LR
-    del bpy.types.Scene.lod_holder
-    del bpy.types.Scene.s4veh_wheel_lf
-    del bpy.types.Scene.s4veh_wheel_lr
-    del bpy.types.Scene.s4veh_wheel_rf
-    del bpy.types.Scene.s4veh_wheel_rr
-    del bpy.types.Scene.s4veh_steeringwheel
-    del bpy.types.Scene.s4veh_body_base
 
 
 if __name__ == "__main__":
