@@ -1,7 +1,7 @@
 bl_info = {
-    "name": "S4 Env Validator",
+    "name": "S4 Env Tools",
     "author": "Glenda Studio",
-    "version": (1, 1),
+    "version": (1, 2),
     "blender": (3, 6, 10),
     "location": "Sidebar",
     "description": "Validates S4 environment assets requirements for uploading",
