@@ -286,7 +286,7 @@ class S4EnvLODToolPanel(bpy.types.Panel, globalVariables):
         row2.operator('mesh.switchlod', text="Swap")
 
         row2 = layout.row()
-        row2.operator('mesh.enablelod', text="Enable All LOD Viewport")
+        row2.operator('mesh.enablelod', text="Unhide All")
         row3 = layout.row()
         row3.operator("s4.envlodrename", text="Add LODA to selected mesh")
         row3 = layout.row()
@@ -327,7 +327,7 @@ class S4EnvUtilitiToolPanel(bpy.types.Panel, globalVariables):
         row3 = layout.row()
         row3.operator("s4.envselngon", text="Select N-Gons Face")
 
-class S4EnvInitialCheck(bpy.types.Operator, ValidationS4EnvToolMainPanel, globalVariables):
+class S4EnvInitialCheck(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcheck"
     bl_label = "Initial Check"
     bl_description = "Run through all check processes"
@@ -465,7 +465,7 @@ class S4EnvInitialCheck(bpy.types.Operator, ValidationS4EnvToolMainPanel, global
             ShowMessageBox(confmessage, "S4 Validation", "ERROR")
             return {"FINISHED"}
 
-class S4EnvCorrectMat(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables):
+class S4EnvCorrectMat(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcorrectmat"
     bl_label = "Correct Material"
     bl_description = "Correct Duplicate Material"
@@ -502,7 +502,7 @@ class S4EnvCorrectMat(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables
 
         return {'FINISHED'}
         
-class S4EnvToggleViewColor(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables):
+class S4EnvToggleViewColor(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envviewportcol"
     bl_label = "Toggle Viewport Color"
     bl_description = "Change Viewport Color for backface checking"
@@ -536,7 +536,7 @@ class S4EnvToggleViewColor(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVari
                   
         return {'FINISHED'}
 
-class S4EnvToggleWireFrame(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables):
+class S4EnvToggleWireFrame(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envviewwireframe"
     bl_label = "Toggle Viewport Wire Frame"
     bl_description = "Toggle Mesh Wireframe"
@@ -552,10 +552,10 @@ class S4EnvToggleWireFrame(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVari
                         space.overlay.show_wireframes = True            
         return {'FINISHED'}       
         
-class S4EnvSelectNgon(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables):
+class S4EnvSelectNgon(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envselngon"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
+    bl_label = "Select Ngons"
+    bl_description = "Select all non-quad faces on the active mesh"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
@@ -574,7 +574,7 @@ class S4EnvSelectNgon(bpy.types.Operator, S4EnvUtilitiToolPanel, globalVariables
                  
         return {'FINISHED'}
 
-class S4EnvCheckUVs(bpy.types.Operator, S4EnvCheckToolPanel, globalVariables):
+class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs"
     bl_description = "Check UV range and attributes"
@@ -650,6 +650,30 @@ class S4EnvCheckUVs(bpy.types.Operator, S4EnvCheckToolPanel, globalVariables):
         
         return {'FINISHED'}
 
+# LOD meshes end in LODA/LODB/LODC, optionally followed by Blender's duplicate
+# suffix (".001"). Matching the suffix matters: DuplicateLODA below creates names
+# like "Wall_LODB.001", which a plain endswith("LODB") would never see.
+LOD_NAME_RE = re.compile(r"LOD([ABC])(?:\.\d+)?$")
+
+
+def lodOf(obj):
+    """Return "LODA"/"LODB"/"LODC" for a LOD-named mesh, or None for anything else."""
+    if obj.type != 'MESH':
+        return None
+    match = LOD_NAME_RE.search(obj.name)
+    return "LOD" + match.group(1) if match else None
+
+
+def setHidden(context, obj, hidden):
+    """Hide/show an object through every visibility flag an artist can trip over."""
+    obj.hide_viewport = hidden
+    obj.hide_render = hidden
+    # hide_set is the eye icon, which hide_viewport does not override. Objects
+    # outside the active view layer have no eye to set.
+    if obj.name in context.view_layer.objects:
+        obj.hide_set(hidden)
+
+
 class SwitchLODValue(PropertyGroup):
     lod_list: EnumProperty(
         items=(
@@ -658,66 +682,72 @@ class SwitchLODValue(PropertyGroup):
         ),
         name="Select LOD to check",
         )
-
-class SwitchLOD(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
-    bl_idname = "mesh.switchlod"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def swap_lod(self, lod_sel, lod_next):
-        # Check if any "lod_sel" mesh is currently visible
-        loda_is_visible = any(
-            obj.type == 'MESH' and obj.name.endswith(lod_sel) and not obj.hide_viewport
-            for obj in bpy.data.objects
+    shown: StringProperty(
+        name="Shown LOD",
+        description="Which LOD the Swap button last made visible",
+        default="",
         )
 
-        # Determine whether to show "lod_sel" (true) or "lod_next" (false)
-        show_loda = not loda_is_visible
-
-        for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                if obj.name.endswith(lod_sel):
-                    # Show "lod_sel" meshes if toggling to "lod_sel"
-                    obj.hide_viewport = not show_loda
-                    obj.hide_render = not show_loda
-                elif obj.name.endswith(lod_next):
-                    # Show "lod_next" meshes if toggling to "lod_next"
-                    obj.hide_viewport = show_loda
-                    obj.hide_render = show_loda
-                else:
-                    # Hide all other meshes
-                    obj.hide_viewport = True
-                    obj.hide_render = True
-
-    def execute(self, context):
-        lod_sel = context.scene.lod_holder.lod_list
-        lod_list = ['LODA', 'LODB']
-        if lod_sel == "A":
-            self.swap_lod('LODA', 'LODB')
-        if lod_sel == "B":
-            self.swap_lod('LODB', 'LODC')
-
-        return {'FINISHED'}
-
-class EnableLOD(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
-    bl_idname = "mesh.enablelod"
-    bl_label = "Bake Vertex AO"
-    bl_description = "Toggle Mesh Wireframe"
+class SwitchLOD(bpy.types.Operator, globalVariables):
+    bl_idname = "mesh.switchlod"
+    bl_label = "Swap LOD"
+    bl_description = "Toggle viewport visibility between the two LODs of the selected pair"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        for obj in bpy.context.scene.objects:
-            if (obj.type in {'MESH', 'EMPTY'}):
-                # Toggle the viewport visibility
-                obj.hide_viewport = False
+        holder = context.scene.lod_holder
+        pair = ("LODA", "LODB") if holder.lod_list == "A" else ("LODB", "LODC")
 
+        # Flip to the other half of the pair. Reading the stored state instead of
+        # sampling object visibility means a single manually hidden mesh can no
+        # longer invert the swap direction.
+        target = pair[1] if holder.shown == pair[0] else pair[0]
+
+        tagged = {pair[0]: [], pair[1]: []}
+        for obj in context.scene.objects:
+            lod = lodOf(obj)
+            if lod in tagged:
+                tagged[lod].append(obj)
+
+        if not tagged[target]:
+            other = pair[1] if target == pair[0] else pair[0]
+            if tagged[other]:
+                self.report({'WARNING'}, f"No {target} meshes in the scene - nothing to swap to")
+            else:
+                self.report({'WARNING'}, f"No {pair[0]} or {pair[1]} meshes in the scene")
+            return {'CANCELLED'}
+
+        # Only LOD meshes are touched. Everything else in the file keeps whatever
+        # visibility the artist gave it.
+        for lod, objects in tagged.items():
+            for obj in objects:
+                setHidden(context, obj, lod != target)
+
+        holder.shown = target
+        self.report({'INFO'}, f"Showing {target} ({len(tagged[target])} meshes)")
         return {'FINISHED'}
 
-class RenameLOD(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
+class EnableLOD(bpy.types.Operator, globalVariables):
+    bl_idname = "mesh.enablelod"
+    bl_label = "Unhide All Objects"
+    bl_description = "Unhide every mesh and empty, and reset the LOD swap state"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        count = 0
+        for obj in context.scene.objects:
+            if obj.type in {'MESH', 'EMPTY'}:
+                setHidden(context, obj, False)
+                count += 1
+
+        context.scene.lod_holder.shown = ""
+        self.report({'INFO'}, f"Unhid {count} objects")
+        return {'FINISHED'}
+
+class RenameLOD(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envlodrename"
     bl_label = "Add LODA to name"
-    bl_description = "Turn original mesh with LODA in name missing"
+    bl_description = "Append _LODA to the name of every selected mesh"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -741,10 +771,10 @@ class RenameLOD(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
 
         return {'FINISHED'}
 
-class DuplicateLODA(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
+class DuplicateLODA(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envlodaduplicate"
     bl_label = "Duplicate LODA to LODB"
-    bl_description = "Turn original mesh with LODA in name missing"
+    bl_description = "Copy the selected LODA meshes into a matching LODB set"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -811,10 +841,10 @@ class DuplicateLODA(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
 
         return {'FINISHED'}
 
-class DuplicateLODB(bpy.types.Operator, S4EnvLODToolPanel, globalVariables):
+class DuplicateLODB(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envlodbduplicate"
     bl_label = "Duplicate LODB to LODC"
-    bl_description = "Turn original mesh with LODA in name missing"
+    bl_description = "Copy the selected LODB meshes into a matching LODC set"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -914,12 +944,15 @@ def register():
 
 
 def unregister():
+    # Drop the Scene properties before the classes they point at. The other way
+    # round leaves Blender holding a PointerProperty to a de-registered struct,
+    # which is why the panel needed an addon disable/re-enable to come back.
+    del bpy.types.Scene.lod_holder
+    del bpy.types.Scene.s4envcustom_index
+    del bpy.types.Scene.custom
+
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-    
-    del bpy.types.Scene.custom
-    del bpy.types.Scene.s4envcustom_index
-    del bpy.types.Scene.lod_holder
 
 
 if __name__ == "__main__":
