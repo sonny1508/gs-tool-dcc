@@ -11,7 +11,6 @@ bl_info = {
 import os
 
 import bpy
-import numpy as np
 from bpy.props import (
     BoolProperty,
     CollectionProperty,
@@ -185,22 +184,6 @@ def clear_selection():
         obj.select_set(False)
 
 
-def selected_mesh_materials(context):
-    """Every material assigned to a selected mesh object.
-
-    The PBR check is scoped to the selection rather than the whole scene, so an
-    artist can validate one part without waiting on the rest of the vehicle.
-    """
-    materials = {}
-    for obj in context.selected_objects:
-        if obj.type != 'MESH':
-            continue
-        for slot in obj.material_slots:
-            if slot.material is not None:
-                materials.setdefault(slot.material.name_full, slot.material)
-    return list(materials.values())
-
-
 # ---------------------------------------------------------------------------
 # Shader value drivers (scene property update callbacks)
 # ---------------------------------------------------------------------------
@@ -273,190 +256,6 @@ def lights_value(self, context):
 
 def object_search_poll(self, object):
     return object.type in ('MESH', 'CURVE')
-
-
-# ---------------------------------------------------------------------------
-# PBR albedo range check
-# ---------------------------------------------------------------------------
-
-PBR_LUMA_MIN = 0.2
-PBR_LUMA_MAX = 0.8
-
-# The S4 shader groups publish the material's albedo on one of these output
-# pins - which one depends on the shader, but never both at once. The value is
-# computed by the shader, so it cannot be read straight off the node graph:
-# S4CheckPBR routes it through a temporary Emission node and bakes it.
-PBR_ALBEDO_SOCKETS = ("db_albedo", "Preview Albedo", "tmp_viewer")
-
-# Names for the throwaway node and colour attribute the bake needs. Both are
-# removed again once the check finishes, including when it fails part way.
-PBR_PROBE_NODE_NAME = "S4_PBR_ALBEDO_PROBE"
-PBR_PROBE_ATTRIBUTE_NAME = "S4_PBR_ALBEDO"
-
-
-def linear_to_srgb(values):
-    """Scene-linear -> sRGB display values, for a triplet or an array of rows."""
-    values = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
-    return np.where(
-        values <= 0.0031308,
-        values * 12.92,
-        1.055 * np.power(values, 1.0 / 2.4) - 0.055,
-    )
-
-
-def srgb_luma(srgb):
-    """Rec.709 luminance of an sRGB triplet or array of triplets."""
-    srgb = np.asarray(srgb, dtype=np.float32)
-    return srgb[..., 0] * 0.2126 + srgb[..., 1] * 0.7152 + srgb[..., 2] * 0.0722
-
-
-def albedo_luma_range(colors):
-    """(min, max) sRGB luminance over an array of scene-linear RGBA rows."""
-    luma = srgb_luma(linear_to_srgb(colors[:, :3]))
-    return float(luma.min()), float(luma.max())
-
-
-def material_output_node(node_tree):
-    """The active Material Output, falling back to the first one found."""
-    try:
-        node = node_tree.get_output_node('EEVEE')
-    except (AttributeError, TypeError):
-        node = None
-    if node is None:
-        node = next((n for n in node_tree.nodes if n.type == 'OUTPUT_MATERIAL'), None)
-    return node
-
-
-def find_albedo_socket(shader):
-    """The albedo output on a shader group, whichever of the names it uses."""
-    for name in PBR_ALBEDO_SOCKETS:
-        socket = shader.outputs.get(name)
-        if socket is not None:
-            return socket
-
-    # Fall back to a case and spacing insensitive match, so a group that spells
-    # the pin "Preview_Albedo" or "DB Albedo" still gets measured.
-    wanted = {name.lower().replace(" ", "").replace("_", "") for name in PBR_ALBEDO_SOCKETS}
-    for socket in shader.outputs:
-        if socket.name.lower().replace(" ", "").replace("_", "") in wanted:
-            return socket
-    return None
-
-
-def albedo_output_socket(material):
-    """Locate the albedo pin on the group feeding the Material Output.
-
-    Returns (socket, surface_input, note). A None socket means the material is
-    not wired the way the S4 shaders are, and `note` says which part is off.
-    """
-    if not material.use_nodes or material.node_tree is None:
-        return None, None, "material has no node tree"
-
-    output = material_output_node(material.node_tree)
-    if output is None:
-        return None, None, "no Material Output node"
-
-    surface = output.inputs.get("Surface")
-    if surface is None or not surface.is_linked:
-        return None, None, "nothing connected to Material Output"
-
-    shader = surface.links[0].from_node
-    socket = find_albedo_socket(shader)
-    if socket is None:
-        wanted = " or ".join(PBR_ALBEDO_SOCKETS)
-        return None, None, f"'{shader.name}' has no {wanted} output"
-    return socket, surface, ""
-
-
-def attach_albedo_probe(material, albedo_socket, surface_input):
-    """Send the albedo pin to the Material Output through a temporary Emission.
-
-    Baking that emission yields the evaluated albedo. Returns (probe node, the
-    socket that was driving the output) so the material can be put back.
-    """
-    node_tree = material.node_tree
-    original_source = surface_input.links[0].from_socket
-
-    probe = node_tree.nodes.new('ShaderNodeEmission')
-    probe.name = PBR_PROBE_NODE_NAME
-    probe.label = PBR_PROBE_NODE_NAME
-    probe.inputs['Strength'].default_value = 1.0
-    node_tree.links.new(albedo_socket, probe.inputs['Color'])
-    node_tree.links.new(probe.outputs['Emission'], surface_input)
-    return probe, original_source
-
-
-def detach_albedo_probe(material, probe, original_source, surface_input):
-    """Undo attach_albedo_probe and restore the original surface link."""
-    node_tree = material.node_tree
-    if probe is not None:
-        try:
-            node_tree.nodes.remove(probe)
-        except (ReferenceError, RuntimeError):
-            pass
-
-    # Safety net, in case the reference above went stale.
-    for node in list(node_tree.nodes):
-        if node.label == PBR_PROBE_NODE_NAME:
-            node_tree.nodes.remove(node)
-
-    if original_source is not None:
-        node_tree.links.new(original_source, surface_input)
-
-
-def add_probe_attribute(mesh):
-    """Add and activate the colour attribute the bake writes into."""
-    previous = mesh.color_attributes.active_color_name
-    attribute = mesh.color_attributes.new(
-        name=PBR_PROBE_ATTRIBUTE_NAME, type='FLOAT_COLOR', domain='CORNER')
-    mesh.color_attributes.active_color = attribute
-    return attribute, previous
-
-
-def remove_probe_attribute(mesh, attribute, previous_active):
-    if attribute is not None:
-        try:
-            mesh.color_attributes.remove(attribute)
-        except (ReferenceError, RuntimeError):
-            pass
-    if previous_active and previous_active in mesh.color_attributes:
-        mesh.color_attributes.active_color_name = previous_active
-
-
-def read_baked_albedo(obj, attribute):
-    """{material name: (min luma, max luma)} from one object's baked loops."""
-    mesh = obj.data
-    loop_count = len(mesh.loops)
-    if loop_count == 0 or len(attribute.data) != loop_count:
-        return {}
-
-    colors = np.empty(loop_count * 4, dtype=np.float32)
-    attribute.data.foreach_get('color', colors)
-    colors = colors.reshape(-1, 4)
-
-    # Loops are stored per polygon and in order, so repeating each polygon's
-    # material index by its loop count lines the two arrays up.
-    polygon_count = len(mesh.polygons)
-    material_index = np.empty(polygon_count, dtype=np.int32)
-    mesh.polygons.foreach_get('material_index', material_index)
-    loop_total = np.empty(polygon_count, dtype=np.int32)
-    mesh.polygons.foreach_get('loop_total', loop_total)
-    loop_material = np.repeat(material_index, loop_total)
-
-    if len(loop_material) != loop_count:
-        return {}
-
-    results = {}
-    for slot_index in np.unique(loop_material):
-        if slot_index >= len(obj.material_slots):
-            continue
-        material = obj.material_slots[slot_index].material
-        if material is None:
-            continue
-        rows = colors[loop_material == slot_index]
-        if rows.size:
-            results[material.name_full] = albedo_luma_range(rows)
-    return results
 
 
 # ---------------------------------------------------------------------------
@@ -777,9 +576,7 @@ class ValidationToolMainPanel(S4VehPanel, bpy.types.Panel):
 
         layout.label(text="Run all check")
 
-        column = layout.column(align=True)
-        column.operator("mesh.initialcheck", text="Check Scene")
-        column.operator("s4veh.checkpbr", text="Check PBR (0.2 - 0.8)")
+        layout.operator("mesh.initialcheck", text="Check Scene")
 
         if scn.checkResult_all:
             layout.template_list("S4VEH_UL_check_results", "", scn, "custom", scn, "custom_index")
@@ -1048,166 +845,6 @@ class InitialCheck(bpy.types.Operator):
 
         scene.checkResult_all = True
         show_message_box(["Checking Finished."], "S4 Validation", "CHECKMARK")
-        return {'FINISHED'}
-
-
-class S4CheckPBR(bpy.types.Operator):
-    bl_idname = "s4veh.checkpbr"
-    bl_label = "Check PBR (0.2 - 0.8)"
-    bl_description = (
-        "Bake the albedo output of every material on the selected meshes and "
-        "flag any whose sRGB luminance falls outside the 0.2 - 0.8 PBR range"
-    )
-
-    @classmethod
-    def poll(cls, context):
-        return any(obj.type == 'MESH' for obj in context.selected_objects)
-
-    def capture_render_state(self, scene):
-        bake = scene.render.bake
-        return {
-            'engine': scene.render.engine,
-            'target': bake.target,
-            'use_selected_to_active': bake.use_selected_to_active,
-            'bake_type': scene.cycles.bake_type,
-            'samples': scene.cycles.samples,
-            'use_adaptive_sampling': scene.cycles.use_adaptive_sampling,
-            'time_limit': scene.cycles.time_limit,
-        }
-
-    def apply_bake_state(self, scene):
-        """An emission bake needs a single sample, it is not integrating light."""
-        scene.render.engine = 'CYCLES'
-        scene.render.bake.target = 'VERTEX_COLORS'
-        scene.render.bake.use_selected_to_active = False
-        scene.cycles.bake_type = 'EMIT'
-        scene.cycles.samples = 1
-        scene.cycles.use_adaptive_sampling = False
-        scene.cycles.time_limit = 0
-
-    def restore_render_state(self, scene, state):
-        bake = scene.render.bake
-        bake.target = state['target']
-        bake.use_selected_to_active = state['use_selected_to_active']
-        scene.cycles.bake_type = state['bake_type']
-        scene.cycles.samples = state['samples']
-        scene.cycles.use_adaptive_sampling = state['use_adaptive_sampling']
-        scene.cycles.time_limit = state['time_limit']
-        scene.render.engine = state['engine']
-
-    def execute(self, context):
-        scene = context.scene
-        scene.custom.clear()
-
-        if not hasattr(scene, "cycles"):
-            self.report({'ERROR'}, "The Cycles addon must be enabled to bake the albedo")
-            return {'CANCELLED'}
-
-        if context.object is not None and context.object.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        objects = [
-            obj for obj in context.selected_objects
-            if obj.type == 'MESH' and len(obj.data.polygons)
-        ]
-        if not objects:
-            scene.checkResult_all = True
-            show_message_box(
-                ["Select the meshes you want to check first."], "S4 PBR Check", "ERROR")
-            return {'FINISHED'}
-
-        skipped = {}
-        probes = []
-        prepared = []
-        hidden = []
-        active_object = context.view_layer.objects.active
-        state = self.capture_render_state(scene)
-
-        try:
-            for material in selected_mesh_materials(context):
-                socket, surface, note = albedo_output_socket(material)
-                if socket is None:
-                    skipped[material.name] = note
-                    continue
-                probe, original_source = attach_albedo_probe(material, socket, surface)
-                probes.append((material, probe, original_source, surface))
-
-            if not probes:
-                return self.report_results(scene, {}, skipped)
-
-            measurable = {material.name_full for material, _, _, _ in probes}
-
-            for obj in objects:
-                if obj.hide_render:
-                    obj.hide_render = False
-                    hidden.append(obj)
-                try:
-                    attribute, previous = add_probe_attribute(obj.data)
-                except RuntimeError as error:
-                    self.report({'ERROR'}, f"{obj.name}: no bake target ({error})")
-                    return {'CANCELLED'}
-                prepared.append((obj, attribute, previous))
-
-            if active_object not in objects:
-                context.view_layer.objects.active = objects[0]
-
-            self.apply_bake_state(scene)
-            try:
-                bpy.ops.object.bake(type='EMIT')
-            except RuntimeError as error:
-                self.report({'ERROR'}, f"Albedo bake failed: {error}")
-                return {'CANCELLED'}
-
-            ranges = {}
-            for obj, attribute, _ in prepared:
-                for name, (low, high) in read_baked_albedo(obj, attribute).items():
-                    if name not in measurable:
-                        continue
-                    if name in ranges:
-                        previous_low, previous_high = ranges[name]
-                        low, high = min(low, previous_low), max(high, previous_high)
-                    ranges[name] = (low, high)
-        finally:
-            for obj, attribute, previous in prepared:
-                remove_probe_attribute(obj.data, attribute, previous)
-            for material, probe, original_source, surface in probes:
-                detach_albedo_probe(material, probe, original_source, surface)
-            for obj in hidden:
-                obj.hide_render = True
-            context.view_layer.objects.active = active_object
-            self.restore_render_state(scene, state)
-
-        return self.report_results(scene, ranges, skipped)
-
-    def report_results(self, scene, ranges, skipped):
-        failed = 0
-        for name in sorted(ranges, key=str.lower):
-            low, high = ranges[name]
-            too_dark = low < PBR_LUMA_MIN
-            too_bright = high > PBR_LUMA_MAX
-            if not (too_dark or too_bright):
-                continue
-
-            failed += 1
-            if too_dark and too_bright:
-                detail = f"{low:.2f}-{high:.2f} too dark and too bright"
-            elif too_dark:
-                detail = f"{low:.2f} too dark"
-            else:
-                detail = f"{high:.2f} too bright"
-            add_item(scene.custom, "PBR Range", f"{name}: {detail}")
-
-        for name in sorted(skipped, key=str.lower):
-            add_item(scene.custom, "PBR Unreadable", f"{name}: {skipped[name]}")
-
-        scene.checkResult_all = True
-        summary = [
-            f"Measured {len(ranges)} material(s) on the selection.",
-            f"{failed} outside {PBR_LUMA_MIN} - {PBR_LUMA_MAX} sRGB luminance.",
-        ]
-        if skipped:
-            summary.append(f"{len(skipped)} could not be measured, see the list.")
-        show_message_box(summary, "S4 PBR Check", "ERROR" if failed else "CHECKMARK")
         return {'FINISHED'}
 
 
@@ -1861,7 +1498,6 @@ classes = [
     ExportPanel,
     ExportVehicleOperator,
     InitialCheck,
-    S4CheckPBR,
     BasicShader,
     BodyworkShader,
     GlassShader,
