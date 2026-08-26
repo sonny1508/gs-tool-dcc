@@ -6,33 +6,41 @@ folder (Local) or through the studio share (Server).
 Maya 2022+ / Python 3 only. The pipeline no longer ships anything older, so
 every FBX plug-in command used here is called directly instead of being probed
 for support first.
+
+All FBX settings live in GSPipeline/_core/gs_fbx.py, shared with GS File
+Exporter, so the two tools can no longer leak sticky plug-in state into each
+other. Nothing in this file touches an FBX* command directly.
 """
 
 import os
+import sys
 import csv
 import getpass
 import tempfile
 
 import maya.cmds as cmds
-import maya.mel as mel
+
+# GSPipeline launches tools by exec'ing scripts, so _core is not on sys.path.
+# Put it there once, the same way 02_Normals reaches gs_normal_core.
+_CORE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '_core')
+if _CORE not in sys.path:
+    sys.path.append(_CORE)
+
+import gs_fbx  # noqa: E402  (must follow the sys.path setup)
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 FBX_SETTINGS = {
-    # Scale
-    'import_scale_factor': 1.0,
-    'export_scale_factor': 1.0,
+    # Which gs_fbx preset this tool exports and imports with. Scale, FBX
+    # version, up axis and the rest of the plug-in contract live there.
+    'preset': 'transfer',
 
     # Import defaults (used before the UI exists, and as the checkbox values)
     'import_smoothing_groups_default': True,
     'import_unlock_normals_default': False,
     'import_as_new_objects_default': False,
-
-    # Export
-    'export_file_version': 'FBX202000',
-    'export_binary': True,
 
     'file_extension': '.fbx',
 
@@ -47,7 +55,7 @@ FBX_SETTINGS = {
     'supported_apps': ['Blender', 'Maya', 'Max'],
 }
 
-VERSION = '1.5'
+VERSION = '1.6'
 
 # UI control names
 WINDOW = 'GS_File_Transfer_Window'
@@ -175,15 +183,6 @@ def current_user():
     return getpass.getuser()
 
 
-def mel_path(path):
-    """MEL only accepts forward slashes inside quoted paths."""
-    return path.replace('\\', '/')
-
-
-def mel_bool(value):
-    return 'true' if value else 'false'
-
-
 def set_status(message, level='ok'):
     """
     Show a one-line result in the footer.
@@ -226,34 +225,6 @@ def ensure_directory(path):
 
 
 # ============================================================================
-# FBX SETTINGS
-# ============================================================================
-
-def apply_import_settings():
-    """Push the current import options into the FBX plug-in."""
-    mel.eval('FBXImportScaleFactor {0};'.format(FBX_SETTINGS['import_scale_factor']))
-    mel.eval('FBXImportSmoothingGroups -v {0};'.format(
-        mel_bool(checkbox_value(CB_SMOOTHING, 'import_smoothing_groups_default'))))
-    mel.eval('FBXImportUnlockNormals -v {0};'.format(
-        mel_bool(checkbox_value(CB_UNLOCK_NORMALS, 'import_unlock_normals_default'))))
-
-    # 'add' keeps everything already in the scene and brings the FBX contents in
-    # as new nodes (Maya auto-numbers name clashes); 'merge' lets the FBX write
-    # into existing nodes of the same name. These are sticky plug-in settings, so
-    # set them explicitly every time rather than inheriting whatever the artist
-    # last picked in Maya's own FBX import dialog.
-    add_new = checkbox_value(CB_ADD_NEW, 'import_as_new_objects_default')
-    mel.eval('FBXImportMode -v {0};'.format('add' if add_new else 'merge'))
-
-
-def apply_export_settings():
-    """Push the export options into the FBX plug-in."""
-    mel.eval('FBXExportScaleFactor {0};'.format(FBX_SETTINGS['export_scale_factor']))
-    mel.eval('FBXExportFileVersion -v "{0}";'.format(FBX_SETTINGS['export_file_version']))
-    mel.eval('FBXExportInAscii -v {0};'.format(mel_bool(not FBX_SETTINGS['export_binary'])))
-
-
-# ============================================================================
 # FILE OPERATIONS
 # ============================================================================
 
@@ -265,8 +236,12 @@ def import_fbx(file_path, label):
         set_status('Nothing to import {0}'.format(label), 'warn')
         return False
 
-    apply_import_settings()
-    mel.eval('FBXImport -f "{0}";'.format(mel_path(file_path)))
+    gs_fbx.import_file(
+        file_path,
+        preset=FBX_SETTINGS['preset'],
+        smoothing_groups=checkbox_value(CB_SMOOTHING, 'import_smoothing_groups_default'),
+        unlock_normals=checkbox_value(CB_UNLOCK_NORMALS, 'import_unlock_normals_default'),
+        add_as_new=checkbox_value(CB_ADD_NEW, 'import_as_new_objects_default'))
     set_status('Imported {0}'.format(label))
     return True
 
@@ -282,8 +257,7 @@ def export_fbx(file_path, label):
     if not ensure_directory(os.path.dirname(file_path)):
         return False
 
-    apply_export_settings()
-    mel.eval('FBXExport -f "{0}" -s;'.format(mel_path(file_path)))
+    gs_fbx.export_selection(file_path, preset=FBX_SETTINGS['preset'])
     set_status('Exported {0}'.format(label))
     return True
 

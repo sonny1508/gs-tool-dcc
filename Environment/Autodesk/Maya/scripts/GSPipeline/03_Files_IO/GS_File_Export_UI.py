@@ -1,31 +1,20 @@
 import pymel.core as pm
 import maya.cmds as cmds
-import maya.OpenMaya as api
-import maya.mel as mel
 import os
 import sys
 
-def _applyFBXSettings():
-    """Apply standard FBX export settings"""
-    mel.eval('FBXResetExport')
-    mel.eval('FBXExportFileVersion "FBX202000"')
-    mel.eval('FBXExportUpAxis z')
-    mel.eval('FBXExportScaleFactor 1.0')
-    mel.eval('FBXExportConvertUnitString "cm"')
-    mel.eval('FBXExportSmoothingGroups -v true')
-    mel.eval('FBXExportSmoothMesh -v false')
-    mel.eval('FBXExportTriangulate -v false')
-    mel.eval('FBXExportTangents -v false')
-    mel.eval('FBXExportInstances -v false')
-    mel.eval('FBXExportHardEdges -v false')
-    mel.eval('FBXExportReferencedAssetsContent -v false')
-    mel.eval('FBXExportBakeComplexAnimation -v false')
-    mel.eval('FBXExportCameras -v false')
-    mel.eval('FBXExportLights -v false')
-    mel.eval('FBXExportAudio -v false')
-    mel.eval('FBXExportEmbeddedTextures -v false')
-    mel.eval('FBXExportConstraints -v false')
-    mel.eval('FBXExportInputConnections -v false')
+# GSPipeline launches tools by exec'ing scripts, so _core is not on sys.path.
+# Put it there once, the same way 02_Normals reaches gs_normal_core.
+_CORE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '_core')
+if _CORE not in sys.path:
+    sys.path.append(_CORE)
+
+import gs_fbx  # noqa: E402  (must follow the sys.path setup)
+
+# The FBX preset this tool exports with. gs_fbx resets the plug-in before
+# applying it, so settings left behind by another tool can no longer leak in.
+FBX_PRESET = 'asset'
+
 
 def batchExportFBX(*args):
     """Export objects as FBX files based on selection mode"""
@@ -128,12 +117,8 @@ def batchExportFBX(*args):
                 # Select the parent and all its descendants
                 cmds.select(parent_path, hierarchy=True, replace=True)
                 
-                _applyFBXSettings()
-                
                 try:
-                    file_path_mel = file_path.replace("\\", "/")
-                    fbx_command = 'FBXExport -f "{}" -s'.format(file_path_mel)
-                    mel.eval(fbx_command)
+                    gs_fbx.export_selection(file_path, preset=FBX_PRESET)
                     pm.textScrollList("operationField", e=True, a="Exported: {}.fbx".format(parent_name))
                 except Exception as e:
                     pm.textScrollList("operationField", e=True, a="Error exporting {}: {}".format(parent_name, str(e)))
@@ -148,12 +133,8 @@ def batchExportFBX(*args):
                 # Select this object and all its descendants
                 cmds.select(obj_path, hierarchy=True, replace=True)
                 
-                _applyFBXSettings()
-                
                 try:
-                    file_path_mel = file_path.replace("\\", "/")
-                    fbx_command = 'FBXExport -f "{}" -s'.format(file_path_mel)
-                    mel.eval(fbx_command)
+                    gs_fbx.export_selection(file_path, preset=FBX_PRESET)
                     pm.textScrollList("operationField", e=True, a="Exported: {}.fbx".format(obj_name))
                 except Exception as e:
                     pm.textScrollList("operationField", e=True, a="Error exporting {}: {}".format(obj_name, str(e)))
@@ -167,12 +148,8 @@ def batchExportFBX(*args):
             
             cmds.select(obj_path, replace=True)
             
-            _applyFBXSettings()
-            
             try:
-                file_path_mel = file_path.replace("\\", "/")
-                fbx_command = 'FBXExport -f "{}" -s'.format(file_path_mel)
-                mel.eval(fbx_command)
+                gs_fbx.export_selection(file_path, preset=FBX_PRESET)
                 pm.textScrollList("operationField", e=True, a="Exported: {}.fbx".format(obj_name))
             except Exception as e:
                 pm.textScrollList("operationField", e=True, a="Error exporting {}: {}".format(obj_name, str(e)))

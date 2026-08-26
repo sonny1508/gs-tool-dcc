@@ -40,7 +40,7 @@ TOOLS = [
 
     ("03 Files I/O", [
         {"name": "GS File Export",   "script": "03_Files_IO/GS_File_Export_UI.py",   "icon": "GS_File_Export_Icon.png"},
-        {"name": "GS File Transfer", "script": "03_Files_IO/GS_File_Transfer_UI.py", "icon": "GS_File_Transfer_Icon.png"},
+        {"name": "GS File Transfer", "script": "03_Files_IO/gs_file_transfer.py", "icon": "GS_File_Transfer_Icon.png"},
     ]),
 
     ("04 Review", [
