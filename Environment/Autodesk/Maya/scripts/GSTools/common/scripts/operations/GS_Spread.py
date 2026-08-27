@@ -35,7 +35,7 @@ def GS_Spread():
     print(f"Found {len(edge_loops)} edge loops to process")
     
     # Run the algorithm multiple times to converge
-    for iteration in range(1):
+    for iteration in range(8):
         print(f"Iteration {iteration + 1}")
         
         # Dictionary to store target positions for all vertices
