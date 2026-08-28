@@ -420,7 +420,7 @@ def ngon(self, context):
             context.view_layer.objects.active = objects_with_ngons[0]
         
         bpy.ops.object.mode_set(mode='EDIT')
-        self.report({'WARNING'}, f"Found {check_globalglobal} N-Gons in {len(obj_ngon_local)} objects.")
+        self.report({'WARNING'}, f"Found {check_global} N-Gons in {len(obj_ngon_local)} objects.")
     else:
         # No n-gons found, restore original selection
         restore_selection_state(original_active, original_selected)
