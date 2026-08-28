@@ -2,7 +2,7 @@
 ###############################################
 NitroPoly - Ultimate Modeling Tool for Maya
 ###############################################
-Version: 2.0
+Version: 2.0.1
 Last update: 09-01-2019
 ------------------------------------------------
 
@@ -39,12 +39,14 @@ import re
 import os
 import math as math
 import maya.mel as mel
-import pymel.core as pm
+# PyMEL is gone in Maya 2026+; pymelish supplies the exact slice NitroPoly
+# used, on maya.cmds + maya.api. Used in every Maya version.
+from pymel_nitro import core as pm
 import maya.cmds as cmds
 import maya.OpenMaya as om
 from functools import partial
 import maya.OpenMayaUI as omu
-import pymel.core.datatypes as dt
+from pymel_nitro import datatypes as dt
 	
 class NP():			
 	def __init__(self):
