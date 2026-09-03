@@ -244,7 +244,7 @@ class ValidationS4EnvToolMainPanel(bpy.types.Panel, globalVariables):
             layout.template_list("MATERIAL_S4env_matslots_example", "", scn, "custom", scn, "s4envcustom_index")
 
             row = layout.row()
-            row.operator("custom.s4_clear_list", text="Clear and hide result box.")
+            row.operator("custom.s4env_clear_list", text="Clear and hide result box.")
 
         row11 = layout.row()
         row11.label(text= globalVariables.version)
@@ -574,80 +574,307 @@ class S4EnvSelectNgon(bpy.types.Operator, globalVariables):
                  
         return {'FINISHED'}
 
+# ---------------------------------------------------------------------------
+# Validator log
+#
+# Shared result list for every check tool. Individual checks used to speak only
+# through self.report(), which lands in the Info editor and is easy to miss when
+# a multi-object selection has a handful of bad meshes among good ones. Checks
+# now write their per-object findings here instead, so the panel keeps the
+# offenders on screen and can push them back into the selection.
+# ---------------------------------------------------------------------------
+
+S4ENV_LOG_ICONS = {
+    'ERROR': 'ERROR',
+    'WARNING': 'ERROR',
+    'OK': 'CHECKMARK',
+    'INFO': 'INFO',
+}
+
+# Statuses that count as "something to look at", i.e. what the select button grabs.
+S4ENV_LOG_PROBLEMS = {'ERROR', 'WARNING'}
+
+
+class S4EnvLogEntry(bpy.types.PropertyGroup):
+    """One row of the validator log."""
+    check: StringProperty(name="Check", default="")
+    obj_name: StringProperty(name="Object", default="")
+    message: StringProperty(name="Message", default="")
+    status: EnumProperty(
+        name="Status",
+        items=(
+            ('INFO', "Info", "Summary line for a check"),
+            ('OK', "Ok", "Object passed the check"),
+            ('WARNING', "Warning", "Object could not be checked properly"),
+            ('ERROR', "Error", "Object failed the check"),
+        ),
+        default='INFO',
+        )
+
+
+def log_clear(context, check=None):
+    """Drop log rows: all of them, or only the ones a given check wrote.
+
+    Per-check clearing is what lets several tools share one panel - re-running
+    the UV check replaces its own rows without wiping another check's results.
+    """
+    log = context.scene.s4env_log
+    if check is None:
+        log.clear()
+    else:
+        for i in reversed(range(len(log))):
+            if log[i].check == check:
+                log.remove(i)
+    context.scene.s4env_log_index = 0
+
+
+def log_add(context, check, message, obj_name="", status='ERROR'):
+    """Append a row. Leave obj_name empty for a check-wide summary line."""
+    entry = context.scene.s4env_log.add()
+    entry.check = check
+    entry.obj_name = obj_name
+    entry.message = message
+    entry.status = status
+    return entry
+
+
+def selectObjects(context, names):
+    """Replace the selection with the named objects. Returns (selected, missing, unhidden)."""
+    # Selection only applies in object mode, and there may be no active object
+    # to switch the mode of.
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+
+    objects = context.view_layer.objects
+    for obj in objects:
+        try:
+            obj.select_set(False)
+        except RuntimeError:
+            pass
+
+    selected, missing, unhidden = [], [], []
+    for name in names:
+        obj = objects.get(name)
+        if obj is None:
+            # The log outlives the objects it describes - a mesh can be renamed
+            # or deleted between the check and the click.
+            missing.append(name)
+            continue
+
+        # A hidden object cannot be selected at all, so a flagged mesh that the
+        # LOD swap put away would silently drop out of the selection.
+        if obj.hide_get() or obj.hide_viewport:
+            setHidden(context, obj, False)
+            unhidden.append(name)
+
+        obj.select_set(True)
+        selected.append(obj)
+
+    if selected:
+        objects.active = selected[0]
+
+    return selected, missing, unhidden
+
+
+class S4ENV_UL_log(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        row = layout.row(align=True)
+        row.alert = item.status in S4ENV_LOG_PROBLEMS
+        row.label(text="", icon=S4ENV_LOG_ICONS.get(item.status, 'DOT'))
+
+        if item.obj_name:
+            split = row.split(factor=0.45)
+            split.label(text=item.obj_name)
+            split.label(text=item.message)
+            row.operator("s4.envlogselectone", text="", icon='RESTRICT_SELECT_OFF',
+                         emboss=False).obj_name = item.obj_name
+        else:
+            row.label(text="%s: %s" % (item.check, item.message) if item.check else item.message)
+
+
+class S4EnvLogPanel(bpy.types.Panel, globalVariables):
+    bl_label = "S4 Env Log"
+    bl_idname = "S4_Env_Log"
+    # Last panel in the category, and deliberately no DEFAULT_CLOSED - check
+    # results are useless if the artist has to go looking for them.
+    bl_order = 100
+    bl_space_type = 'VIEW_3D'
+    bl_category = "S4 Environment"
+    bl_region_type = 'UI'
+
+    def draw(self, context):
+        scn = context.scene
+        layout = self.layout
+        log = scn.s4env_log
+
+        if not len(log):
+            layout.label(text="No check results yet", icon='INFO')
+            return
+
+        layout.template_list("S4ENV_UL_log", "", scn, "s4env_log", scn, "s4env_log_index",
+                             rows=min(max(len(log), 3), 12))
+
+        problems = sum(1 for entry in log if entry.status in S4ENV_LOG_PROBLEMS and entry.obj_name)
+
+        row = layout.row()
+        row.enabled = problems > 0
+        row.operator("s4.envlogselecterrors", icon='RESTRICT_SELECT_OFF',
+                     text="Select %d Flagged Object%s" % (problems, "" if problems == 1 else "s"))
+
+        layout.operator("s4.envlogclear", text="Clear Log", icon='TRASH')
+
+
+class S4EnvLogSelectErrors(bpy.types.Operator):
+    bl_idname = "s4.envlogselecterrors"
+    bl_label = "Select Flagged Objects"
+    bl_description = "Clear the selection, then select every object the log flagged"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return any(entry.status in S4ENV_LOG_PROBLEMS and entry.obj_name
+                   for entry in context.scene.s4env_log)
+
+    def execute(self, context):
+        # Dedupe: several checks can flag the same mesh for different reasons.
+        names = []
+        for entry in context.scene.s4env_log:
+            if entry.status in S4ENV_LOG_PROBLEMS and entry.obj_name and entry.obj_name not in names:
+                names.append(entry.obj_name)
+
+        selected, missing, unhidden = selectObjects(context, names)
+
+        if not selected:
+            self.report({'WARNING'}, "None of the flagged objects are in the scene any more")
+            return {'CANCELLED'}
+
+        message = "Selected %d flagged object%s" % (len(selected), "" if len(selected) == 1 else "s")
+        if unhidden:
+            message += ", unhid %d" % len(unhidden)
+        if missing:
+            message += ", %d no longer in the scene" % len(missing)
+        self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
+class S4EnvLogSelectOne(bpy.types.Operator):
+    bl_idname = "s4.envlogselectone"
+    bl_label = "Select Object"
+    bl_description = "Clear the selection, then select just this object"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    obj_name: StringProperty(name="Object", default="")
+
+    def execute(self, context):
+        selected, missing, unhidden = selectObjects(context, [self.obj_name])
+
+        if missing:
+            self.report({'WARNING'}, "%s is no longer in the scene" % self.obj_name)
+            return {'CANCELLED'}
+
+        self.report({'INFO'}, "Selected %s%s" % (self.obj_name, " (unhidden)" if unhidden else ""))
+        return {'FINISHED'}
+
+
+class S4EnvLogClear(bpy.types.Operator):
+    bl_idname = "s4.envlogclear"
+    bl_label = "Clear Log"
+    bl_description = "Empty the validator log"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        log_clear(context)
+        return {'FINISHED'}
+
+
 class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcheckuvs"
-    bl_label = "Check UVs"
+    bl_label = "Check UVs 32x32"
     bl_description = "Check UV range and attributes"
     bl_options = {'REGISTER', 'UNDO'}
 
+    CHECK_NAME = "UV Range"
+    MIN_RANGE = -32
+    MAX_RANGE = 32
+
     def get_uv_bounds(self, obj):
-        """Get the min/max UV bounds for UVMap00."""
-        if obj is None or obj.type != 'MESH':
+        """Get the min/max UV bounds for UVMap00, or None if the mesh has no usable one."""
+        uv_layer = obj.data.uv_layers.get("UVMap00")
+        if uv_layer is None or len(uv_layer.data) == 0:
             return None
-        
-        mesh = obj.data
-        
-        if "UVMap00" not in mesh.uv_layers:
-            return None
-        
-        uv_layer = mesh.uv_layers["UVMap00"]
-        
-        min_u = float('inf')
-        max_u = float('-inf')
-        min_v = float('inf')
-        max_v = float('-inf')
-        
-        for uv_data in uv_layer.data:
-            u, v = uv_data.uv.x, uv_data.uv.y
-            min_u = min(min_u, u)
-            max_u = max(max_u, u)
-            min_v = min(min_v, v)
-            max_v = max(max_v, v)
-        
+
+        # foreach_get pulls the whole layer in one call - a per-loop Python loop
+        # is the slow part of this check on dense meshes.
+        flat = np.empty(len(uv_layer.data) * 2, dtype=np.float32)
+        uv_layer.data.foreach_get("uv", flat)
+        uvs = flat.reshape(-1, 2)
+
         return {
-            "min_u": min_u,
-            "max_u": max_u,
-            "min_v": min_v,
-            "max_v": max_v
+            "min_u": float(uvs[:, 0].min()),
+            "max_u": float(uvs[:, 0].max()),
+            "min_v": float(uvs[:, 1].min()),
+            "max_v": float(uvs[:, 1].max()),
         }
 
     def execute(self, context):
-        selected_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
-        
-        if not selected_objects:
+        # Only real geometry carries UVs; empties, lights and curves in the
+        # selection are skipped rather than reported as failures.
+        meshes = [obj for obj in context.selected_objects
+                  if obj.type == 'MESH' and obj.data is not None]
+
+        if not meshes:
             self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
-        
-        min_range = -32
-        max_range = 32
-        
-        for obj in selected_objects:
+
+        # Replace this check's own rows only, so results from other checks stay.
+        log_clear(context, check=self.CHECK_NAME)
+        start = len(context.scene.s4env_log)
+
+        failed = 0
+        no_uvs = 0
+
+        for obj in meshes:
             bounds = self.get_uv_bounds(obj)
-            
+
             if bounds is None:
-                self.report({'WARNING'}, f"{obj.name}: No UVMap00 found")
+                log_add(context, self.CHECK_NAME, "No usable UVMap00", obj.name, 'WARNING')
+                no_uvs += 1
                 continue
-            
+
             min_u, max_u = bounds["min_u"], bounds["max_u"]
             min_v, max_v = bounds["min_v"], bounds["max_v"]
-            
-            # Check if out of range
+
             issues = []
-            
-            if min_u < min_range:
-                issues.append(f"U min: {min_u:.2f} (exceeds by {min_range - min_u:.2f})")
-            if max_u > max_range:
-                issues.append(f"U max: {max_u:.2f} (exceeds by {max_u - max_range:.2f})")
-            if min_v < min_range:
-                issues.append(f"V min: {min_v:.2f} (exceeds by {min_range - min_v:.2f})")
-            if max_v > max_range:
-                issues.append(f"V max: {max_v:.2f} (exceeds by {max_v - max_range:.2f})")
-            
+
+            if min_u < self.MIN_RANGE:
+                issues.append("U min %.2f (over by %.2f)" % (min_u, self.MIN_RANGE - min_u))
+            if max_u > self.MAX_RANGE:
+                issues.append("U max %.2f (over by %.2f)" % (max_u, max_u - self.MAX_RANGE))
+            if min_v < self.MIN_RANGE:
+                issues.append("V min %.2f (over by %.2f)" % (min_v, self.MIN_RANGE - min_v))
+            if max_v > self.MAX_RANGE:
+                issues.append("V max %.2f (over by %.2f)" % (max_v, max_v - self.MAX_RANGE))
+
             if issues:
-                self.report({'WARNING'}, f"{obj.name}: {' | '.join(issues)}")
+                log_add(context, self.CHECK_NAME, " | ".join(issues), obj.name, 'ERROR')
+                failed += 1
             else:
-                self.report({'INFO'}, f"{obj.name}: UV bounds [{min_u:.2f}, {max_u:.2f}] x [{min_v:.2f}, {max_v:.2f}] - OK")
-        
+                print("%s: UV bounds [%.2f, %.2f] x [%.2f, %.2f] - OK"
+                      % (obj.name, min_u, max_u, min_v, max_v))
+
+        summary = "%d mesh%s checked, %d out of +/-%d range, %d without UVMap00" % (
+            len(meshes), "" if len(meshes) == 1 else "es", failed, self.MAX_RANGE, no_uvs)
+        log_add(context, self.CHECK_NAME, summary, status='INFO')
+        # The summary reads as a heading, so move it above the rows it counts.
+        context.scene.s4env_log.move(len(context.scene.s4env_log) - 1, start)
+
+        if failed or no_uvs:
+            self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
+        else:
+            self.report({'INFO'}, summary)
+
         return {'FINISHED'}
 
 # LOD meshes end in LODA/LODB/LODC, optionally followed by Blender's duplicate
@@ -917,9 +1144,15 @@ classes = [
     MATERIAL_S4env_matslots_example,
     ValidationS4EnvToolMainPanel,
     S4EnvCheckToolPanel,
+    S4EnvLogEntry,
+    S4ENV_UL_log,
+    S4EnvLogSelectErrors,
+    S4EnvLogSelectOne,
+    S4EnvLogClear,
     S4EnvCheckUVs,
     S4EnvLODToolPanel,
     S4EnvUtilitiToolPanel,
+    S4EnvLogPanel,
     S4EnvInitialCheck,
     S4EnvCorrectMat,
     S4EnvToggleViewColor,
@@ -941,12 +1174,16 @@ def register():
     bpy.types.Scene.custom = CollectionProperty(type=CUSTOM_S4envobjectCollection)
     bpy.types.Scene.s4envcustom_index = IntProperty(default=5)
     bpy.types.Scene.lod_holder = bpy.props.PointerProperty(type=SwitchLODValue)
+    bpy.types.Scene.s4env_log = CollectionProperty(type=S4EnvLogEntry)
+    bpy.types.Scene.s4env_log_index = IntProperty(default=0)
 
 
 def unregister():
     # Drop the Scene properties before the classes they point at. The other way
     # round leaves Blender holding a PointerProperty to a de-registered struct,
     # which is why the panel needed an addon disable/re-enable to come back.
+    del bpy.types.Scene.s4env_log_index
+    del bpy.types.Scene.s4env_log
     del bpy.types.Scene.lod_holder
     del bpy.types.Scene.s4envcustom_index
     del bpy.types.Scene.custom
