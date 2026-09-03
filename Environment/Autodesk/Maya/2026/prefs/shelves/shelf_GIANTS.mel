@@ -9,6 +9,40 @@ global proc shelf_GIANTS () {
         -flexibleWidthType 3
         -flexibleWidthValue 32
         -enable 1
+        -width 39
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "User Script" 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "GIANTS I3D Exporter" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "Giants/I3D_icon.bmp" 
+        -image1 "Giants/I3D_icon.bmp" 
+        -style "iconOnly" 
+        -marginWidth 0
+        -marginHeight 1
+        -command "import imp as imp\nimport maya.cmds as cmds\nimport sys\nimport os\ntry:\n\treload\nexcept NameError:\n\tfrom importlib import reload\npluginPath = os.path.join(os.environ['USERPROFILE'], 'Documents', 'maya', 'scripts', 'giants_i3d_exporter', 'I3DExporter2026-x64.mll')\nscriptPath = os.path.join(os.environ['USERPROFILE'], 'Documents', 'maya', 'scripts', 'giants_i3d_exporter')\ncmds.loadPlugin(pluginPath, quiet=True)\nsys.path.append(scriptPath)\nimport I3DExporter\nreload(I3DExporter)\nI3DExporter.I3DExport()" 
+        -sourceType "python" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
         -width 35
         -height 34
         -manage 1
@@ -67,7 +101,8 @@ global proc shelf_GIANTS () {
         -style "iconOnly" 
         -marginWidth 0
         -marginHeight 1
-        -command "import os\nscriptPath = os.path.expandvars(r'%USERPROFILE%/Documents/maya/scripts/GSPipeline/05_Projects/GSW/rename_building_textures.py')\nexec(compile(open(scriptPath, 'r').read(), scriptPath, 'exec'))"        -sourceType "python" 
+        -command "import os\nscriptPath = os.path.expandvars(r'%USERPROFILE%/Documents/maya/scripts/GSPipeline/05_Projects/GSW/rename_building_textures.py')\nexec(compile(open(scriptPath, 'r').read(), scriptPath, 'exec'))" 
+        -sourceType "python" 
         -commandRepeatable 1
         -flat 1
     ;
