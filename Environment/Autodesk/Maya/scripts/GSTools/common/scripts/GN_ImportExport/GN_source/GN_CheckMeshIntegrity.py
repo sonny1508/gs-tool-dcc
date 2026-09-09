@@ -1,5 +1,6 @@
 import maya.cmds as cmds
 
+
 def GN_CheckMeshIntegrity(objects, checkColor=False):
 	selection = cmds.ls(sl=True, l=True)
 	objectsWithIssues = []

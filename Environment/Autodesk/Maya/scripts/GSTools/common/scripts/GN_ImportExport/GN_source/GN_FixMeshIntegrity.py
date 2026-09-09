@@ -1,5 +1,5 @@
 import maya.cmds as cmds
-from six.moves import range
+
 
 def GN_ArraysMatch(a, b):
 	if a is None and b is None:
@@ -16,6 +16,7 @@ def GN_ArraysMatch(a, b):
 			return False
 	
 	return True
+
 
 def GN_FixNonManifoldGeometry(object):
 	# Check if we have non-manifold geometry
@@ -61,6 +62,7 @@ def GN_FixNonManifoldGeometry(object):
 			if edges is None:
 				vertices = cmds.polyInfo(object, nmv=True)
 
+
 def GN_FixNonManifoldUvs(object):
 	# Check if we have non-manifold UVs
 	nonManifold = cmds.polyInfo(object, nuv=True, nue=True)
@@ -76,7 +78,8 @@ def GN_FixNonManifoldUvs(object):
 	
 	if len(edges):
 		cmds.polyMapCut(edges)
-	
+
+
 def GN_FixMeshIntegrity(objects, fixColor=False):
 	selection = cmds.ls(sl=True, l=True)
 	

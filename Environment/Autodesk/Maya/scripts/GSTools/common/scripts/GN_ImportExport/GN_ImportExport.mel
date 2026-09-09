@@ -49,7 +49,7 @@ global proc IE_CloseMenu()
 // GN Import/Export menu
 global proc GN_ImportExport()
 {
-    string $GN_icons = (`getenv "GSTOOLS"`) + "scripts/GN_ImportExport/GN_icons/";
+    string $GN_icons = (`internalVar -userScriptDir`) + "GN_ImportExport/GN_icons/";
 	
 	IE_CloseMenu();
     

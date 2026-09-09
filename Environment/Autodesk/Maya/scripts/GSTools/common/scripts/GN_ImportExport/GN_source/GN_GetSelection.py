@@ -1,10 +1,11 @@
 import maya.cmds as cmds
-from collections import OrderedDict
+
 
 def GN_GetSelection(*args, **kwargs):
 	type = kwargs["type"] if "type" in kwargs else "None"
 	highlight = kwargs["highlight"] if "highlight" in kwargs else False
 	flatten = kwargs["flatten"] if "flatten" in kwargs else False
+	allParents = kwargs["allParents"] if "allParents" in kwargs else False
 
 	# Check if there is any args
 	if len(args) > 0:
@@ -39,12 +40,16 @@ def GN_GetSelection(*args, **kwargs):
 		shapes = cmds.ls(objects, l=True, dag=True, ni=True, o=True)
 	
 	# Get objects
-	objects = cmds.listRelatives(shapes, f=True, p=True, ni=True, typ="transform")
+	if allParents:
+		objects = cmds.listRelatives(shapes, f=True, ap=True, ni=True, typ="transform")
+	else:
+		objects = cmds.listRelatives(shapes, f=True, p=True, ni=True, typ="transform")
 	
 	# Remove intermediate objects
 	objects = cmds.ls(objects, l=True, ni=True)
 	
 	# Remove duplicates objects
-	objects = list(OrderedDict.fromkeys(objects))
+	if objects is not None:
+		objects = list(dict.fromkeys(objects))
 	
 	return selection, shapes, objects
