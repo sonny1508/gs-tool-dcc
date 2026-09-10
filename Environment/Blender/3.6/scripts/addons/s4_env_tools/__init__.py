@@ -585,11 +585,17 @@ class S4EnvSelectNgon(bpy.types.Operator, globalVariables):
 # ---------------------------------------------------------------------------
 
 S4ENV_LOG_ICONS = {
-    'ERROR': 'ERROR',
+    # CANCEL is the red cross, ERROR the yellow warning triangle - the icon is
+    # what separates the two severities, since only alert rows can be recoloured.
+    'ERROR': 'CANCEL',
     'WARNING': 'ERROR',
     'OK': 'CHECKMARK',
     'INFO': 'INFO',
 }
+
+# row.alert is Blender's only text tint, and it is red - so errors take it and
+# warnings stay on default text behind their yellow triangle.
+S4ENV_LOG_ALERT = {'ERROR'}
 
 # Statuses that count as "something to look at", i.e. what the select button grabs.
 S4ENV_LOG_PROBLEMS = {'ERROR', 'WARNING'}
@@ -681,7 +687,7 @@ def selectObjects(context, names):
 class S4ENV_UL_log(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
         row = layout.row(align=True)
-        row.alert = item.status in S4ENV_LOG_PROBLEMS
+        row.alert = item.status in S4ENV_LOG_ALERT
         row.label(text="", icon=S4ENV_LOG_ICONS.get(item.status, 'DOT'))
 
         if item.obj_name:
@@ -792,16 +798,22 @@ class S4EnvLogClear(bpy.types.Operator):
 class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs 32x32"
-    bl_description = "Check UV range and attributes"
+    bl_description = "Check UVMap00-03 range and presence"
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "UV Range"
     MIN_RANGE = -32
     MAX_RANGE = 32
 
-    def get_uv_bounds(self, obj):
-        """Get the min/max UV bounds for UVMap00, or None if the mesh has no usable one."""
-        uv_layer = obj.data.uv_layers.get("UVMap00")
+    # UVMap00 is the only hard requirement; 01-03 are optional, so a mesh simply
+    # without them is not reported. Whichever of the four do exist must hold
+    # their UVs inside the range.
+    UV_NAMES = ("UVMap00", "UVMap01", "UVMap02", "UVMap03")
+    REQUIRED_UV = "UVMap00"
+
+    def get_uv_bounds(self, obj, uv_name):
+        """Get the min/max UV bounds for one layer, or None if there is nothing to measure."""
+        uv_layer = obj.data.uv_layers.get(uv_name)
         if uv_layer is None or len(uv_layer.data) == 0:
             return None
 
@@ -818,6 +830,70 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
             "max_v": float(uvs[:, 1].max()),
         }
 
+    def range_issues(self, uv_name, bounds):
+        """Range violations for one layer, as (short label, console detail)."""
+        over = []
+        if bounds["min_u"] < self.MIN_RANGE:
+            over.append("U min %.2f" % bounds["min_u"])
+        if bounds["max_u"] > self.MAX_RANGE:
+            over.append("U max %.2f" % bounds["max_u"])
+        if bounds["min_v"] < self.MIN_RANGE:
+            over.append("V min %.2f" % bounds["min_v"])
+        if bounds["max_v"] > self.MAX_RANGE:
+            over.append("V max %.2f" % bounds["max_v"])
+
+        if not over:
+            return None
+        # The panel column is narrow, so the numbers go to the console and the
+        # row just names the layer.
+        return "%s: %s outside +/-%d" % (uv_name, ", ".join(over), self.MAX_RANGE)
+
+    def check_object(self, obj):
+        """Run every UV rule against one mesh. Returns (errors, warnings)."""
+        uv_layers = obj.data.uv_layers
+        missing_required = False
+        no_data = []
+        out_of_range = []
+        details = []
+
+        for uv_name in self.UV_NAMES:
+            if uv_layers.get(uv_name) is None:
+                # Only UVMap00 has to be there; an absent 01-03 is a valid setup
+                # and stays out of the log entirely.
+                if uv_name == self.REQUIRED_UV:
+                    missing_required = True
+                continue
+
+            bounds = self.get_uv_bounds(obj, uv_name)
+
+            # A layer with no loops to carry UVs, or one whose UVs all sit on a
+            # single point, was never unwrapped. There is no layout to measure,
+            # so warn and skip the range check rather than scoring a dot.
+            if bounds is None or ((bounds["min_u"] == bounds["max_u"])
+                                  and (bounds["min_v"] == bounds["max_v"])):
+                no_data.append(uv_name)
+                continue
+
+            detail = self.range_issues(uv_name, bounds)
+            if detail:
+                out_of_range.append(uv_name)
+                details.append(detail)
+
+        errors = []
+        if missing_required:
+            errors.append("%s missing" % self.REQUIRED_UV)
+        if out_of_range:
+            errors.append("%s out of range" % " - ".join(out_of_range))
+
+        warnings = []
+        if no_data:
+            warnings.append("%s has no UV data" % " - ".join(no_data))
+
+        if details:
+            print("%s: %s" % (obj.name, " | ".join(details)))
+
+        return errors, warnings
+
     def execute(self, context):
         # Only real geometry carries UVs; empties, lights and curves in the
         # selection are skipped rather than reported as failures.
@@ -830,47 +906,34 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
 
         # Replace this check's own rows only, so results from other checks stay.
         log_clear(context, check=self.CHECK_NAME)
-        start = len(context.scene.s4env_log)
 
-        failed = 0
-        no_uvs = 0
+        error_rows = []
+        warning_rows = []
 
         for obj in meshes:
-            bounds = self.get_uv_bounds(obj)
+            errors, warnings = self.check_object(obj)
 
-            if bounds is None:
-                log_add(context, self.CHECK_NAME, "No usable UVMap00", obj.name, 'WARNING')
-                no_uvs += 1
-                continue
+            if errors:
+                error_rows.append((obj.name, " | ".join(errors)))
+            if warnings:
+                warning_rows.append((obj.name, " | ".join(warnings)))
+            if not errors and not warnings:
+                print("%s: UVs OK" % obj.name)
 
-            min_u, max_u = bounds["min_u"], bounds["max_u"]
-            min_v, max_v = bounds["min_v"], bounds["max_v"]
-
-            issues = []
-
-            if min_u < self.MIN_RANGE:
-                issues.append("U min %.2f (over by %.2f)" % (min_u, self.MIN_RANGE - min_u))
-            if max_u > self.MAX_RANGE:
-                issues.append("U max %.2f (over by %.2f)" % (max_u, max_u - self.MAX_RANGE))
-            if min_v < self.MIN_RANGE:
-                issues.append("V min %.2f (over by %.2f)" % (min_v, self.MIN_RANGE - min_v))
-            if max_v > self.MAX_RANGE:
-                issues.append("V max %.2f (over by %.2f)" % (max_v, max_v - self.MAX_RANGE))
-
-            if issues:
-                log_add(context, self.CHECK_NAME, " | ".join(issues), obj.name, 'ERROR')
-                failed += 1
-            else:
-                print("%s: UV bounds [%.2f, %.2f] x [%.2f, %.2f] - OK"
-                      % (obj.name, min_u, max_u, min_v, max_v))
-
-        summary = "%d mesh%s checked, %d out of +/-%d range, %d without UVMap00" % (
-            len(meshes), "" if len(meshes) == 1 else "es", failed, self.MAX_RANGE, no_uvs)
+        # Summary heads the block, then every error, then every warning - so the
+        # rows an artist must fix never sit below the ones they may not.
+        summary = "%d mesh%s checked, %d error%s, %d warning%s" % (
+            len(meshes), "" if len(meshes) == 1 else "es",
+            len(error_rows), "" if len(error_rows) == 1 else "s",
+            len(warning_rows), "" if len(warning_rows) == 1 else "s")
         log_add(context, self.CHECK_NAME, summary, status='INFO')
-        # The summary reads as a heading, so move it above the rows it counts.
-        context.scene.s4env_log.move(len(context.scene.s4env_log) - 1, start)
 
-        if failed or no_uvs:
+        for obj_name, message in error_rows:
+            log_add(context, self.CHECK_NAME, message, obj_name, 'ERROR')
+        for obj_name, message in warning_rows:
+            log_add(context, self.CHECK_NAME, message, obj_name, 'WARNING')
+
+        if error_rows or warning_rows:
             self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
         else:
             self.report({'INFO'}, summary)
