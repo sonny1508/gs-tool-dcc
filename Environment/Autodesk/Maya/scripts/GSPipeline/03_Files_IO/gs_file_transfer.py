@@ -485,7 +485,7 @@ def GS_File_Transfer_UI():
     if cmds.window(WINDOW, exists=True):
         cmds.deleteUI(WINDOW)
 
-    window = cmds.window(WINDOW, title='GS File Transfer  v{0}'.format(VERSION), widthHeight=(320, 460),
+    window = cmds.window(WINDOW, title='GS File Transfer  v{0}'.format(VERSION), widthHeight=(320, 480),
                          minimizeButton=False, maximizeButton=False, sizeable=False)
     main = cmds.columnLayout(adjustableColumn=True, rowSpacing=4)
 
