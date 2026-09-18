@@ -15,12 +15,54 @@ PY3 = sys.version_info[0] >= 3
 #     "polygon": {}, -> [UUID] : [... polygonId ]
 #     "nodes" : [] -> [... nodes UUIDs]
 
+# Blind / metadata node types that get left behind in a mesh's input history
+INPUT_DATA_NODE_TYPES = (
+    "polyBlindData",
+    "subdBlindData",
+    "oldBlindDataBase",
+    "editMetadata",
+    "clipToGhostData",
+    "blindDataTemplate",
+    "dataBlockTest",
+)
+
 # Internal Utility Functions
 def _getNodeName(uuid):
     nodeName = cmds.ls(uuid, uuid=True)
     if nodeName:
         return nodeName[0]
     return None
+
+
+def _deleteOrphanedBlindDataTemplates():
+    """Delete blindDataTemplate nodes whose typeId nothing in the scene uses."""
+    templates = cmds.ls(type="blindDataTemplate") or []
+    if not templates:
+        return
+
+    usedIds = set()
+    for typ in ("polyBlindData", "subdBlindData"):
+        for user in cmds.ls(type=typ) or []:
+            try:
+                usedIds.add(cmds.getAttr(user + ".typeId"))
+            except Exception:
+                pass
+
+    for template in templates:
+        try:
+            if cmds.getAttr(template + ".typeId") in usedIds:
+                continue
+        except Exception:
+            continue
+        try:
+            cmds.lockNode(template, lock=False)
+        except Exception:
+            pass
+        try:
+            cmds.delete(template)
+        except Exception as e:
+            cmds.warning("Failed to delete blind data template {}: {}".format(
+                template, str(e)))
 
 
 # Functions to be imported
@@ -667,168 +709,174 @@ def reverseNormals(nodes, _):
 
 
 def deleteHistory(nodes, _):
-    """Delete history on the specified nodes."""
+    """Delete history on the given nodes, reporting only the ones that had any."""
     affected_nodes = []
     for node in nodes:
         nodeName = _getNodeName(node)
-        if nodeName:
-            try:
-                cmds.delete(nodeName, constructionHistory=True)
+        if not nodeName:
+            continue
+        try:
+            before = len(cmds.listHistory(nodeName) or [])
+            cmds.delete(nodeName, constructionHistory=True)
+            if len(cmds.listHistory(nodeName) or []) < before:
                 affected_nodes.append(node)
-            except Exception as e:
-                cmds.warning("Failed to delete history on {}: {}".format(nodeName, str(e)))
+        except Exception as e:
+            cmds.warning("Failed to delete history on {}: {}".format(nodeName, str(e)))
     return "nodes", affected_nodes
+
 
 def deleteDisplayLayers(nodes, _):
-    """Delete all display layers except the default layer."""
-    affected_nodes = []
+    """Delete every display layer except the default one.
+
+    Deleted layers no longer exist as nodes, so they are reported by name via
+    the "custom" result type rather than pretending a scene object changed.
+    """
+    deleted = []
     try:
-        # Get all display layers
-        displayLayers = cmds.ls(type="displayLayer")
-        non_default_layers = [layer for layer in displayLayers if layer != "defaultLayer"]
-        
-        # If no non-default layers, report success
-        if not non_default_layers:
-            cmds.warning("No extra display layers in the scene!")
-            if nodes:
-                affected_nodes.append(nodes[0])
-            return "nodes", affected_nodes
-        
-        # Delete any non-default layers found
-        for layer in non_default_layers:
+        layers = [layer for layer in (cmds.ls(type="displayLayer") or [])
+                  if layer != "defaultLayer"]
+        for layer in layers:
             try:
                 cmds.delete(layer)
-                # If at least one node is provided, use it for reporting success
-                if nodes and not affected_nodes:
-                    affected_nodes.append(nodes[0])
+                deleted.append(layer)
             except Exception as e:
                 cmds.warning("Failed to delete layer {}: {}".format(layer, str(e)))
-            
     except Exception as e:
         cmds.warning("Failed to delete display layers: {}".format(str(e)))
-    return "nodes", affected_nodes
+    return "custom", deleted
+
 
 def deleteCameras(nodes, _):
-    """Delete all cameras in the scene except default ones."""
-    # Simply return success with at least one affected node
-    if not nodes:
-        cmds.warning("No nodes provided to deleteCameras")
-        return "nodes", []
-    
-    # First, find all cameras in the scene
-    all_cameras = cmds.ls(type="camera", long=True)
+    """Delete every camera in the scene except the default four."""
+    deleted = []
     default_cameras = ["frontShape", "perspShape", "sideShape", "topShape"]
-    
-    # Get their transform nodes (parents) - these are what we need to delete
+
+    # The transform is what has to go, not the camera shape
     camera_transforms = []
-    for cam in all_cameras:
-        if not any(cam.endswith(default) for default in default_cameras):
-            parent = cmds.listRelatives(cam, parent=True, fullPath=True)
-            if parent:
-                camera_transforms.append(parent[0])
-    
-    # If no cameras to delete, report success
-    if not camera_transforms:
-        cmds.warning("No extra cameras in the scene!")
-        # Always return the first node to show green
-        return "nodes", [nodes[0]]
-    
-    # Delete non-default camera transforms
-    deleted_successfully = False
+    for cam in cmds.ls(type="camera", long=True) or []:
+        if any(cam.endswith(default) for default in default_cameras):
+            continue
+        parent = cmds.listRelatives(cam, parent=True, fullPath=True)
+        if parent:
+            camera_transforms.append(parent[0])
+
     for cam in camera_transforms:
         try:
             cmds.delete(cam)
-            cmds.warning("Deleted camera: {}".format(cam))
-            deleted_successfully = True
+            deleted.append(cam)
         except Exception as e:
             cmds.warning("Failed to delete camera {}: {}".format(cam, str(e)))
-    
-    # Return success ONLY if we actually deleted something or if there was nothing to delete
-    if deleted_successfully:
-        return "nodes", [nodes[0]]  # Success - return first node to show green
-    else:
-        return "nodes", []  # Nothing was deleted successfully - show red
+    return "custom", deleted
+
 
 def deleteColorSets(nodes, _):
-    """Delete color sets from meshes."""
-    affected_nodes = []
+    """Delete colour sets from meshes, reporting only the sets actually removed."""
+    deleted = []
     for node in nodes:
         nodeName = _getNodeName(node)
-        if nodeName:
-            shapes = cmds.listRelatives(nodeName, shapes=True, type="mesh")
-            if shapes:
-                try:
-                    # Get color sets on the mesh - handle None return with or []
-                    colorSets = cmds.polyColorSet(shapes[0], query=True, allColorSets=True) or []
-                    
-                    # If there are color sets, delete them
-                    if colorSets:
-                        for colorSet in colorSets:
-                            cmds.polyColorSet(shapes[0], delete=True, colorSet=colorSet)
+        if not nodeName:
+            continue
+        shapes = cmds.listRelatives(nodeName, shapes=True, type="mesh")
+        if not shapes:
+            continue
+        try:
+            colorSets = cmds.polyColorSet(
+                shapes[0], query=True, allColorSets=True) or []
+            for colorSet in colorSets:
+                cmds.polyColorSet(shapes[0], delete=True, colorSet=colorSet)
+                deleted.append("{}.{}".format(nodeName, colorSet))
+        except Exception as e:
+            cmds.warning("Failed to process color sets on {}: {}".format(
+                nodeName, str(e)))
+    return "custom", deleted
 
-                    # (We're considering "no color sets" as a successful state)
-                    affected_nodes.append(node)
-                    
-                except Exception as e:
-                    cmds.warning("Failed to process color sets on {}: {}".format(nodeName, str(e)))
-    return "nodes", affected_nodes
 
 def deleteUnusedMaterials(nodes, _):
-    """Delete unused materials in the scene (always operates on the entire scene).
-    
-    Note: This function ignores the provided nodes and always works on all materials
-    in the scene, since unused materials are a scene-level concept.
-    """
-    affected_nodes = []
-    
-    # Default materials that should never be deleted
-    default_materials = ["lambert1", "particleCloud1", "shaderGlow1", "initialParticleSE"]
-    
+    """Delete unused materials, always scene-wide - unused is a scene-level idea."""
+    deleted = []
+    default_materials = ["lambert1", "particleCloud1", "shaderGlow1",
+                         "initialParticleSE"]
     try:
-        # Find all shading engines (except initialShadingGroup)
-        shadingEngines = cmds.ls(type="shadingEngine")
-        shadingEngines = [sg for sg in shadingEngines if sg != "initialShadingGroup"]
-        
-        # Find unused shading engines
-        unusedShadingEngines = []
-        for sg in shadingEngines:
-            # Find objects using this shading engine
-            objects = cmds.sets(sg, query=True)
-            if not objects:
-                unusedShadingEngines.append(sg)
-        
-        # Find materials connected to unused shading engines
+        shadingEngines = [sg for sg in (cmds.ls(type="shadingEngine") or [])
+                          if sg != "initialShadingGroup"]
+
         unusedMaterials = []
-        for sg in unusedShadingEngines:
-            connections = cmds.listConnections(sg + ".surfaceShader", source=True, destination=False)
-            if connections:
-                unusedMaterials.extend(connections)
-        
-        # Filter out default materials that should be preserved
-        unusedMaterials = [mat for mat in unusedMaterials if mat not in default_materials]
-        
-        # Report if nothing to delete
-        if not unusedMaterials:
-            cmds.warning("No unused materials found in the scene!")
-            if nodes:
-                affected_nodes.append(nodes[0])
-            return "nodes", affected_nodes
-        
-        # Log the materials being deleted
-        if unusedMaterials:
-            cmds.warning("Deleting unused materials: {}".format(", ".join(unusedMaterials)))
-        
-        # Delete unused materials only (not shading engines)
-        deleted_any = False
-        if unusedMaterials:
-            cmds.delete(unusedMaterials)
-            deleted_any = True
-        
-        # For reporting purposes, return some nodes if materials were deleted
-        if deleted_any and nodes:
-            affected_nodes = [nodes[0]]  # Use the first node as a placeholder
-        
+        for sg in shadingEngines:
+            # A shading engine with no members is not shading anything
+            if cmds.sets(sg, query=True):
+                continue
+            connections = cmds.listConnections(
+                sg + ".surfaceShader", source=True, destination=False) or []
+            for material in connections:
+                if material not in default_materials and material not in unusedMaterials:
+                    unusedMaterials.append(material)
+
+        for material in unusedMaterials:
+            try:
+                cmds.delete(material)
+                deleted.append(material)
+            except Exception as e:
+                cmds.warning("Failed to delete material {}: {}".format(
+                    material, str(e)))
     except Exception as e:
         cmds.warning("Failed to delete unused materials: {}".format(str(e)))
-    
+    return "custom", deleted
+
+
+def deleteInputDataNodes(nodes, _):
+    """Delete blind data / metadata nodes from the input history of the given nodes."""
+    affected_nodes = []
+
+    # cmds.ls() raises on an unregistered type, and not every type ships with
+    # every Maya version, so only ask for the ones this session knows about.
+    knownTypes = set(cmds.allNodeTypes())
+    dataTypes = [typ for typ in INPUT_DATA_NODE_TYPES if typ in knownTypes]
+    if not dataTypes:
+        cmds.warning("None of the input data node types exist in this Maya version.")
+        return "nodes", affected_nodes
+
+    found = {}
+    for node in nodes:
+        nodeName = _getNodeName(node)
+        if not nodeName:
+            continue
+        try:
+            # The transform's history reaches through to its shape's inputs
+            history = cmds.listHistory(nodeName) or []
+            dataNodes = cmds.ls(history, type=dataTypes) or []
+            if dataNodes:
+                found[node] = dataNodes
+        except Exception as e:
+            cmds.warning("Failed to collect input data nodes on {}: {}".format(
+                nodeName, str(e)))
+
+    if not found:
+        return "nodes", affected_nodes
+
+    toDelete = set()
+    for dataNodes in found.values():
+        toDelete.update(dataNodes)
+
+    for dataNode in sorted(toDelete):
+        if not cmds.objExists(dataNode):
+            continue
+        try:
+            cmds.lockNode(dataNode, lock=False)
+        except Exception:
+            pass
+        try:
+            cmds.delete(dataNode)
+        except Exception as e:
+            cmds.warning("Failed to delete input data node {}: {}".format(
+                dataNode, str(e)))
+
+    # Templates are standalone scene-level nodes with no connections at all, so
+    # they can only be reached once the data that used them is gone
+    _deleteOrphanedBlindDataTemplates()
+
+    # Report only the objects that really did lose a data node
+    for node, dataNodes in found.items():
+        if any(not cmds.objExists(dataNode) for dataNode in dataNodes):
+            affected_nodes.append(node)
+
     return "nodes", affected_nodes

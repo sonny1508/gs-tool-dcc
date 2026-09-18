@@ -163,5 +163,10 @@ mcCommandsList = {
         'category': 'Delete',
         'isAction': True,
         'isGlobal': True,
+    },
+    "deleteInputDataNodes": {
+        'label': 'Delete Input Data Node',
+        'category': 'Delete',
+        'isAction': True,
     }
 }

@@ -34,6 +34,10 @@ import Model_Checker.modelChecker_commands as mcc
 import Model_Checker.modelChecker_list as mcl
 from Model_Checker.__version__ import __version__
 
+# Qt's "no maximum" sentinel, used to release the window size lock
+QWIDGETSIZE_MAX = 16777215
+
+
 def getMainWindow():
     mainWindowPtr = omui.MQtUtil.mainWindow()
     # Handle pointer conversion based on Python version
@@ -60,6 +64,23 @@ class UI(QtWidgets.QMainWindow):
     commandCheckBox = {}
     errorNodesButton = {}
     commandRunButton = {}
+    revertButton = {}
+    errorButtonLabel = "Select Error Nodes"
+    logPanelWidth = 640
+    windowChrome = 16
+
+    # Categories whose commands change the scene rather than report on it
+    actionCategories = ('Actions', 'Delete')
+    checkCategoryColor = "#8fa8bd"
+    actionCategoryColor = "#d9a55c"
+    actionLabelStyles = {
+        'changed': 'background-color: #446644;',
+        'idle': 'background-color: #4a4a52;',
+        'error': 'background-color: #664444;',
+    }
+    revertButtonStyle = (
+        "QPushButton { background-color: #8a6534; color: #f2e4d0; }"
+        "QPushButton:disabled { background-color: #3d3d3d; color: #6e6e6e; }")
 
     @classmethod
     def show_UI(cls):
@@ -96,9 +117,21 @@ class UI(QtWidgets.QMainWindow):
         }
         self.contextRowItems = {}
 
+        # The window is pinned to its content, so track what that content is
+        self.logVisible = False
+        self.sizeReleased = False
+
+        # Revert points at one undo chunk, and only the most recent one
+        self.revertChunk = None
+        self.revertCommands = []
+        self.actionCounter = 0
+        self.chunkDepth = 0
+        self.currentChunk = None
+
         mainWidget = QtWidgets.QWidget(self)
         self.setCentralWidget(mainWidget)
-        mainLayout = QtWidgets.QVBoxLayout(mainWidget)  
+        mainLayout = QtWidgets.QVBoxLayout(mainWidget)
+        mainLayout.setContentsMargins(4, 4, 4, 4)
         report = self.buildContextUI()
         checks = self.buildChecksList()
         left = QtWidgets.QWidget()
@@ -109,7 +142,12 @@ class UI(QtWidgets.QMainWindow):
         left.setLayout(checks)
         right.setLayout(report)
         mainLayout.addWidget(splitter)
-        self.resize(1000, 900)
+
+        # The log panel is opt-in - the checks list alone is what most artists need
+        self.logPanel = right
+        self.toggleLogButton.toggled.connect(self.toggleLog)
+        self.logPanel.setVisible(False)
+        self.pinSize()
         self.loadSettings()
         
         # Initialize the default context and create report
@@ -251,11 +289,6 @@ class UI(QtWidgets.QMainWindow):
         contextWidgetLayout.addWidget(self.contextTable)
         contextButtonLayout = QtWidgets.QHBoxLayout()
 
-        # Set fixed width for the report output
-        self.reportOutputUI = QtWidgets.QTextEdit()
-        self.reportOutputUI.setReadOnly(True)
-        self.reportOutputUI.setMinimumWidth(680)
-
         addContextsBtn = QtWidgets.QPushButton("Add Contexts")
         removeContextsBtn = QtWidgets.QPushButton("Remove Contexts")
         checkSelectedContextsBtn = QtWidgets.QPushButton("Run Checks on Selected Contexts")
@@ -353,15 +386,14 @@ class UI(QtWidgets.QMainWindow):
 
     def buildChecksList(self):
         # Create a scroll area to contain all checks
+        self.measureChecksPanel()
+
         scrollArea = QtWidgets.QScrollArea()
         scrollArea.setWidgetResizable(True)
-        scrollArea.setMinimumWidth(480)
+        scrollArea.setMinimumWidth(self.checksPanelWidth)
         
-        # Use either 800px or 80% of screen height, whichever is smaller
-        if hasattr(self, 'desired_height'):
-            scrollArea.setMinimumHeight(min(800, self.desired_height))
-        else:
-            scrollArea.setMinimumHeight(800)
+        # The window height is fixed, so leave the buttons below their room
+        scrollArea.setMinimumHeight(max(300, self.fixedHeight - 80))
         
         # Create a container widget for the scroll area
         scrollContent = QtWidgets.QWidget()
@@ -392,11 +424,15 @@ class UI(QtWidgets.QMainWindow):
             self.categoryCollapse[obj].clicked.connect(make_toggle_callback(obj))
             self.categoryCollapse[obj].setMaximumWidth(30)
             
+            # Actions and checks are told apart at a glance by header colour
+            headerColor = (self.actionCategoryColor
+                           if obj in self.actionCategories
+                           else self.checkCategoryColor)
             self.categoryButton[obj].setStyleSheet(
-                """background-color: grey; 
-                text-transform: uppercase; 
-                color: #000000; font-size: 
-                18px;""")
+                "background-color: " + headerColor + ";"
+                "text-transform: uppercase;"
+                "color: #000000;"
+                "font-size: 18px;")
                     
             self.categoryButton[obj].clicked.connect(make_category_callback(obj))
             
@@ -407,9 +443,15 @@ class UI(QtWidgets.QMainWindow):
             checks.addWidget(self.categoryWidget[obj])
 
         # Add commands to categories
+        # Instance dicts: a reloaded module must not keep stale widgets around,
+        # since an absent key is what marks a row as an action row
+        self.errorNodesButton = {}
+        self.revertButton = {}
+
         for name in sorted(self.commandsList.keys()):
             label = self.commandsList[name]['label']
             category = self.commandsList[name]['category']
+            isAction = self.commandsList[name].get('isAction', False)
 
             self.commandWidget[name] = QtWidgets.QWidget()
             self.commandWidget[name].setMaximumHeight(40)
@@ -423,7 +465,7 @@ class UI(QtWidgets.QMainWindow):
             self.commandWidget[name].setStyleSheet(
                 "padding: 0px; margin: 0px;")
             self.commandLabel[name] = QtWidgets.QLabel(label)
-            self.commandLabel[name].setMinimumWidth(180)
+            self.commandLabel[name].setFixedWidth(self.labelWidth)
             self.commandCheckBox[name] = QtWidgets.QCheckBox()
 
             self.commandCheckBox[name].setChecked(False)
@@ -436,18 +478,37 @@ class UI(QtWidgets.QMainWindow):
             def make_cmd_handler(cmd_name):
                 return lambda: self.oneOfs(cmd_name)
             
+            def make_revert_handler(cmd_name):
+                return lambda: self.revertAction(cmd_name)
+
             # Connect using our custom handler
             self.commandRunButton[name].clicked.connect(make_cmd_handler(name))
-
-            self.errorNodesButton[name] = QtWidgets.QPushButton(
-                "Select Error Nodes")
-            self.errorNodesButton[name].setEnabled(False)
-            self.errorNodesButton[name].setMaximumWidth(150)
 
             self.commandLayout[name].addWidget(self.commandLabel[name])
             self.commandLayout[name].addWidget(self.commandCheckBox[name])
             self.commandLayout[name].addWidget(self.commandRunButton[name])
-            self.commandLayout[name].addWidget(self.errorNodesButton[name])
+
+            if isAction:
+                # Nothing useful to select on an action, so Revert takes the slot
+                self.revertButton[name] = QtWidgets.QPushButton("Revert")
+                self.revertButton[name].setEnabled(False)
+                self.revertButton[name].setFixedWidth(self.errorButtonWidth)
+                self.revertButton[name].setStyleSheet(self.revertButtonStyle)
+                self.revertButton[name].clicked.connect(make_revert_handler(name))
+                self.commandLayout[name].addWidget(self.revertButton[name])
+
+                self.commandRunButton[name].setToolTip(
+                    "Changes the whole scene, ignoring your selection"
+                    if self.commandsList[name].get('isGlobal', False)
+                    else "Changes the objects in the current context")
+            else:
+                self.errorNodesButton[name] = QtWidgets.QPushButton(
+                    self.errorButtonLabel)
+                self.errorNodesButton[name].setEnabled(False)
+                self.errorNodesButton[name].setFixedWidth(self.errorButtonWidth)
+                self.commandLayout[name].addWidget(self.errorNodesButton[name])
+
+            self.commandLayout[name].addStretch()
         
         # Create a wrapper layout that will hold the scroll area
         wrapperLayout = QtWidgets.QVBoxLayout()
@@ -475,8 +536,80 @@ class UI(QtWidgets.QMainWindow):
         checkButtonsLayout.addWidget(failedCheckButton)
 
         checkButtonsLayout.addWidget(checkAllButton)
+
+        self.toggleLogButton = QtWidgets.QPushButton("Show Log")
+        self.toggleLogButton.setCheckable(True)
+        self.toggleLogButton.setChecked(False)
+        wrapperLayout.addWidget(self.toggleLogButton)
+
         return wrapperLayout
     
+    def textWidth(self, metrics, text):
+        """QFontMetrics.width() was replaced by horizontalAdvance() in newer Qt."""
+        if hasattr(metrics, "horizontalAdvance"):
+            return metrics.horizontalAdvance(text)
+        return metrics.width(text)
+
+    def measureChecksPanel(self):
+        """Size the checks panel to the text it holds so it wastes no width."""
+        metrics = self.fontMetrics()
+        self.labelWidth = max(
+            self.textWidth(metrics, self.commandsList[name]['label'])
+            for name in self.commandsList) + 8
+        self.errorButtonWidth = self.textWidth(metrics, self.errorButtonLabel) + 24
+
+        # Tall enough to show most checks, but never taller than the screen
+        screen = QtWidgets.QApplication.primaryScreen()
+        available = screen.availableGeometry().height() if screen else 900
+        self.fixedHeight = max(600, min(900, available - 80))
+
+        # label + checkbox + run button + select button + spacing, margins, scrollbar
+        self.checksPanelWidth = (
+            self.labelWidth + 20 + 40 + self.errorButtonWidth + 12 + 20 + 24)
+
+    def toggleLog(self, visible):
+        """Show or hide the report panel on the right."""
+        self.logVisible = visible
+        self.logPanel.setVisible(visible)
+        self.toggleLogButton.setText("Hide Log" if visible else "Show Log")
+        if not self.sizeReleased:
+            self.pinSize()
+
+    def contentSize(self):
+        """The size the window wants, which only the log panel changes."""
+        width = self.checksPanelWidth + self.windowChrome
+        if self.logVisible:
+            width += self.logPanelWidth
+        return QtCore.QSize(width, self.fixedHeight)
+
+    def pinSize(self):
+        """Hold the window at its content size - no dragging it out of shape.
+
+        Explicit min/max also beat the layout's minimum, which is what kept the
+        window at full width after the log panel was hidden again.
+        """
+        self.sizeReleased = False
+        self.setFixedSize(self.contentSize())
+
+    def releaseSize(self):
+        """Drop the lock so maximize / fullscreen can use the whole screen."""
+        self.sizeReleased = True
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX)
+
+    def changeEvent(self, event):
+        super(UI, self).changeEvent(event)
+        if event.type() != QtCore.QEvent.WindowStateChange or self.isMinimized():
+            return
+        expanded = self.isMaximized() or self.isFullScreen()
+        if expanded and not self.sizeReleased:
+            self.releaseSize()
+            # The lock clamped the state change, so ask for it again now
+            reapply = self.showFullScreen if self.isFullScreen() else self.showMaximized
+            QtCore.QTimer.singleShot(0, reapply)
+        elif not expanded and self.sizeReleased:
+            self.pinSize()
+
     def closeEvent(self, event):
         self.saveSettings()
         super(UI, self).closeEvent(event)
@@ -492,7 +625,7 @@ class UI(QtWidgets.QMainWindow):
         special_categories = []
         
         for cat in allCategories:
-            if cat in ['Actions', 'Delete']:
+            if cat in self.actionCategories:
                 special_categories.append(cat)
             else:
                 categories.append(cat)
@@ -538,7 +671,8 @@ class UI(QtWidgets.QMainWindow):
         context["diagnostics"]["tests"] = 0
         self.clearRowFromItem(context['tableItem'])
         for command in self.commandsList.keys():
-            self.errorNodesButton[command].setEnabled(False)
+            if command in self.errorNodesButton:
+                self.errorNodesButton[command].setEnabled(False)
             self.commandLabel[command].setStyleSheet('background-color: none;')
         self.reportOutputUI.clear()
 
@@ -641,6 +775,46 @@ class UI(QtWidgets.QMainWindow):
             cmds.warning("Error running command '{}': {}".format(command, str(e)))
 
     def commandToRun(self, commands, nodes):
+        """Run the commands, bracketing scene changes in a single undo chunk.
+
+        One chunk per run is what makes Revert possible: deletes cannot be
+        rebuilt by hand, so we lean on Maya's undo stack instead.
+        """
+        actions = [cmd for cmd in commands
+                   if self.commandsList.get(cmd, {}).get('isAction', False)]
+        if not actions:
+            return self.runCommands(commands, nodes)
+
+        chunkName = self.beginActionChunk()
+        try:
+            diagnostics = self.runCommands(commands, nodes)
+        finally:
+            self.endActionChunk()
+
+        # An action that found nothing to do leaves the undo stack untouched, so
+        # it neither gains a revert point nor destroys the one already there
+        changed = [cmd for cmd in actions
+                   if self.actionOutcome(diagnostics.get(cmd, {})) == 'changed']
+        if changed:
+            self.addRevertPoint(chunkName, changed)
+        return diagnostics
+
+    def beginActionChunk(self):
+        """Open a named undo chunk, or join the one already open."""
+        self.chunkDepth += 1
+        if self.chunkDepth == 1:
+            self.actionCounter += 1
+            self.currentChunk = "modelChecker_{}".format(self.actionCounter)
+            cmds.undoInfo(openChunk=True, chunkName=self.currentChunk)
+        return self.currentChunk
+
+    def endActionChunk(self):
+        """Close the chunk once the outermost caller is done with it."""
+        self.chunkDepth = max(0, self.chunkDepth - 1)
+        if self.chunkDepth == 0:
+            cmds.undoInfo(closeChunk=True)
+
+    def runCommands(self, commands, nodes):
         """Execute the given commands on the specified nodes."""
         diagnostics = {}
         SLMesh = om.MSelectionList()
@@ -676,14 +850,21 @@ class UI(QtWidgets.QMainWindow):
                     continue
                     
                 # Call the command function
-                type, errors = func(nodes, SLMesh)
-                diagnostics[command] = {"type": type, "uuids": errors}
-                
+                resultType, errors = func(nodes, SLMesh)
+                if resultType == "custom":
+                    # Names of things that no longer exist, so they cannot be
+                    # looked up as scene nodes - pass them straight through
+                    diagnostics[command] = {
+                        "type": resultType, "uuids": [], "data": errors}
+                else:
+                    diagnostics[command] = {"type": resultType, "uuids": errors}
+
             except Exception as e:
                 import traceback
                 cmds.warning("Error running command '{}': {}".format(command, str(e)))
                 traceback.print_exc()
-                diagnostics[command] = {"type": "nodes", "uuids": []}
+                diagnostics[command] = {
+                    "type": "nodes", "uuids": [], "error": str(e)}
         
         SLMesh.clear()
         return diagnostics
@@ -754,7 +935,7 @@ class UI(QtWidgets.QMainWindow):
         html = "<h2>{}</h2>".format(name)
 
         # Disconnect all previous button signals
-        for cmd in self.commandsList.keys():
+        for cmd in self.errorNodesButton:
             try:
                 self.errorNodesButton[cmd].clicked.disconnect()
             except:
@@ -778,34 +959,32 @@ class UI(QtWidgets.QMainWindow):
 
         for error in sorted(self.commandsList.keys()):
             if error not in diagnostics:
-                self.errorNodesButton[error].setEnabled(False)
+                if error in self.errorNodesButton:
+                    self.errorNodesButton[error].setEnabled(False)
                 self.commandLabel[error].setStyleSheet('background-color: none;')
                 continue
             
             # Check if this is an action command
             isAction = self.commandsList[error].get('isAction', False)
-            parsedErrors = self.parseErrors(diagnostics[error])
-            
+            entry = diagnostics[error]
+            parsedErrors = self.parseErrors(entry)
+            outcome = self.actionOutcome(entry) if isAction else None
+
             # For checks, "failed" means there are errors
-            # For actions, "failed" means no nodes were affected
+            # For actions, only a real error is a failure - finding nothing to
+            # do is a perfectly good outcome
             if isAction:
-                # For actions, having nodes means success
-                failed = len(parsedErrors) == 0
+                failed = outcome != 'changed'
             else:
                 # For checks, having nodes means failure
                 failed = len(parsedErrors) != 0
             
             # Update UI based on success/failure
             if isAction:
-                if not failed:  # Action succeeded (nodes were modified)
-                    self.errorNodesButton[error].setEnabled(True)
-                    error_data = diagnostics[error]  # Create local var to avoid reference issues
-                    self.errorNodesButton[error].clicked.connect(
-                        lambda checked=False, err=error_data: self.selectErrorNodes(err))
-                    self.commandLabel[error].setStyleSheet('background-color: #446644;')
-                else:  # Action failed (no nodes were modified)
-                    self.errorNodesButton[error].setEnabled(False)
-                    self.commandLabel[error].setStyleSheet('background-color: #664444;')
+                # Action rows carry a Revert button instead, and its state comes
+                # from the undo stack rather than from these diagnostics
+                self.commandLabel[error].setStyleSheet(
+                    self.actionLabelStyles[outcome])
             else:
                 if failed:  # Check failed (errors found)
                     self.errorNodesButton[error].setEnabled(True)
@@ -824,10 +1003,13 @@ class UI(QtWidgets.QMainWindow):
             lastFailed = failed
             
             if isAction:
-                if not failed:  # Action succeeded
-                    html += "&#10752; {}<font color=#64a65a> [ NODES MODIFIED ]</font><br>".format(label)
-                else:  # Action failed
-                    html += "{}<font color=#9c4f4f> [ NO NODES AFFECTED ]</font><br>".format(label)
+                if outcome == 'changed':
+                    html += "&#10752; {}<font color=#64a65a> [ CHANGED ]</font><br>".format(label)
+                elif outcome == 'error':
+                    html += "&#10752; {}<font color=#9c4f4f> [ ERROR ]</font><br>".format(label)
+                    html += "&#9492;&#9472; {}<br>".format(entry.get('error', ''))
+                else:
+                    html += "{}<font color=#9a9a9a> [ NOTHING TO DO ]</font><br>".format(label)
             else:
                 if failed:  # Check failed
                     html += "&#10752; {}<font color=#9c4f4f> [ FAILED ]</font><br>".format(label)
@@ -836,7 +1018,8 @@ class UI(QtWidgets.QMainWindow):
             
             # Show nodes for successful actions or failed checks
             if (isAction and not failed) or (not isAction and failed):
-                if consolidated and len(parsedErrors) > 0:
+                if (consolidated and len(parsedErrors) > 0
+                        and entry.get('type') != 'custom'):
                     store = {}
                     for node in parsedErrors:
                         name = node.split(".")[0] if "." in node else node
@@ -930,56 +1113,142 @@ class UI(QtWidgets.QMainWindow):
         #     if returnValue != QtWidgets.QMessageBox.Ok:
         #         return
         
-        # Process each context
-        for contextUUID in contextsUuids:
-            # Always get fresh nodes for Selection context
-            if contextUUID == "Selection":
-                if refreshSelection:
-                    selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
-                    if not selectedNodes:
-                        cmds.warning("No objects selected")
-                        return
-                    nodes = self.selectHierachy(selectedNodes)
-                    # Update the selection context nodes
-                    self.contexts["Selection"]["nodes"] = nodes
-                else:
-                    nodes = self.contexts[contextUUID]['nodes']
+        # Every context's actions belong to one chunk, so Revert undoes the
+        # whole run rather than just whichever context happened to be last
+        if actionCommands:
+            self.beginActionChunk()
+        try:
+            # Process each context
+            for contextUUID in contextsUuids:
+                # Always get fresh nodes for Selection context
+                if contextUUID == "Selection":
+                    if refreshSelection:
+                        selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
+                        if not selectedNodes:
+                            cmds.warning("No objects selected")
+                            return
+                        nodes = self.selectHierachy(selectedNodes)
+                        # Update the selection context nodes
+                        self.contexts["Selection"]["nodes"] = nodes
+                    else:
+                        nodes = self.contexts[contextUUID]['nodes']
                     
-            # Always get fresh nodes for Global context
-            elif contextUUID == "Global":
-                if refreshSelection:
-                    nodes = self.filterGetAllNodes()
-                    # Update the global context nodes
-                    self.contexts["Global"]["nodes"] = nodes
+                # Always get fresh nodes for Global context
+                elif contextUUID == "Global":
+                    if refreshSelection:
+                        nodes = self.filterGetAllNodes()
+                        # Update the global context nodes
+                        self.contexts["Global"]["nodes"] = nodes
+                    else:
+                        nodes = self.contexts[contextUUID]['nodes']
                 else:
                     nodes = self.contexts[contextUUID]['nodes']
-            else:
-                nodes = self.contexts[contextUUID]['nodes']
             
-            # Ensure nodes still exist
-            nodes = [uuid for uuid in nodes if cmds.ls(uuid, uuid=True)]
+                # Ensure nodes still exist
+                nodes = [uuid for uuid in nodes if cmds.ls(uuid, uuid=True)]
 
-            if not nodes:
-                cmds.warning("No nodes to check in context: {}".format(
-                    self.contexts[contextUUID]["name"]))
-                continue
+                if not nodes:
+                    cmds.warning("No nodes to check in context: {}".format(
+                        self.contexts[contextUUID]["name"]))
+                    continue
             
-            # Update the UI to show we're running
-            row = self.contexts[contextUUID]['tableItem'].row()
-            self.contextTable.item(row, 3).setText("Running...")
+                # Update the UI to show we're running
+                row = self.contexts[contextUUID]['tableItem'].row()
+                self.contextTable.item(row, 3).setText("Running...")
             
-            # Run commands and update results
-            diagnostics = self.commandToRun(checkedCommands, nodes)
-            self.contexts[contextUUID]['nodes'] = nodes
-            self.contexts[contextUUID]['diagnostics'] = diagnostics
-            self.currentContextUUID = contextUUID
-            self.setRowFromItem(self.contexts[contextUUID]['tableItem'])
+                # Run commands and update results
+                diagnostics = self.commandToRun(checkedCommands, nodes)
+                self.contexts[contextUUID]['nodes'] = nodes
+                self.contexts[contextUUID]['diagnostics'] = diagnostics
+                self.currentContextUUID = contextUUID
+                self.setRowFromItem(self.contexts[contextUUID]['tableItem'])
+        finally:
+            if actionCommands:
+                self.endActionChunk()
 
         # Show the report for the last context
         self.setRowFromUUID(self.currentContextUUID)
 
     def selectErrorNodes(self, errors):
         cmds.select(self.parseErrors(errors))
+
+    def addRevertPoint(self, chunkName, actions):
+        """Point the Revert buttons at the run that just finished.
+
+        A new chunk replaces the old revert point; the same chunk seen again
+        (one run spanning several contexts) adds to it.
+        """
+        if chunkName != self.revertChunk:
+            self.revertChunk = chunkName
+            self.revertCommands = []
+        for command in actions:
+            if command not in self.revertCommands:
+                self.revertCommands.append(command)
+        self.updateRevertButtons()
+
+    def clearRevertPoint(self):
+        self.revertChunk = None
+        self.revertCommands = []
+        self.updateRevertButtons()
+
+    def updateRevertButtons(self):
+        """Only the actions from the most recent run can be reverted."""
+        labels = [self.commandsList[cmd]['label'] for cmd in self.revertCommands
+                  if cmd in self.commandsList]
+        tooltip = "Undo the last run of: {}".format(", ".join(labels))
+        for name, button in self.revertButton.items():
+            enabled = name in self.revertCommands
+            button.setEnabled(enabled)
+            button.setToolTip(tooltip if enabled else "Nothing left to revert")
+
+    def actionOutcome(self, entry):
+        """How an action run went: 'error', 'changed', or 'idle' for a no-op."""
+        if not entry:
+            return 'idle'
+        if entry.get('error'):
+            return 'error'
+        return 'changed' if self.parseErrors(entry) else 'idle'
+
+    def undoStackTop(self):
+        """Name of the next item on the undo stack, or None if Maya will not say.
+
+        A named chunk reports its own chunk name here, which is what lets us
+        tell our own run apart from anything the artist did afterwards.
+        """
+        try:
+            return cmds.undoInfo(query=True, undoName=True)
+        except Exception:
+            return None
+
+    def revertAction(self, command):
+        """Undo the last action run, but only while it is still on top."""
+        if not self.revertChunk or command not in self.revertCommands:
+            return
+
+        if not cmds.undoInfo(query=True, state=True):
+            cmds.warning("Maya's undo queue is off, so nothing can be reverted.")
+            self.clearRevertPoint()
+            return
+
+        # Anything done in Maya since the run sits above our chunk, so undoing
+        # would quietly throw that away instead. Fail closed when unsure.
+        top = self.undoStackTop()
+        if top != self.revertChunk:
+            cmds.warning(
+                "The scene has changed since that action ran, so it can no "
+                "longer be reverted from here. Use Maya's own undo instead.")
+            self.clearRevertPoint()
+            return
+
+        reverted = list(self.revertCommands)
+        cmds.undo()
+        self.clearRevertPoint()
+
+        # The results described a scene state that no longer exists
+        diagnostics = self.contexts[self.currentContextUUID]['diagnostics']
+        for cmd in reverted:
+            diagnostics.pop(cmd, None)
+        self.createReport(self.currentContextUUID)
     
     def countErrors(self, diagnostics):
         count = 0
@@ -987,8 +1256,8 @@ class UI(QtWidgets.QMainWindow):
             isAction = self.commandsList.get(error, {}).get('isAction', False)
             
             if isAction:
-                # For actions, success means at least one node was affected
-                if diagnostics[error]['uuids']:
+                # Nothing to do is still a pass; only a raised error is not
+                if self.actionOutcome(diagnostics[error]) != 'error':
                     count += 1
             else:
                 # For checks, success means no errors
