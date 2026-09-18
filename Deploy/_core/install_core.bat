@@ -60,7 +60,7 @@ if not exist "%SRC%" (
 :: per-DCC subtree copies (which don't contain these); essential for the full-root
 :: server push in install_server.bat.
 set "EXCLUDE_DIRS=.git .claude .vscode .idea __pycache__ __pycache_ Library"
-set "EXCLUDE_FILES=.gitignore .gitattributes *.pyc"
+set "EXCLUDE_FILES=.gitignore .gitattributes *.pyc *.md"
 
 :: robocopy flags:
 ::   /E       all subdirs incl. empty      /DCOPY:DA  copy dir timestamps+attrs

@@ -84,6 +84,11 @@ Environment/
 
 ## Working on the tools
 
+**Read [CLAUDE.md](CLAUDE.md) first.** It holds the rules that are not visible from the code:
+the studio runs **Maya 2022 and 2026 only**, **PyMEL is banned** (it is gone in 2026), and
+changes are verified by deploying and testing in real Maya rather than by scripted/headless
+test runs. It applies to human contributors and to AI assistants working in this repo alike.
+
 Edit files under `Environment/`. To test on your own machine you can run the relevant
 `Deploy/<DCC>/<dcc>_install_user.bat` (it will pull from the *server*, so publish first
 with `install_server.bat` if you want your local edits picked up), or point the DCC at
