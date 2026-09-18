@@ -69,6 +69,7 @@ TOOLS = [
             {"name": "SCR1 Asset Validation", "script": "05_Projects/SCR1/Scr1_Asset_Validation_UI.py", "icon": "Scr1_Asset_Validation_Icon.png"},
         ]),
         ("GSW", [
+            {"name": "GSW Vehicle Tools",        "script": "05_Projects/GSW/gsw_vehicle_tools/launch.py"},
             {"name": "Rename Building Textures", "script": "05_Projects/GSW/rename_building_textures.py"},
         ]),
     ]),

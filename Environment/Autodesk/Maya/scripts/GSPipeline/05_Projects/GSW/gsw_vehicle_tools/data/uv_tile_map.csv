@@ -1,0 +1,21 @@
+# GSW UV atlas tile map
+#
+# Maps a vertex colour set name to the atlas tile its UV shells belong in.
+# Read fresh every time Split runs, so edits here need no Maya restart.
+#
+#   color_set_name  the colour set carried on the mesh; matched lowercase,
+#                   surrounding whitespace ignored
+#   tile_u, tile_v  0-based tile coordinates, both in the range 0..63
+#
+# Blank lines and lines starting with # are ignored.
+# A name listed twice is an error and stops Split before anything moves.
+#
+# Example:
+#   _01_,0,0
+#   _02_,1,0
+#   _03_,2,0
+#   _04_,0,1
+#
+# Fill in the real mapping below, then delete this line.
+_1_,1,0
+_2_,2,0
