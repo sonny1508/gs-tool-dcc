@@ -16,123 +16,8 @@ from bpy.props import *
 from bpy.types import Panel, PropertyGroup, Scene
 
 
-class globalVariables():
-    bl_idname = "s4env.globalvariables"
-    bl_label = "Global Variables"
-
-    wrongPositions_Attachment = []
-    wrongNames_Attachment = []
-    wrongTransformObjs = {}
-    wrongObjName = {}
-    objectsWithKeys = []
-    ResultMessage = "Hello World"
-    meshObjs = []
-    version = "Version 1.0"
-
-def checkTransform(meshObjs):
-    wrongPositionObjs = {}
-
-    for meshObj in meshObjs:
-        wrongValues = []
-        if meshObj.type == 'MESH' and not "deformation" in meshObj.name:
-            lx = meshObj.location[0]
-            if lx != 0.0000:
-                wrongValues.append("location X")
-
-            ly = meshObj.location[1]
-            if ly != 0.0000:
-                wrongValues.append("location Y")
-
-            lz = meshObj.location[2]
-            if lz != 0.0000:
-                wrongValues.append("location Z")
-
-            rx = meshObj.rotation_euler[0]
-            if rx != 0.0000:
-                wrongValues.append("rotation X")
-
-            ry = meshObj.rotation_euler[1]
-            if ry != 0.0000:
-                wrongValues.append("rotation Y")
-
-            rz = meshObj.rotation_euler[2]
-            if rz != 0.0000:
-                wrongValues.append("rotation Z")
-
-            sx = meshObj.scale[0]
-            if sx != 1.000:
-                wrongValues.append("scale X")
-
-            sy = meshObj.scale[1]
-            if sy != 1.000:
-                wrongValues.append("scale Y")
-
-            sz = meshObj.scale[2]
-            if sz != 1.000:
-                wrongValues.append("scale Z")
-
-            if len(wrongValues) != 0:
-                wrongPositionObjs[meshObj.name] = wrongValues
-                print(meshObj.name, wrongValues)
-
-    if len(wrongPositionObjs) != 0:
-        return wrongPositionObjs
-    else:
-        return True
-
-
-def checkUnusedData():
-    unusedData = []
-
-    datatypeList = [
-        bpy.data.actions,
-        bpy.data.armatures,
-        #                bpy.data.brushes,
-        bpy.data.cache_files,
-        bpy.data.cameras,
-        bpy.data.collections,
-        bpy.data.curves,
-        bpy.data.fonts,
-        bpy.data.grease_pencils,
-        bpy.data.images,
-        bpy.data.lattices,
-        bpy.data.libraries,
-        bpy.data.lightprobes,
-        bpy.data.lights,
-        bpy.data.linestyles,
-        bpy.data.masks,
-        bpy.data.materials,
-        bpy.data.metaballs,
-        bpy.data.meshes,
-        bpy.data.movieclips,
-        bpy.data.node_groups,
-        bpy.data.objects,
-        bpy.data.paint_curves,
-        bpy.data.palettes,
-        bpy.data.particles,
-        bpy.data.scenes,
-        bpy.data.screens,
-        bpy.data.shape_keys,
-        bpy.data.sounds,
-        bpy.data.speakers,
-        #                bpy.data.texts,
-        bpy.data.textures,
-        bpy.data.volumes,
-        bpy.data.window_managers,
-        bpy.data.worlds,
-        bpy.data.workspaces, ]
-
-    for datatype in datatypeList:
-        for bpy_data_iter in datatype:
-            if bpy_data_iter.users == bpy_data_iter.use_fake_user:
-                unusedData.append(bpy_data_iter)
-                print(bpy_data_iter)
-
-    results = []
-    if len(unusedData) == 0:
-        return True
-    else:
-        return False
+# Panel footer text, built from bl_info so the two can never drift apart.
+ADDON_VERSION = "Version %s" % ".".join(str(n) for n in bl_info["version"])
 
 
 def ShowMessageBox(message, title, icon):
@@ -150,15 +35,6 @@ def add_item(collection, itemname, message):
     item.message = message
 
 
-def remove_item(collection, itemname):
-    for i in collection.keys():
-        if i == itemname:
-            collection.remove(collection.find(itemname))
-
-    if len(collection) == 0:
-        bpy.context.scene.checkResult_all = False
-
-
 def getmeshObjs():
     meshObjs = []
     objs = bpy.context.scene.objects
@@ -166,15 +42,6 @@ def getmeshObjs():
         meshObjs.append(obj)
 
     return meshObjs
-
-def check_mesh_in_collection(collection_name, mesh_name):
-    if collection_name in bpy.data.collections:
-        collection = bpy.data.collections[collection_name]
-        for obj in collection.objects:
-            if obj.name.endswith(mesh_name):
-                return (mesh_name + " found!", 'CHECKMARK')
-    return (mesh_name + " not found in " + collection_name, 'ERROR')
-                         
 
 class CUSTOM_S4envobjectCollection(bpy.types.PropertyGroup):
     # name: StringProperty() -> Instantiated by default
@@ -209,7 +76,7 @@ class MATERIAL_S4env_matslots_example(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
         layout.prop(item, "message", text=item.type, emboss=False, icon_value=icon)
 
-class ValidationS4EnvToolMainPanel(bpy.types.Panel, globalVariables):
+class ValidationS4EnvToolMainPanel(bpy.types.Panel):
     bl_label = "S4 Env Validator"
     bl_idname = "S4_Env_Validator"
     bl_space_type = 'VIEW_3D'
@@ -247,9 +114,9 @@ class ValidationS4EnvToolMainPanel(bpy.types.Panel, globalVariables):
             row.operator("custom.s4env_clear_list", text="Clear and hide result box.")
 
         row11 = layout.row()
-        row11.label(text= globalVariables.version)
+        row11.label(text=ADDON_VERSION)
 
-class S4EnvCheckToolPanel(bpy.types.Panel, globalVariables):
+class S4EnvCheckToolPanel(bpy.types.Panel):
     bl_label = "S4 Env Check Tool"
     bl_idname = "S4_Env_Check"
     bl_space_type = 'VIEW_3D'
@@ -262,11 +129,14 @@ class S4EnvCheckToolPanel(bpy.types.Panel, globalVariables):
         layout = self.layout
      
         obj = context.object
-        
-        row1 = layout.row()
-        row1.operator("s4.envcheckuvs", text="Check UVs")
 
-class S4EnvLODToolPanel(bpy.types.Panel, globalVariables):
+        row1 = layout.row()
+        row1.operator("s4.envcheckmaterials", text="Check Materials")
+
+        row2 = layout.row()
+        row2.operator("s4.envcheckuvs", text="Check UVs")
+
+class S4EnvLODToolPanel(bpy.types.Panel):
     bl_label = "S4 Env LOD Tool"
     bl_idname = "S4_Env_LOD"
     bl_space_type = 'VIEW_3D'
@@ -293,7 +163,7 @@ class S4EnvLODToolPanel(bpy.types.Panel, globalVariables):
         row3.operator("s4.envlodaduplicate", text="Duplicate LODA to LODB")
         row3.operator("s4.envlodbduplicate", text="Duplicate LODB to LODC")
 
-class S4EnvUtilitiToolPanel(bpy.types.Panel, globalVariables):
+class S4EnvUtilitiToolPanel(bpy.types.Panel):
     bl_label = "S4 Env Utilities Tool"
     bl_idname = "S4_Env_Utilities"
     bl_space_type = 'VIEW_3D'
@@ -327,7 +197,7 @@ class S4EnvUtilitiToolPanel(bpy.types.Panel, globalVariables):
         row3 = layout.row()
         row3.operator("s4.envselngon", text="Select N-Gons Face")
 
-class S4EnvInitialCheck(bpy.types.Operator, globalVariables):
+class S4EnvInitialCheck(bpy.types.Operator):
     bl_idname = "s4.envcheck"
     bl_label = "Initial Check"
     bl_description = "Run through all check processes"
@@ -342,10 +212,10 @@ class S4EnvInitialCheck(bpy.types.Operator, globalVariables):
             pass
         scn = context.scene
         objs = bpy.context.scene.objects
-        globalVariables.meshObjs = getmeshObjs()
+        meshObjs = getmeshObjs()
 
-        if len(globalVariables.meshObjs) != 0:
-            bpy.context.view_layer.objects.active = globalVariables.meshObjs[0]
+        if len(meshObjs) != 0:
+            bpy.context.view_layer.objects.active = meshObjs[0]
 
             ##Check Material node type
             allmat = bpy.data.materials
@@ -465,7 +335,7 @@ class S4EnvInitialCheck(bpy.types.Operator, globalVariables):
             ShowMessageBox(confmessage, "S4 Validation", "ERROR")
             return {"FINISHED"}
 
-class S4EnvCorrectMat(bpy.types.Operator, globalVariables):
+class S4EnvCorrectMat(bpy.types.Operator):
     bl_idname = "s4.envcorrectmat"
     bl_label = "Correct Material"
     bl_description = "Correct Duplicate Material"
@@ -502,7 +372,7 @@ class S4EnvCorrectMat(bpy.types.Operator, globalVariables):
 
         return {'FINISHED'}
         
-class S4EnvToggleViewColor(bpy.types.Operator, globalVariables):
+class S4EnvToggleViewColor(bpy.types.Operator):
     bl_idname = "s4.envviewportcol"
     bl_label = "Toggle Viewport Color"
     bl_description = "Change Viewport Color for backface checking"
@@ -536,7 +406,7 @@ class S4EnvToggleViewColor(bpy.types.Operator, globalVariables):
                   
         return {'FINISHED'}
 
-class S4EnvToggleWireFrame(bpy.types.Operator, globalVariables):
+class S4EnvToggleWireFrame(bpy.types.Operator):
     bl_idname = "s4.envviewwireframe"
     bl_label = "Toggle Viewport Wire Frame"
     bl_description = "Toggle Mesh Wireframe"
@@ -552,7 +422,7 @@ class S4EnvToggleWireFrame(bpy.types.Operator, globalVariables):
                         space.overlay.show_wireframes = True            
         return {'FINISHED'}       
         
-class S4EnvSelectNgon(bpy.types.Operator, globalVariables):
+class S4EnvSelectNgon(bpy.types.Operator):
     bl_idname = "s4.envselngon"
     bl_label = "Select Ngons"
     bl_description = "Select all non-quad faces on the active mesh"
@@ -700,7 +570,7 @@ class S4ENV_UL_log(bpy.types.UIList):
             row.label(text="%s: %s" % (item.check, item.message) if item.check else item.message)
 
 
-class S4EnvLogPanel(bpy.types.Panel, globalVariables):
+class S4EnvLogPanel(bpy.types.Panel):
     bl_label = "S4 Env Log"
     bl_idname = "S4_Env_Log"
     # Last panel in the category, and deliberately no DEFAULT_CLOSED - check
@@ -795,7 +665,77 @@ class S4EnvLogClear(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
+# ---------------------------------------------------------------------------
+# s4s shader
+#
+# The UV check and the material check read the same node group, so its name and
+# its socket names live here rather than on either operator - when the two kept
+# their own copies they drifted, and a misspelt socket name is invisible: an
+# absent socket reads as False, so the check quietly passes everything.
+# ---------------------------------------------------------------------------
+
+# Matched exactly. Appending a material from another file can bring in a second
+# copy of the group as "basic_props_shader_s4s.001", and a material sitting on
+# that copy is on a shader that can drift from the real one - so it is a fault
+# to report, never a name to quietly accept.
+SHADER_GROUP = "basic_props_shader_s4s"
+
+# Socket names on that group. The colour flag is spelt the British way and the
+# rest are not - that is how the group is authored, so it is not a typo to fix
+# here. shader_flag() below raises on an unknown socket rather than reading it
+# as off, which is what makes a wrong name show up instead of hiding.
+FLAG_ALPHA = "use_alpha"
+FLAG_BROAD_COLOUR = "use_broad_colour"
+FLAG_EMISSIVE = "use_emissive"
+FLAG_BROAD_EMISSIVE = "use_broad_emissive"
+FLAG_LOGO = "use_logo"
+
+
+def group_nodes(mat):
+    """Every top-level group node in a material, as (node, group name)."""
+    tree = mat.node_tree if mat.use_nodes else None
+    if tree is None:
+        return []
+    return [(node, node.node_tree.name) for node in tree.nodes
+            if getattr(node, "node_tree", None) is not None]
+
+
+def shader_nodes(mat):
+    """Group nodes sitting on the real s4s shader, in node order."""
+    return [node for node, name in group_nodes(mat) if name == SHADER_GROUP]
+
+
+def stray_shader_names(mat):
+    """Names of near-miss copies of the s4s shader used by a material.
+
+    These are the "basic_props_shader_s4s.001" duplicates an append leaves
+    behind. Kept apart from shader_nodes() so they can be reported as the fault
+    they are instead of counting as the shader.
+    """
+    return sorted({name for node, name in group_nodes(mat)
+                   if name != SHADER_GROUP and name.startswith(SHADER_GROUP)})
+
+
+def flag_on(inputs, name):
+    """True if the named boolean socket exists and is ticked."""
+    socket = inputs.get(name)
+    return socket is not None and bool(socket.default_value)
+
+
+def shader_flag(node, name):
+    """Read a boolean socket, as (value, present).
+
+    Unlike flag_on() this distinguishes "ticked off" from "no such socket", so
+    the material check can report a shader that is missing the socket entirely
+    instead of silently treating it as unticked.
+    """
+    socket = node.inputs.get(name)
+    if socket is None:
+        return False, False
+    return bool(socket.default_value), True
+
+
+class S4EnvCheckUVs(bpy.types.Operator):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs 32x32"
     bl_description = "Check UV range, and that each mesh carries exactly the UV maps its shaders need"
@@ -812,60 +752,46 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
     UV_NAME_SET = frozenset(UV_NAMES)
 
     # Requirements read off the s4s shader. Emissive wins outright - it calls for
-    # three maps whatever use_broad_color says - so broad is only worth reading
-    # once emissive is ruled out. use_logo is independent of both and decides
-    # UVMap03 on its own.
-    SHADER_GROUP = "basic_props_shader_s4s"
-    EMISSIVE_FLAGS = ("use_emissive", "use_broad_emissive")
-    BROAD_FLAG = "use_broad_color"
-    LOGO_FLAG = "use_logo"
+    # three maps whatever the broad colour flag says - so broad is only worth
+    # reading once emissive is ruled out. use_logo is independent of both and
+    # decides UVMap03 on its own.
+    EMISSIVE_FLAGS = (FLAG_EMISSIVE, FLAG_BROAD_EMISSIVE)
     LOGO_UV = "UVMap03"
     BASE_UVS = 1
     BROAD_UVS = 2
     EMISSIVE_UVS = 3
 
-    @staticmethod
-    def flag_on(inputs, name):
-        """True if the named boolean socket exists and is ticked."""
-        socket = inputs.get(name)
-        return socket is not None and bool(socket.default_value)
-
     def material_requirements(self, mat):
         """One material's demands, as (uv map count, needs the logo map)."""
-        tree = mat.node_tree if mat.use_nodes else None
-        if tree is None:
-            return self.BASE_UVS, False
-
         count = self.BASE_UVS
         logo = False
 
-        for node in tree.nodes:
-            # Top-level group nodes only. Matching on the prefix keeps the
-            # ".001" duplicates Blender makes on append working.
-            group = getattr(node, "node_tree", None)
-            if group is None or not group.name.startswith(self.SHADER_GROUP):
-                continue
-
+        for node in shader_nodes(mat):
             inputs = node.inputs
-            logo = logo or self.flag_on(inputs, self.LOGO_FLAG)
+            logo = logo or flag_on(inputs, FLAG_LOGO)
 
             if count == self.EMISSIVE_UVS:
                 continue  # already the strictest; only logo can still change
-            if any(self.flag_on(inputs, f) for f in self.EMISSIVE_FLAGS):
+            if any(flag_on(inputs, f) for f in self.EMISSIVE_FLAGS):
                 count = self.EMISSIVE_UVS
-            elif self.flag_on(inputs, self.BROAD_FLAG):
+            elif flag_on(inputs, FLAG_BROAD_COLOUR):
                 count = self.BROAD_UVS
 
         return count, logo
 
     def object_requirements(self, obj, cache):
-        """What this object needs, as (uv map count, needs the logo map).
+        """What this object needs, as (uv map count, needs the logo map, strays).
 
         Materials disagree by design - the strictest wins, and any one of them
         asking for the logo map is enough to require it.
+
+        `strays` names materials sitting on a duplicated copy of the shader.
+        Their flags are not read, so without naming them here the mesh would be
+        measured against the one-map default and quietly pass.
         """
         count = self.BASE_UVS
         logo = False
+        strays = []
 
         for slot in obj.material_slots:
             mat = slot.material
@@ -876,17 +802,20 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
             # walked once per run.
             needs = cache.get(mat)
             if needs is None:
-                needs = self.material_requirements(mat)
+                needs = (self.material_requirements(mat) +
+                         (tuple(stray_shader_names(mat)),))
                 cache[mat] = needs
 
             if needs[0] > count:
                 count = needs[0]
             logo = logo or needs[1]
 
-            if count == self.EMISSIVE_UVS and logo:
-                break  # nothing stricter is possible
+            for name in needs[2]:
+                entry = "%s on %s" % (mat.name, name)
+                if entry not in strays:
+                    strays.append(entry)
 
-        return count, logo
+        return count, logo, strays
 
     @staticmethod
     def get_uv_bounds(uv_layer):
@@ -925,7 +854,7 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
 
     def check_object(self, obj, cache):
         """Run every UV rule against one mesh. Returns a list of error strings."""
-        count, logo = self.object_requirements(obj, cache)
+        count, logo, shader_strays = self.object_requirements(obj, cache)
 
         expected = set(self.UV_NAMES[:count])
         if logo:
@@ -964,6 +893,10 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
         missing = [name for name in sorted(expected) if name not in present]
 
         errors = []
+        # Named first: on a duplicated shader the flags below were never read,
+        # so every other finding on this mesh is measured against the default.
+        for entry in shader_strays:
+            errors.append("duplicate shader - %s" % entry)
         if missing:
             errors.append("%s missing" % " - ".join(missing))
         if spare:
@@ -1017,6 +950,249 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
 
         return {'FINISHED'}
 
+
+class S4EnvCheckMaterials(bpy.types.Operator):
+    bl_idname = "s4.envcheckmaterials"
+    bl_label = "Check Materials"
+    bl_description = ("Check each material's blend settings and s4s shader flags "
+                      "against the object name and the textures actually assigned")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    CHECK_NAME = "Materials"
+
+    # An object whose name carries either word is a see-through asset: it clips
+    # its alpha and renders both faces. Matched case-insensitively anywhere in
+    # the name, so "Window_Glass_LODA" and "alphaFence" both count.
+    ALPHA_WORDS = ("alpha", "glass")
+
+    # EEVEE settings, as (property, value when see-through, value when opaque).
+    # Blender spells Alpha Clip 'CLIP' and Opaque 'OPAQUE' for both blend and
+    # shadow, so one table covers all three properties.
+    SETTINGS = (
+        ("use_backface_culling", False, True),
+        ("blend_method", 'CLIP', 'OPAQUE'),
+        ("shadow_method", 'CLIP', 'OPAQUE'),
+    )
+
+    # How each setting reads in the UI, for the log row.
+    SETTING_LABELS = {
+        False: "off", True: "on",
+        'CLIP': "Alpha Clip", 'OPAQUE': "Opaque",
+    }
+
+    # Texture node name prefix -> the shader flag it must agree with. An image
+    # in the node means the flag is ticked; an empty node means it is not.
+    # Matched exactly: node names are unique inside a node tree, so a second
+    # node asking for "logo" is what Blender renames to "logo.001" - and that
+    # misnaming is one of the things this check exists to catch, so accepting
+    # it would defeat the point.
+    TEXTURE_FLAGS = (
+        ("broad_color", FLAG_BROAD_COLOUR),
+        ("broad_emissive", FLAG_BROAD_EMISSIVE),
+        ("emissive", FLAG_EMISSIVE),
+        ("logo", FLAG_LOGO),
+    )
+
+    def is_alpha_asset(self, obj):
+        name = obj.name.lower()
+        return any(word in name for word in self.ALPHA_WORDS)
+
+    def check_settings(self, mat, alpha):
+        """Blend/culling settings against what the object's name calls for."""
+        errors = []
+        for prop, when_alpha, when_opaque in self.SETTINGS:
+            want = when_alpha if alpha else when_opaque
+            got = getattr(mat, prop)
+            if got != want:
+                errors.append("%s is %s, needs %s" % (
+                    prop, self.SETTING_LABELS.get(got, got),
+                    self.SETTING_LABELS.get(want, want)))
+        return errors
+
+    @staticmethod
+    def near_miss(tree, name):
+        """A node that looks like it was meant to be `name`, or None.
+
+        Only ever used to make the error message actionable - a near miss never
+        counts as the node being present, and never lets a check pass. The two
+        shapes worth naming are Blender's ".001" suffix and a case or
+        whitespace slip, because those are what a hand-built material produces.
+        """
+        wanted = name.lower()
+        for node in tree.nodes:
+            other = node.name
+            if other == name:
+                continue
+            if other.strip().lower() == wanted or other.startswith(name + "."):
+                return other
+        return None
+
+    def texture_state(self, mat):
+        """Each texture slot's state, as {flag: (status, detail)}.
+
+        status is 'ok' with detail True/False for whether an image is
+        assigned, 'missing' with detail naming a near miss (or None), or
+        'wrong_type' with detail naming the node type found instead.
+        """
+        state = {}
+        errors = []
+        tree = mat.node_tree
+
+        for name, flag in self.TEXTURE_FLAGS:
+            node = tree.nodes.get(name)
+
+            if node is None:
+                state[flag] = ('missing', self.near_miss(tree, name))
+            elif node.type != 'TEX_IMAGE':
+                state[flag] = ('wrong_type', node.type)
+                errors.append("%s is a %s node, not an image texture"
+                              % (name, node.type))
+            else:
+                state[flag] = ('ok', node.image is not None)
+
+        return state, errors
+
+    def check_shader(self, mat, alpha):
+        """The s4s group's flags against the textures wired into the material."""
+        groups = shader_nodes(mat)
+        strays = stray_shader_names(mat)
+
+        if not groups:
+            if strays:
+                # There is a shader here, just not the real one - a duplicated
+                # copy that can drift, so it fails rather than being skipped.
+                return ["on %s, not %s" % (" - ".join(strays), SHADER_GROUP)], []
+            # Not an s4s material at all - the blend settings still applied,
+            # but there is no shader here to carry flags.
+            return [], ["no %s node" % SHADER_GROUP]
+
+        errors = []
+        if strays:
+            errors.append("extra shader copy: %s" % " - ".join(strays))
+
+        state, type_errors = self.texture_state(mat)
+        errors.extend(type_errors)
+
+        for node in groups:
+            # Only see-through assets have a stated use_alpha requirement, so an
+            # opaque material's alpha flag is left alone.
+            if alpha:
+                value, exists = shader_flag(node, FLAG_ALPHA)
+                if not exists:
+                    errors.append("shader has no %s" % FLAG_ALPHA)
+                elif not value:
+                    errors.append("%s is off" % FLAG_ALPHA)
+
+            for name, flag in self.TEXTURE_FLAGS:
+                status, detail = state[flag]
+                value, exists = shader_flag(node, flag)
+
+                if not exists:
+                    errors.append("shader has no %s" % flag)
+                    continue
+
+                if status == 'wrong_type':
+                    continue  # texture_state already reported it
+
+                if status == 'missing':
+                    found = " - found %s" % detail if detail else ""
+                    if value:
+                        errors.append("%s is on but there is no %s node%s"
+                                      % (flag, name, found))
+                    elif detail:
+                        # Flag off and node absent would otherwise pass, but a
+                        # near miss means the node is there under the wrong
+                        # name, which is exactly what must not slip through.
+                        errors.append("%s should be named %s" % (detail, name))
+                    continue
+
+                has_image = detail
+                if value != has_image:
+                    errors.append("%s is %s but %s %s" % (
+                        flag, "on" if value else "off",
+                        name, "has an image" if has_image else "has no image"))
+
+        return errors, []
+
+    def check_material(self, mat, alpha):
+        """Every rule against one material. Returns (errors, warnings)."""
+        errors = self.check_settings(mat, alpha)
+        shader_errors, warnings = self.check_shader(mat, alpha)
+        return errors + shader_errors, warnings
+
+    def execute(self, context):
+        meshes = [obj for obj in context.selected_objects
+                  if obj.type == 'MESH' and obj.data is not None]
+
+        if not meshes:
+            self.report({'WARNING'}, "No mesh objects selected")
+            return {'CANCELLED'}
+
+        log_clear(context, check=self.CHECK_NAME)
+
+        # One material serves many objects, so each (material, alpha) pair is
+        # only walked once - but the result is reported against every object
+        # that uses it, since that is what the artist has to go and fix.
+        cache = {}
+        seen_as = {}
+
+        error_rows = []
+        warning_rows = []
+        conflicts = []
+        checked = 0
+
+        for obj in meshes:
+            alpha = self.is_alpha_asset(obj)
+            materials = [slot.material for slot in obj.material_slots if slot.material]
+
+            if not materials:
+                warning_rows.append((obj.name, "no material assigned"))
+                continue
+
+            for mat in materials:
+                checked += 1
+
+                # The same material on an alpha object and an opaque one cannot
+                # satisfy both - that is a data problem in its own right, and
+                # without flagging it the results would look self-contradictory.
+                if seen_as.setdefault(mat.name, alpha) != alpha:
+                    if mat.name not in conflicts:
+                        conflicts.append(mat.name)
+
+                key = (mat.name, alpha)
+                if key not in cache:
+                    cache[key] = self.check_material(mat, alpha)
+                errors, warnings = cache[key]
+
+                for message in errors:
+                    error_rows.append((obj.name, "%s: %s" % (mat.name, message)))
+                for message in warnings:
+                    warning_rows.append((obj.name, "%s: %s" % (mat.name, message)))
+
+        summary = "%d mesh%s, %d material slot%s, %d error%s" % (
+            len(meshes), "" if len(meshes) == 1 else "es",
+            checked, "" if checked == 1 else "s",
+            len(error_rows), "" if len(error_rows) == 1 else "s")
+        log_add(context, self.CHECK_NAME, summary, status='INFO')
+
+        for mat_name in conflicts:
+            log_add(context, self.CHECK_NAME,
+                    "%s is on both alpha and opaque objects" % mat_name,
+                    status='WARNING')
+
+        for obj_name, message in error_rows:
+            log_add(context, self.CHECK_NAME, message, obj_name, 'ERROR')
+        for obj_name, message in warning_rows:
+            log_add(context, self.CHECK_NAME, message, obj_name, 'WARNING')
+
+        if error_rows or conflicts:
+            self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
+        else:
+            self.report({'INFO'}, summary)
+
+        return {'FINISHED'}
+
+
 # LOD meshes end in LODA/LODB/LODC/..., optionally followed by Blender's duplicate
 # suffix (".001"). Matching the suffix matters: DuplicateLODA below creates names
 # like "Wall_LODB.001", which a plain endswith("LODB") would never see.
@@ -1055,7 +1231,7 @@ class SwitchLODValue(PropertyGroup):
         default="",
         )
 
-class SwitchLOD(bpy.types.Operator, globalVariables):
+class SwitchLOD(bpy.types.Operator):
     bl_idname = "mesh.switchlod"
     bl_label = "Swap LOD"
     bl_description = "Toggle viewport visibility between the two LODs of the selected pair"
@@ -1096,7 +1272,7 @@ class SwitchLOD(bpy.types.Operator, globalVariables):
         self.report({'INFO'}, f"Showing {target} ({len(tagged[target])} meshes)")
         return {'FINISHED'}
 
-class EnableLOD(bpy.types.Operator, globalVariables):
+class EnableLOD(bpy.types.Operator):
     bl_idname = "mesh.enablelod"
     bl_label = "Unhide All Objects"
     bl_description = "Unhide every mesh and empty, and reset the LOD swap state"
@@ -1113,7 +1289,7 @@ class EnableLOD(bpy.types.Operator, globalVariables):
         self.report({'INFO'}, f"Unhid {count} objects")
         return {'FINISHED'}
 
-class RenameLOD(bpy.types.Operator, globalVariables):
+class RenameLOD(bpy.types.Operator):
     bl_idname = "s4.envlodrename"
     bl_label = "Add LODA to name"
     bl_description = "Append _LODA to the name of every selected mesh"
@@ -1140,145 +1316,93 @@ class RenameLOD(bpy.types.Operator, globalVariables):
 
         return {'FINISHED'}
 
-class DuplicateLODA(bpy.types.Operator, globalVariables):
+class DuplicateLODBase(bpy.types.Operator):
+    """Copy the selected LOD meshes into the next LOD level.
+
+    The source and destination letters are the only thing that separates one
+    level from the next, so the subclasses below set SRC/DST and inherit the
+    rest. Not registered itself - it carries no bl_idname.
+    """
+    bl_options = {'REGISTER', 'UNDO'}
+
+    SRC = ""
+    DST = ""
+
+    def renamed(self, name):
+        """Swap the trailing LOD letter, leaving any ".001" suffix in place."""
+        return re.sub(r"%s(?=(?:\.\d{3})?$)" % self.SRC, self.DST, name)
+
+    def execute(self, context):
+        selected = [obj for obj in context.selected_objects if obj.type == 'MESH']
+
+        if not selected:
+            self.report({'WARNING'}, "No meshes selected")
+            return {'CANCELLED'}
+
+        # Blender's ".001" suffix is what tells the two cases apart: a suffixed
+        # set was already instanced, so its copies share one mesh datablock,
+        # while a bare "LODA" is a lone mesh and gets its own data.
+        suffixed = re.compile(r"%s\.\d{3}$" % self.SRC)
+        bare = re.compile(r"%s$" % self.SRC)
+
+        new_objects = []
+
+        if any(suffixed.search(obj.name) for obj in selected):
+            shared_mesh_data = None
+
+            for obj in selected:
+                new_obj = obj.copy()
+                if shared_mesh_data is None:
+                    # The first object makes the copy the rest of the set shares.
+                    shared_mesh_data = obj.data.copy()
+                new_obj.data = shared_mesh_data
+
+                context.collection.objects.link(new_obj)
+                new_obj.name = self.renamed(obj.name)
+                new_objects.append(new_obj)
+                print("Duplicated %s -> %s (Instance)" % (obj.name, new_obj.name))
+
+        elif any(bare.search(obj.name) for obj in selected):
+            for obj in selected:
+                if not bare.search(obj.name):
+                    continue
+
+                new_obj = obj.copy()
+                new_obj.data = obj.data.copy()
+                context.collection.objects.link(new_obj)
+                new_obj.name = self.renamed(obj.name)
+                new_objects.append(new_obj)
+                print("Duplicated %s -> %s" % (obj.name, new_obj.name))
+
+        if not new_objects:
+            self.report({'WARNING'}, "No %s meshes in the selection" % self.SRC)
+            return {'CANCELLED'}
+
+        # Hand the new set back as the selection, ready for the next level.
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in new_objects:
+            obj.select_set(True)
+
+        self.report({'INFO'}, "Duplicated %d mesh%s to %s" % (
+            len(new_objects), "" if len(new_objects) == 1 else "es", self.DST))
+        return {'FINISHED'}
+
+
+class DuplicateLODA(DuplicateLODBase):
     bl_idname = "s4.envlodaduplicate"
     bl_label = "Duplicate LODA to LODB"
     bl_description = "Copy the selected LODA meshes into a matching LODB set"
-    bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        def duplicate_selected_meshes():
-            selected_objects = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
+    SRC = "LODA"
+    DST = "LODB"
 
-            if not selected_objects:
-                print("No meshes selected.")
-                return
-
-            # Check if any selected object ends with "LODA.xxx" or only "LODA"
-            ends_with_loda_xxx = any(re.search(r"LODA\.\d{3}$", obj.name) for obj in selected_objects)
-            ends_with_loda = any(re.search(r"LODA$", obj.name) for obj in selected_objects)
-
-            new_objects = []
-
-            if ends_with_loda_xxx:
-                # If any selected mesh ends with "LODA.xxx", duplicate all together as instances
-                shared_mesh_data = None  # This will store the shared instance
-
-                for obj in selected_objects:
-                    new_obj = obj.copy()
-                    if shared_mesh_data is None:
-                        # First object creates a new mesh data copy
-                        shared_mesh_data = obj.data.copy()
-                    new_obj.data = shared_mesh_data  # Share mesh data among new objects
-
-                    bpy.context.collection.objects.link(new_obj)
-
-                    # Rename "LODA.xxx" → "LODB.xxx"
-                    if re.search(r"LODA\.\d{3}$", obj.name):
-                        new_name = obj.name.replace("LODA.", "LODB.")
-                    else:
-                        new_name = obj.name.replace("LODA", "LODB")
-
-                    new_obj.name = new_name
-                    new_objects.append(new_obj)
-
-                    print(f"Duplicated {obj.name} -> {new_obj.name} (Instance)")
-
-            elif ends_with_loda:
-                # If a selected object ends only with "LODA", duplicate it individually (not as an instance)
-                for obj in selected_objects:
-                    if re.search(r"LODA$", obj.name):
-                        new_obj = obj.copy()
-                        new_obj.data = obj.data.copy()  # Create separate mesh data
-                        bpy.context.collection.objects.link(new_obj)
-
-                        new_name = obj.name.replace("LODA", "LODB")  # Rename "LODA" → "LODB"
-                        new_obj.name = new_name
-
-                        new_objects.append(new_obj)
-                        print(f"Duplicated {obj.name} -> {new_obj.name}")
-
-            # Select all newly created objects
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in new_objects:
-                obj.select_set(True)
-
-            print("All duplicated meshes are now selected.")
-
-        # Run the function
-        duplicate_selected_meshes()
-
-        return {'FINISHED'}
-
-class DuplicateLODB(bpy.types.Operator, globalVariables):
+class DuplicateLODB(DuplicateLODBase):
     bl_idname = "s4.envlodbduplicate"
     bl_label = "Duplicate LODB to LODC"
     bl_description = "Copy the selected LODB meshes into a matching LODC set"
-    bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        def duplicate_selected_meshes():
-            selected_objects = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
-
-            if not selected_objects:
-                print("No meshes selected.")
-                return
-
-            # Check if any selected object ends with "LODB.xxx" or only "LODC"
-            ends_with_loda_xxx = any(re.search(r"LODB\.\d{3}$", obj.name) for obj in selected_objects)
-            ends_with_loda = any(re.search(r"LODB$", obj.name) for obj in selected_objects)
-
-            new_objects = []
-
-            if ends_with_loda_xxx:
-                # If any selected mesh ends with "LODA.xxx", duplicate all together as instances
-                shared_mesh_data = None  # This will store the shared instance
-
-                for obj in selected_objects:
-                    new_obj = obj.copy()
-                    if shared_mesh_data is None:
-                        # First object creates a new mesh data copy
-                        shared_mesh_data = obj.data.copy()
-                    new_obj.data = shared_mesh_data  # Share mesh data among new objects
-
-                    bpy.context.collection.objects.link(new_obj)
-
-                    # Rename "LODA.xxx" → "LODB.xxx"
-                    if re.search(r"LODB\.\d{3}$", obj.name):
-                        new_name = obj.name.replace("LODB.", "LODC.")
-                    else:
-                        new_name = obj.name.replace("LODB", "LODC")
-
-                    new_obj.name = new_name
-                    new_objects.append(new_obj)
-
-                    print(f"Duplicated {obj.name} -> {new_obj.name} (Instance)")
-
-            elif ends_with_loda:
-                # If a selected object ends only with "LODA", duplicate it individually (not as an instance)
-                for obj in selected_objects:
-                    if re.search(r"LODB$", obj.name):
-                        new_obj = obj.copy()
-                        new_obj.data = obj.data.copy()  # Create separate mesh data
-                        bpy.context.collection.objects.link(new_obj)
-
-                        new_name = obj.name.replace("LODB", "LODC")  # Rename "LODB" → "LODC"
-                        new_obj.name = new_name
-
-                        new_objects.append(new_obj)
-                        print(f"Duplicated {obj.name} -> {new_obj.name}")
-
-            # Select all newly created objects
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in new_objects:
-                obj.select_set(True)
-
-            print("All duplicated meshes are now selected.")
-
-        # Run the function
-        duplicate_selected_meshes()
-
-        return {'FINISHED'}
+    SRC = "LODB"
+    DST = "LODC"
 
 classes = [
     CUSTOM_S4envobjectCollection,
@@ -1292,6 +1416,7 @@ classes = [
     S4EnvLogSelectOne,
     S4EnvLogClear,
     S4EnvCheckUVs,
+    S4EnvCheckMaterials,
     S4EnvLODToolPanel,
     S4EnvUtilitiToolPanel,
     S4EnvLogPanel,
