@@ -1,10 +1,13 @@
 """
 gs_mirror - live mirror tool for Maya 2022+.
 
-Mirrors a mesh across a plane defined by a user-picked pivot object, live and
+Mirrors a mesh across a plane defined by a gs_mirror pivot locator, live and
 welded, in a single merged mesh. Normals stay correct because the mirror itself
 is done by the polyMirror node (which reverses winding internally) rather than
 by a negative-determinant matrix.
+
+Picking an object only seeds where the locator is born - the mirror is always
+driven by a dedicated locator, never by the picked object or the mesh itself.
 
     from gs_mirror import ui
     ui.show()
@@ -18,7 +21,7 @@ import importlib
 from . import core   # noqa: F401
 from . import ui     # noqa: F401
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def show():
