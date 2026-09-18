@@ -960,24 +960,35 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
     CHECK_NAME = "Materials"
 
-    # An object whose name carries either word is a see-through asset: it clips
-    # its alpha and renders both faces. Matched case-insensitively anywhere in
-    # the name, so "Window_Glass_LODA" and "alphaFence" both count.
-    ALPHA_WORDS = ("alpha", "glass")
-
-    # EEVEE settings, as (property, value when see-through, value when opaque).
-    # Blender spells Alpha Clip 'CLIP' and Opaque 'OPAQUE' for both blend and
-    # shadow, so one table covers all three properties.
-    SETTINGS = (
-        ("use_backface_culling", False, True),
-        ("blend_method", 'CLIP', 'OPAQUE'),
-        ("shadow_method", 'CLIP', 'OPAQUE'),
+    # The word in an object's name decides which of three render modes it is,
+    # matched case-insensitively anywhere in the name - "Window_Glass_LODA" is
+    # glass, "alphaFence" is alpha. Alpha and glass are both see-through but
+    # they are not the same: glass keeps its backface culling and blends rather
+    # than clipping, so they cannot share one rule.
+    MODE_WORDS = (
+        ('ALPHA', "alpha"),
+        ('GLASS', "glass"),
     )
+    MODE_OPAQUE = 'OPAQUE'
 
-    # How each setting reads in the UI, for the log row.
+    # The properties checked, and what each mode requires of them - in the same
+    # order, so a mode is read as one row.
+    SETTING_PROPS = ("use_backface_culling", "blend_method", "shadow_method")
+    MODE_SETTINGS = {
+        'ALPHA':  (False, 'CLIP', 'CLIP'),
+        'GLASS':  (True, 'BLEND', 'CLIP'),
+        'OPAQUE': (True, 'OPAQUE', 'OPAQUE'),
+    }
+
+    # Both see-through modes require the shader's alpha flag; opaque is left
+    # alone, since only the see-through cases have a stated requirement.
+    MODES_NEEDING_ALPHA = ('ALPHA', 'GLASS')
+
+    # How each mode and setting reads in the UI, for the log row.
+    MODE_LABELS = {'ALPHA': "alpha", 'GLASS': "glass", 'OPAQUE': "opaque"}
     SETTING_LABELS = {
         False: "off", True: "on",
-        'CLIP': "Alpha Clip", 'OPAQUE': "Opaque",
+        'CLIP': "Alpha Clip", 'BLEND': "Alpha Blend", 'OPAQUE': "Opaque",
     }
 
     # Texture node name prefix -> the shader flag it must agree with. An image
@@ -993,20 +1004,32 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         ("logo", FLAG_LOGO),
     )
 
-    def is_alpha_asset(self, obj):
-        name = obj.name.lower()
-        return any(word in name for word in self.ALPHA_WORDS)
+    def object_mode(self, obj):
+        """Which render mode an object's name asks for, or None if ambiguous.
 
-    def check_settings(self, mat, alpha):
+        A name carrying both words cannot be resolved - the two modes disagree
+        on culling and on blending, so there is no safe reading. The name is
+        the fault to fix, and the caller reports it instead of checking on.
+        """
+        name = obj.name.lower()
+        matched = [mode for mode, word in self.MODE_WORDS if word in name]
+
+        if len(matched) > 1:
+            return None
+        if matched:
+            return matched[0]
+        return self.MODE_OPAQUE
+
+    def check_settings(self, mat, mode):
         """Blend/culling settings against what the object's name calls for."""
         errors = []
-        for prop, when_alpha, when_opaque in self.SETTINGS:
-            want = when_alpha if alpha else when_opaque
+        for prop, want in zip(self.SETTING_PROPS, self.MODE_SETTINGS[mode]):
             got = getattr(mat, prop)
             if got != want:
-                errors.append("%s is %s, needs %s" % (
+                errors.append("%s is %s, needs %s (%s)" % (
                     prop, self.SETTING_LABELS.get(got, got),
-                    self.SETTING_LABELS.get(want, want)))
+                    self.SETTING_LABELS.get(want, want),
+                    self.MODE_LABELS[mode]))
         return errors
 
     @staticmethod
@@ -1052,7 +1075,7 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
         return state, errors
 
-    def check_shader(self, mat, alpha):
+    def check_shader(self, mat, mode):
         """The s4s group's flags against the textures wired into the material."""
         groups = shader_nodes(mat)
         strays = stray_shader_names(mat)
@@ -1076,7 +1099,7 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         for node in groups:
             # Only see-through assets have a stated use_alpha requirement, so an
             # opaque material's alpha flag is left alone.
-            if alpha:
+            if mode in self.MODES_NEEDING_ALPHA:
                 value, exists = shader_flag(node, FLAG_ALPHA)
                 if not exists:
                     errors.append("shader has no %s" % FLAG_ALPHA)
@@ -1114,10 +1137,10 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
         return errors, []
 
-    def check_material(self, mat, alpha):
+    def check_material(self, mat, mode):
         """Every rule against one material. Returns (errors, warnings)."""
-        errors = self.check_settings(mat, alpha)
-        shader_errors, warnings = self.check_shader(mat, alpha)
+        errors = self.check_settings(mat, mode)
+        shader_errors, warnings = self.check_shader(mat, mode)
         return errors + shader_errors, warnings
 
     def execute(self, context):
@@ -1130,19 +1153,26 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
         log_clear(context, check=self.CHECK_NAME)
 
-        # One material serves many objects, so each (material, alpha) pair is
+        # One material serves many objects, so each (material, mode) pair is
         # only walked once - but the result is reported against every object
         # that uses it, since that is what the artist has to go and fix.
         cache = {}
-        seen_as = {}
+        seen_modes = {}
 
         error_rows = []
         warning_rows = []
-        conflicts = []
         checked = 0
 
         for obj in meshes:
-            alpha = self.is_alpha_asset(obj)
+            mode = self.object_mode(obj)
+
+            if mode is None:
+                # Ambiguous name: the alpha and glass rules contradict each
+                # other, so there is nothing to check this object against.
+                error_rows.append((obj.name, "name has both %s - cannot tell which applies"
+                                   % " and ".join(word for _, word in self.MODE_WORDS)))
+                continue
+
             materials = [slot.material for slot in obj.material_slots if slot.material]
 
             if not materials:
@@ -1152,16 +1182,14 @@ class S4EnvCheckMaterials(bpy.types.Operator):
             for mat in materials:
                 checked += 1
 
-                # The same material on an alpha object and an opaque one cannot
-                # satisfy both - that is a data problem in its own right, and
-                # without flagging it the results would look self-contradictory.
-                if seen_as.setdefault(mat.name, alpha) != alpha:
-                    if mat.name not in conflicts:
-                        conflicts.append(mat.name)
+                # The same material on, say, an alpha object and an opaque one
+                # cannot satisfy both - a data problem in its own right, and
+                # without flagging it the results look self-contradictory.
+                seen_modes.setdefault(mat.name, set()).add(mode)
 
-                key = (mat.name, alpha)
+                key = (mat.name, mode)
                 if key not in cache:
-                    cache[key] = self.check_material(mat, alpha)
+                    cache[key] = self.check_material(mat, mode)
                 errors, warnings = cache[key]
 
                 for message in errors:
@@ -1175,9 +1203,11 @@ class S4EnvCheckMaterials(bpy.types.Operator):
             len(error_rows), "" if len(error_rows) == 1 else "s")
         log_add(context, self.CHECK_NAME, summary, status='INFO')
 
+        conflicts = sorted(name for name, modes in seen_modes.items() if len(modes) > 1)
         for mat_name in conflicts:
+            modes = sorted(self.MODE_LABELS[m] for m in seen_modes[mat_name])
             log_add(context, self.CHECK_NAME,
-                    "%s is on both alpha and opaque objects" % mat_name,
+                    "%s is on %s objects" % (mat_name, " and ".join(modes)),
                     status='WARNING')
 
         for obj_name, message in error_rows:
