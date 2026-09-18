@@ -798,49 +798,124 @@ class S4EnvLogClear(bpy.types.Operator):
 class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs 32x32"
-    bl_description = "Check UVMap00-03 range and presence"
+    bl_description = "Check UV range, and that each mesh carries exactly the UV maps its shaders need"
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "UV Range"
     MIN_RANGE = -32
     MAX_RANGE = 32
 
-    # UVMap00 is the only hard requirement; 01-03 are optional, so a mesh simply
-    # without them is not reported. Whichever of the four do exist must hold
-    # their UVs inside the range.
+    # The only UV map names the pipeline accepts. A mesh must carry exactly the
+    # ones its shaders call for - no more, no fewer - and anything named outside
+    # this list is wrong whatever the shaders say.
     UV_NAMES = ("UVMap00", "UVMap01", "UVMap02", "UVMap03")
-    REQUIRED_UV = "UVMap00"
+    UV_NAME_SET = frozenset(UV_NAMES)
 
-    def get_uv_bounds(self, obj, uv_name):
-        """Get the min/max UV bounds for one layer, or None if there is nothing to measure."""
-        uv_layer = obj.data.uv_layers.get(uv_name)
-        if uv_layer is None or len(uv_layer.data) == 0:
+    # Requirements read off the s4s shader. Emissive wins outright - it calls for
+    # three maps whatever use_broad_color says - so broad is only worth reading
+    # once emissive is ruled out. use_logo is independent of both and decides
+    # UVMap03 on its own.
+    SHADER_GROUP = "basic_props_shader_s4s"
+    EMISSIVE_FLAGS = ("use_emissive", "use_broad_emissive")
+    BROAD_FLAG = "use_broad_color"
+    LOGO_FLAG = "use_logo"
+    LOGO_UV = "UVMap03"
+    BASE_UVS = 1
+    BROAD_UVS = 2
+    EMISSIVE_UVS = 3
+
+    @staticmethod
+    def flag_on(inputs, name):
+        """True if the named boolean socket exists and is ticked."""
+        socket = inputs.get(name)
+        return socket is not None and bool(socket.default_value)
+
+    def material_requirements(self, mat):
+        """One material's demands, as (uv map count, needs the logo map)."""
+        tree = mat.node_tree if mat.use_nodes else None
+        if tree is None:
+            return self.BASE_UVS, False
+
+        count = self.BASE_UVS
+        logo = False
+
+        for node in tree.nodes:
+            # Top-level group nodes only. Matching on the prefix keeps the
+            # ".001" duplicates Blender makes on append working.
+            group = getattr(node, "node_tree", None)
+            if group is None or not group.name.startswith(self.SHADER_GROUP):
+                continue
+
+            inputs = node.inputs
+            logo = logo or self.flag_on(inputs, self.LOGO_FLAG)
+
+            if count == self.EMISSIVE_UVS:
+                continue  # already the strictest; only logo can still change
+            if any(self.flag_on(inputs, f) for f in self.EMISSIVE_FLAGS):
+                count = self.EMISSIVE_UVS
+            elif self.flag_on(inputs, self.BROAD_FLAG):
+                count = self.BROAD_UVS
+
+        return count, logo
+
+    def object_requirements(self, obj, cache):
+        """What this object needs, as (uv map count, needs the logo map).
+
+        Materials disagree by design - the strictest wins, and any one of them
+        asking for the logo map is enough to require it.
+        """
+        count = self.BASE_UVS
+        logo = False
+
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None:
+                continue
+
+            # One shader serves hundreds of objects, so each material is only
+            # walked once per run.
+            needs = cache.get(mat)
+            if needs is None:
+                needs = self.material_requirements(mat)
+                cache[mat] = needs
+
+            if needs[0] > count:
+                count = needs[0]
+            logo = logo or needs[1]
+
+            if count == self.EMISSIVE_UVS and logo:
+                break  # nothing stricter is possible
+
+        return count, logo
+
+    @staticmethod
+    def get_uv_bounds(uv_layer):
+        """Min/max UV bounds for one layer, or None if it carries no loops."""
+        count = len(uv_layer.data)
+        if count == 0:
             return None
 
         # foreach_get pulls the whole layer in one call - a per-loop Python loop
         # is the slow part of this check on dense meshes.
-        flat = np.empty(len(uv_layer.data) * 2, dtype=np.float32)
+        flat = np.empty(count * 2, dtype=np.float32)
         uv_layer.data.foreach_get("uv", flat)
         uvs = flat.reshape(-1, 2)
 
-        return {
-            "min_u": float(uvs[:, 0].min()),
-            "max_u": float(uvs[:, 0].max()),
-            "min_v": float(uvs[:, 1].min()),
-            "max_v": float(uvs[:, 1].max()),
-        }
+        return (float(uvs[:, 0].min()), float(uvs[:, 0].max()),
+                float(uvs[:, 1].min()), float(uvs[:, 1].max()))
 
-    def range_issues(self, uv_name, bounds):
-        """Range violations for one layer, as (short label, console detail)."""
+    def range_detail(self, uv_name, bounds):
+        """Console-side description of a layer's range violations, or None."""
+        min_u, max_u, min_v, max_v = bounds
         over = []
-        if bounds["min_u"] < self.MIN_RANGE:
-            over.append("U min %.2f" % bounds["min_u"])
-        if bounds["max_u"] > self.MAX_RANGE:
-            over.append("U max %.2f" % bounds["max_u"])
-        if bounds["min_v"] < self.MIN_RANGE:
-            over.append("V min %.2f" % bounds["min_v"])
-        if bounds["max_v"] > self.MAX_RANGE:
-            over.append("V max %.2f" % bounds["max_v"])
+        if min_u < self.MIN_RANGE:
+            over.append("U min %.2f" % min_u)
+        if max_u > self.MAX_RANGE:
+            over.append("U max %.2f" % max_u)
+        if min_v < self.MIN_RANGE:
+            over.append("V min %.2f" % min_v)
+        if max_v > self.MAX_RANGE:
+            over.append("V max %.2f" % max_v)
 
         if not over:
             return None
@@ -848,51 +923,62 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
         # row just names the layer.
         return "%s: %s outside +/-%d" % (uv_name, ", ".join(over), self.MAX_RANGE)
 
-    def check_object(self, obj):
-        """Run every UV rule against one mesh. Returns (errors, warnings)."""
-        uv_layers = obj.data.uv_layers
-        missing_required = False
-        no_data = []
+    def check_object(self, obj, cache):
+        """Run every UV rule against one mesh. Returns a list of error strings."""
+        count, logo = self.object_requirements(obj, cache)
+
+        expected = set(self.UV_NAMES[:count])
+        if logo:
+            expected.add(self.LOGO_UV)
+
+        present = set()
+        spare = []
+        stray = []
         out_of_range = []
         details = []
 
-        for uv_name in self.UV_NAMES:
-            if uv_layers.get(uv_name) is None:
-                # Only UVMap00 has to be there; an absent 01-03 is a valid setup
-                # and stays out of the log entirely.
-                if uv_name == self.REQUIRED_UV:
-                    missing_required = True
+        # One pass over the layers the mesh actually has: each is either one the
+        # shaders asked for - and then worth measuring - or one that should not
+        # be on the mesh at all.
+        for uv_layer in obj.data.uv_layers:
+            uv_name = uv_layer.name
+
+            if uv_name not in expected:
+                if uv_name in self.UV_NAME_SET:
+                    spare.append(uv_name)
+                else:
+                    stray.append(uv_name)
                 continue
 
-            bounds = self.get_uv_bounds(obj, uv_name)
+            present.add(uv_name)
 
-            # A layer with no loops to carry UVs, or one whose UVs all sit on a
-            # single point, was never unwrapped. There is no layout to measure,
-            # so warn and skip the range check rather than scoring a dot.
-            if bounds is None or ((bounds["min_u"] == bounds["max_u"])
-                                  and (bounds["min_v"] == bounds["max_v"])):
-                no_data.append(uv_name)
+            bounds = self.get_uv_bounds(uv_layer)
+            if bounds is None:
                 continue
 
-            detail = self.range_issues(uv_name, bounds)
+            detail = self.range_detail(uv_name, bounds)
             if detail:
                 out_of_range.append(uv_name)
                 details.append(detail)
 
+        missing = [name for name in sorted(expected) if name not in present]
+
         errors = []
-        if missing_required:
-            errors.append("%s missing" % self.REQUIRED_UV)
+        if missing:
+            errors.append("%s missing" % " - ".join(missing))
+        if spare:
+            errors.append("%s not needed" % " - ".join(spare))
+        if stray:
+            errors.append("%s not allowed" % " - ".join(stray))
         if out_of_range:
             errors.append("%s out of range" % " - ".join(out_of_range))
 
-        warnings = []
-        if no_data:
-            warnings.append("%s has no UV data" % " - ".join(no_data))
-
+        if missing or spare:
+            details.append("shader needs %s" % ", ".join(sorted(expected)))
         if details:
             print("%s: %s" % (obj.name, " | ".join(details)))
 
-        return errors, warnings
+        return errors
 
     def execute(self, context):
         # Only real geometry carries UVs; empties, lights and curves in the
@@ -907,47 +993,38 @@ class S4EnvCheckUVs(bpy.types.Operator, globalVariables):
         # Replace this check's own rows only, so results from other checks stay.
         log_clear(context, check=self.CHECK_NAME)
 
+        cache = {}
         error_rows = []
-        warning_rows = []
 
         for obj in meshes:
-            errors, warnings = self.check_object(obj)
-
+            errors = self.check_object(obj, cache)
             if errors:
                 error_rows.append((obj.name, " | ".join(errors)))
-            if warnings:
-                warning_rows.append((obj.name, " | ".join(warnings)))
-            if not errors and not warnings:
-                print("%s: UVs OK" % obj.name)
 
-        # Summary heads the block, then every error, then every warning - so the
-        # rows an artist must fix never sit below the ones they may not.
-        summary = "%d mesh%s checked, %d error%s, %d warning%s" % (
+        # The summary heads the block the check just wrote.
+        summary = "%d mesh%s checked, %d error%s" % (
             len(meshes), "" if len(meshes) == 1 else "es",
-            len(error_rows), "" if len(error_rows) == 1 else "s",
-            len(warning_rows), "" if len(warning_rows) == 1 else "s")
+            len(error_rows), "" if len(error_rows) == 1 else "s")
         log_add(context, self.CHECK_NAME, summary, status='INFO')
 
         for obj_name, message in error_rows:
             log_add(context, self.CHECK_NAME, message, obj_name, 'ERROR')
-        for obj_name, message in warning_rows:
-            log_add(context, self.CHECK_NAME, message, obj_name, 'WARNING')
 
-        if error_rows or warning_rows:
+        if error_rows:
             self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
         else:
             self.report({'INFO'}, summary)
 
         return {'FINISHED'}
 
-# LOD meshes end in LODA/LODB/LODC, optionally followed by Blender's duplicate
+# LOD meshes end in LODA/LODB/LODC/..., optionally followed by Blender's duplicate
 # suffix (".001"). Matching the suffix matters: DuplicateLODA below creates names
 # like "Wall_LODB.001", which a plain endswith("LODB") would never see.
-LOD_NAME_RE = re.compile(r"LOD([ABC])(?:\.\d+)?$")
+LOD_NAME_RE = re.compile(r"LOD([A-Z])(?:\.\d+)?$")
 
 
 def lodOf(obj):
-    """Return "LODA"/"LODB"/"LODC" for a LOD-named mesh, or None for anything else."""
+    """Return "LODA"/"LODB"/... for a LOD-named mesh, or None for anything else."""
     if obj.type != 'MESH':
         return None
     match = LOD_NAME_RE.search(obj.name)
@@ -993,15 +1070,17 @@ class SwitchLOD(bpy.types.Operator, globalVariables):
         # longer invert the swap direction.
         target = pair[1] if holder.shown == pair[0] else pair[0]
 
-        tagged = {pair[0]: [], pair[1]: []}
+        # Collect every LOD, not just the pair, so LODs outside the pair (LODC
+        # when comparing A/B, LODA when comparing B/C, LODD...) get hidden too.
+        tagged = {}
         for obj in context.scene.objects:
             lod = lodOf(obj)
-            if lod in tagged:
-                tagged[lod].append(obj)
+            if lod:
+                tagged.setdefault(lod, []).append(obj)
 
-        if not tagged[target]:
+        if not tagged.get(target):
             other = pair[1] if target == pair[0] else pair[0]
-            if tagged[other]:
+            if tagged.get(other):
                 self.report({'WARNING'}, f"No {target} meshes in the scene - nothing to swap to")
             else:
                 self.report({'WARNING'}, f"No {pair[0]} or {pair[1]} meshes in the scene")
