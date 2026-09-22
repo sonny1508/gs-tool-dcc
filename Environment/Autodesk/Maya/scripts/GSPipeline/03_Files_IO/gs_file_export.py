@@ -1,6 +1,26 @@
-import maya.cmds as cmds
+"""
+GS File Exporter - FBX export for artists, as one file or one file per object.
+
+PySide2 (Maya 2022) / PySide6 (Maya 2026) window. GSPipeline runs this file
+with __name__ == '__main__', which opens the window.
+"""
+
+import contextlib
+import html
 import os
 import sys
+
+import maya.cmds as cmds
+import maya.OpenMayaUI as omui
+
+try:                                    # Maya 2025+
+    from PySide6 import QtCore, QtWidgets
+    from shiboken6 import wrapInstance
+    QT_BINDING = "PySide6"
+except ImportError:                     # Maya 2022-2024
+    from PySide2 import QtCore, QtWidgets
+    from shiboken2 import wrapInstance
+    QT_BINDING = "PySide2"
 
 # GSPipeline launches tools by exec'ing scripts, so _core is not on sys.path.
 # Put it there once, the same way 02_Normals reaches gs_normal_core.
@@ -14,54 +34,47 @@ import gs_fbx  # noqa: E402  (must follow the sys.path setup)
 # applying it, so settings left behind by another tool can no longer leak in.
 FBX_PRESET = 'asset'
 
-WINDOW = "gs_exporter_win"
+# Name the surviving UV set gets when "Keep UVChannel2 only" is on.
+UV2_NAME = "UVChannel2"
 
-# Full paths of the controls, filled in by UI(). cmds resolves a short UI name
-# only while it stays unique across every open window, so keep the paths the
-# create calls hand back rather than looking the controls up by name again.
-_CTRL = {}
+OBJECT_NAME = "GSFileExporterWindow"
 
-
-def _log(message):
-    """Append a line to the operations list."""
-    field = _CTRL.get("log")
-    if field and cmds.textScrollList(field, exists=True):
-        cmds.textScrollList(field, e=True, a=message)
+# optionVars that remember the artist's settings between sessions.
+_OPT_PREFIX = "gs_file_export_"
 
 
-def batchExportFBX(*args):
-    """Export objects as FBX files based on selection mode"""
-    # Clear the operation field
-    cmds.textScrollList(_CTRL["log"], e=True, ra=True)
+def _short(path):
+    return path.split('|')[-1]
 
-    # Get the export folder from the text field
-    export_folder = cmds.textField(_CTRL["exportDir"], q=True, text=True)
 
-    # Check if the export folder exists
-    if not export_folder or not os.path.isdir(export_folder):
-        _log("Invalid export directory. Please select a valid folder.")
-        return
+# ---------------------------------------------------------------------------
+# Gathering
+# ---------------------------------------------------------------------------
+# Every function below takes `log(message, level="info")`; level is one of
+# info / ok / warn / error and only changes how the window colours the line.
 
-    # Determine if we're exporting all or selection based on the radio button
-    export_all = cmds.radioButton(_CTRL["everythingRadio"], q=True, select=True)
+def collect(export_all, log):
+    """
+    Return (roots, mesh_objects) for the Selection/Everything mode.
 
-    # Get objects to export
+    roots are the transforms the artist picked (or every transform in the
+    scene); mesh_objects are the full paths of every mesh transform in or
+    under them. Returns None, after logging why, when there is nothing to do.
+    """
     if export_all:
-        # Get all mesh objects in the scene
-        _log("Exporting all mesh objects in the scene...")
-        selected_paths = cmds.ls(type="transform", long=True)
+        log("Gathering all mesh objects in the scene...")
+        roots = cmds.ls(type="transform", long=True)
     else:
-        # Get selected objects
-        _log("Exporting selected mesh objects...")
-        selected_paths = cmds.ls(selection=True, long=True)
+        log("Gathering selected mesh objects...")
+        roots = cmds.ls(selection=True, long=True)
 
-    if not selected_paths:
-        _log("No objects found to export.")
-        return
+    if not roots:
+        log("Nothing selected." if not export_all else "No objects found in the scene.", "warn")
+        return None
 
     # Process groups to get all mesh objects (without inheriting names)
     mesh_objects = []
-    for obj_path in selected_paths:
+    for obj_path in roots:
         # Check if the selected object is itself a mesh
         if cmds.objectType(obj_path, isType="transform"):
             shapes = cmds.listRelatives(obj_path, shapes=True, fullPath=True, type="mesh")
@@ -75,199 +88,427 @@ def batchExportFBX(*args):
             if shapes and child_path not in mesh_objects:
                 mesh_objects.append(child_path)
 
-    # Track groups for reporting
+    # Report groups that only contribute through their children
     group_objects = []
-    for obj_path in selected_paths:
+    for obj_path in roots:
         if obj_path not in mesh_objects:
             children = cmds.listRelatives(obj_path, allDescendents=True, fullPath=True, type="transform") or []
-            has_mesh_children = False
-            for child_path in children:
-                if child_path in mesh_objects:
-                    has_mesh_children = True
-                    break
+            if any(child_path in mesh_objects for child_path in children):
+                group_objects.append(_short(obj_path))
 
-            if has_mesh_children:
-                # Get just the object name without the full path for reporting
-                obj_name = obj_path.split('|')[-1]
-                group_objects.append(obj_name)
-
-    # Report processing information
     if group_objects:
-        _log("The following groups will be processed for their children:")
+        log("Groups processed for their children:")
         for obj in group_objects:
-            _log("  - {}".format(obj))
+            log("  - {}".format(obj))
 
-    # Check if we have valid objects to export
     if not mesh_objects:
-        _log("No valid geometry objects to export. Only mesh objects can be exported.")
+        log("No mesh objects to export.", "warn")
+        return None
+
+    return roots, mesh_objects
+
+
+def _top_parents(mesh_objects):
+    """The top-most ancestor of each mesh, deduplicated, in first-seen order."""
+    top_parents = []
+    for obj_path in mesh_objects:
+        current = obj_path
+        while True:
+            parent = cmds.listRelatives(current, parent=True, fullPath=True)
+            if not parent:
+                break
+            current = parent[0]
+        if current not in top_parents:
+            top_parents.append(current)
+    return top_parents
+
+
+# ---------------------------------------------------------------------------
+# UVChannel2 only
+# ---------------------------------------------------------------------------
+
+def _keep_uv2_only(mesh_objects, state, log):
+    """
+    Reduce every mesh to a single UV set named UVChannel2, holding what was in
+    the *second* UV set by position. Meshes with one UV set keep it, renamed.
+
+    The second set is copied into the first rather than the others simply
+    deleted, because Maya refuses to delete a mesh's first (default) UV set.
+
+    Edits the meshes in place: only call it through _uv2_only(), which undoes
+    the whole thing once the export is written. Sets state["changed"] before
+    the first edit, so a failure part-way through still gets undone.
+    """
+    moved = single = empty = 0
+    seen = set()
+    for obj_path in mesh_objects:
+        shapes = cmds.listRelatives(obj_path, shapes=True, noIntermediate=True,
+                                    fullPath=True, type="mesh") or []
+        for shape in shapes:
+            if shape in seen:
+                continue
+            seen.add(shape)
+
+            uv_sets = cmds.polyUVSet(shape, query=True, allUVSets=True) or []
+            if not uv_sets:
+                empty += 1
+                log("  {} has no UV sets, left as-is.".format(_short(obj_path)), "warn")
+                continue
+
+            state["changed"] = True
+            first = uv_sets[0]
+            if len(uv_sets) >= 2:
+                cmds.polyUVSet(shape, copy=True, uvSet=uv_sets[1], newUVSet=first)
+                moved += 1
+            else:
+                single += 1
+
+            cmds.polyUVSet(shape, currentUVSet=True, uvSet=first)
+            for uv_set in uv_sets[1:]:
+                cmds.polyUVSet(shape, delete=True, uvSet=uv_set)
+            if first != UV2_NAME:
+                cmds.polyUVSet(shape, rename=True, uvSet=first, newUVSet=UV2_NAME)
+
+    log("Kept {} only: {} meshes from UV set 2, {} with a single UV set kept as-is{}.".format(
+        UV2_NAME, moved, single,
+        ", {} without UVs".format(empty) if empty else ""))
+
+
+@contextlib.contextmanager
+def _uv2_only(mesh_objects, enabled, log):
+    """
+    Strip the meshes down to UVChannel2 for the duration of the block, then
+    put the original UV sets back by undoing the edit as one chunk.
+
+    Working on the originals, not duplicates, keeps the node names in the FBX
+    identical to the scene.
+    """
+    if not enabled:
+        yield
         return
 
-    # Check if "As Parent" mode is enabled
-    as_parent = cmds.checkBox(_CTRL["asParent"], q=True, value=True)
-
-    if as_parent:
-        if export_all:
-            # All mode + As Parent: find top-level parents (roots) and export each with all descendants
-            # Get all transforms that have mesh descendants but no parent with mesh descendants
-            top_parents = []
-            for obj_path in mesh_objects:
-                # Walk up to find the top-most ancestor that contains meshes
-                current = obj_path
-                while True:
-                    parent = cmds.listRelatives(current, parent=True, fullPath=True)
-                    if not parent:
-                        break
-                    current = parent[0]
-                if current not in top_parents:
-                    top_parents.append(current)
-
-            _log("Exporting {} top-level parents to: {}".format(len(top_parents), export_folder))
-
-            for parent_path in top_parents:
-                parent_name = parent_path.split('|')[-1]
-                file_path = os.path.join(export_folder, "{}.fbx".format(parent_name))
-
-                # Select the parent and all its descendants
-                cmds.select(parent_path, hierarchy=True, replace=True)
-
-                try:
-                    gs_fbx.export_selection(file_path, preset=FBX_PRESET)
-                    _log("Exported: {}.fbx".format(parent_name))
-                except Exception as e:
-                    _log("Error exporting {}: {}".format(parent_name, str(e)))
-        else:
-            # Selection mode + As Parent: selected objects ARE the parents, export each with children
-            _log("Exporting {} selected parents to: {}".format(len(selected_paths), export_folder))
-
-            for obj_path in selected_paths:
-                obj_name = obj_path.split('|')[-1]
-                file_path = os.path.join(export_folder, "{}.fbx".format(obj_name))
-
-                # Select this object and all its descendants
-                cmds.select(obj_path, hierarchy=True, replace=True)
-
-                try:
-                    gs_fbx.export_selection(file_path, preset=FBX_PRESET)
-                    _log("Exported: {}.fbx".format(obj_name))
-                except Exception as e:
-                    _log("Error exporting {}: {}".format(obj_name, str(e)))
-    else:
-        _log("Exporting {} individual mesh objects to: {}".format(len(mesh_objects), export_folder))
-
-        # Process each mesh object individually
-        for obj_path in mesh_objects:
-            obj_name = obj_path.split('|')[-1]
-            file_path = os.path.join(export_folder, "{}.fbx".format(obj_name))
-
-            cmds.select(obj_path, replace=True)
-
-            try:
-                gs_fbx.export_selection(file_path, preset=FBX_PRESET)
-                _log("Exported: {}.fbx".format(obj_name))
-            except Exception as e:
-                _log("Error exporting {}: {}".format(obj_name, str(e)))
-
-    # Restore original selection
-    cmds.select(selected_paths)
-    _log("Export complete.")
-
-    # Final verification message
-    _log("")
-    _log("Export Settings Used:")
-    _log("- FBX Version: 2020")
-    _log("- Up Axis: Z")
-    _log("- Units: Centimeters")
-    _log("- Included: Smoothing Groups")
-    _log("- Excluded: Animation, Cameras, Lights, Audio, Embedded Media")
-
-
-def browseForExportDir(*args):
-    """Open a file browser to select an export directory"""
+    state = {"changed": False}
+    cmds.undoInfo(openChunk=True, chunkName="gs_file_export_uv2")
     try:
-        # Use fileMode=3 to ensure only directories are visible/selectable
-        # Use dialogStyle=2 for directory browser (no files shown)
-        export_folder = cmds.fileDialog2(
-            fileMode=3,          # 3 = Directory selection only
-            dialogStyle=2,       # 2 = Directory browser (hides files)
-            caption="Select Export Folder",
-            okCaption="Select",
-            fileFilter="Folders (*)|"  # This ensures only folders are shown in the browser
-        )
-    except:
-        # Fallback if advanced options cause issues
-        export_folder = cmds.fileDialog2(
-            fileMode=3,          # Directory selection only
-            fileFilter="Folders (*)|"  # Filter to show only folders
-        )
-
-    if export_folder:
-        cmds.textField(_CTRL["exportDir"], e=True, text=export_folder[0])
+        _keep_uv2_only(mesh_objects, state, log)
+        yield
+    finally:
+        cmds.undoInfo(closeChunk=True)
+        # Only undo when the chunk actually holds our edits - undoing an
+        # empty chunk would undo the artist's previous action instead.
+        if state["changed"]:
+            cmds.undo()
+            log("Original UV sets restored.")
 
 
-def UI():
-    """Create the GS File Exporter UI"""
-    # Close existing window if it exists
-    if cmds.window(WINDOW, exists=True):
-        cmds.deleteUI(WINDOW, window=True)
+def uv2_allowed(log):
+    """The UV2 option needs undo to put the scene back afterwards."""
+    if cmds.undoInfo(q=True, state=True):
+        return True
+    log("Undo is disabled in this scene, so the original UV sets could not be "
+        "restored after export. Turn undo on, or untick '{} only'.".format(UV2_NAME), "error")
+    return False
 
-    _CTRL.clear()
 
-    # Create main window with initial size, but resizable
-    cmds.window(WINDOW, title="GS File Exporter", width=720, height=480, sizeable=True)
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
 
-    height = 20
+def _export(file_path, log):
+    label = os.path.basename(file_path)
+    try:
+        gs_fbx.export_selection(file_path, preset=FBX_PRESET)
+        log("Exported: {}".format(label), "ok")
+        return True
+    except Exception as e:
+        log("Error exporting {}: {}".format(label, str(e)), "error")
+        return False
 
-    # Main layout
-    cmds.columnLayout(adjustableColumn=True)
 
-    # Title section
-    cmds.separator(style="out", height=5)
-    cmds.text(label="GS File Exporter", font="boldLabelFont", align="center")
-    cmds.separator(style="in", height=10)
+def _log_settings(uv2_only, log):
+    log("")
+    log("Export settings: FBX 2020, Z up, centimeters, smoothing groups.")
+    log("Excluded: animation, cameras, lights, audio, embedded media.")
+    if uv2_only:
+        log("UVs: {} only.".format(UV2_NAME))
 
-    # Export directory section
-    cmds.rowLayout(numberOfColumns=3, columnWidth3=(100, 400, 80), columnAlign=(1, 'right'),
-                   columnAttach=[(1, 'both', 5), (2, 'both', 5), (3, 'both', 5)])
-    cmds.text(label="Export Directory:")
-    _CTRL["exportDir"] = cmds.textField(placeholderText="Select or enter export directory", width=440)
-    cmds.button(label="Browse...", command=browseForExportDir, width=80)
-    cmds.setParent('..')  # Go back to main layout
 
-    cmds.separator(style="none", height=10)
+@contextlib.contextmanager
+def _keep_selection():
+    selection = cmds.ls(selection=True, long=True)
+    try:
+        yield
+    finally:
+        if selection:
+            cmds.select(selection, replace=True)
+        else:
+            cmds.select(clear=True)
 
-    # Selection mode section
-    cmds.rowLayout(numberOfColumns=3, columnWidth3=(100, 180, 180), columnAlign=(1, 'right'),
-                   columnAttach=[(1, 'both', 5), (2, 'both', 5), (3, 'both', 5)])
-    cmds.text(label="Export Mode:")
-    cmds.radioCollection()
-    _CTRL["selectionRadio"] = cmds.radioButton(label="Selection", select=True)
-    _CTRL["everythingRadio"] = cmds.radioButton(label="Everything")
-    cmds.setParent('..')  # Go back to main layout
 
-    cmds.separator(style="none", height=10)
+def export_single(collected, export_all, file_path, uv2_only, log):
+    """Export everything collected together into one FBX file."""
+    roots, mesh_objects = collected
 
-    # As Parent option
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(100, 280), columnAlign=(1, 'right'),
-                   columnAttach=[(1, 'both', 5), (2, 'both', 5)])
-    cmds.text(label="")
-    _CTRL["asParent"] = cmds.checkBox(label="As Parent", value=False)
-    cmds.setParent('..')  # Go back to main layout
+    # Selecting the roots with their hierarchy keeps the groups in the file.
+    if export_all:
+        roots = _top_parents(mesh_objects)
 
-    # Export button
-    cmds.separator(style="none", height=10)
-    cmds.button(label="Batch FBX Export", height=height + 10, command=batchExportFBX, backgroundColor=[0.3, 0.3, 0.3])
+    log("Exporting {} mesh objects to: {}".format(len(mesh_objects), file_path))
+    with _keep_selection():
+        with _uv2_only(mesh_objects, uv2_only, log):
+            cmds.select(roots, hierarchy=True, replace=True)
+            ok = _export(file_path, log)
 
-    cmds.separator(style="in", height=10)
+    log("Export complete." if ok else "Export failed.", "ok" if ok else "error")
+    _log_settings(uv2_only, log)
 
-    # Operations output section
-    cmds.text(label="Operations:", align="left")
-    cmds.frameLayout(label="", borderVisible=False, labelVisible=False, backgroundColor=[0.3, 0.3, 0.3], marginWidth=0, marginHeight=0)
-    _CTRL["log"] = cmds.textScrollList(height=280)
-    cmds.setParent('..')
 
-    # Show the window
-    cmds.showWindow(WINDOW)
+def export_separate(collected, export_all, export_folder, by_parent, uv2_only, log):
+    """Export one FBX file per mesh (or per top-level parent) into a folder."""
+    roots, mesh_objects = collected
+
+    with _keep_selection():
+        with _uv2_only(mesh_objects, uv2_only, log):
+            if by_parent:
+                # Everything mode: one file per top-level parent. Selection
+                # mode: the selected objects are the parents.
+                items = _top_parents(mesh_objects) if export_all else roots
+                log("Exporting {} parents to: {}".format(len(items), export_folder))
+            else:
+                items = mesh_objects
+                log("Exporting {} individual mesh objects to: {}".format(len(items), export_folder))
+
+            done = 0
+            for path in items:
+                cmds.select(path, hierarchy=by_parent, replace=True)
+                if _export(os.path.join(export_folder, "{}.fbx".format(_short(path))), log):
+                    done += 1
+
+    failed = len(items) - done
+    if failed:
+        log("Export finished: {} written, {} failed.".format(done, failed), "error")
+    else:
+        log("Export complete: {} files written.".format(done), "ok")
+    _log_settings(uv2_only, log)
+
+
+# ---------------------------------------------------------------------------
+# Window
+# ---------------------------------------------------------------------------
+
+def _maya_main_window():
+    pointer = omui.MQtUtil.mainWindow()
+    return wrapInstance(int(pointer), QtWidgets.QWidget)
+
+
+def _opt_get(name, default):
+    key = _OPT_PREFIX + name
+    if cmds.optionVar(exists=key):
+        return cmds.optionVar(q=key)
+    return default
+
+
+def _opt_set(name, value):
+    key = _OPT_PREFIX + name
+    if isinstance(value, str):
+        cmds.optionVar(stringValue=(key, value))
+    else:
+        cmds.optionVar(intValue=(key, int(value)))
+
+
+class ExporterWindow(QtWidgets.QDialog):
+
+    LOG_COLOURS = {"ok": "#7ec87e", "warn": "#e0b64c", "error": "#e06c6c"}
+
+    def __init__(self, parent=None):
+        super(ExporterWindow, self).__init__(parent or _maya_main_window())
+        self.setObjectName(OBJECT_NAME)
+        self.setWindowTitle("GS File Exporter")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self._build()
+        self._load_settings()
+        self.resize(560, 520)
+        self.setMinimumWidth(460)
+
+    # -- layout -------------------------------------------------------------
+    def _build(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
+
+        # Settings shared by both export buttons. A form layout keeps the
+        # labels right-aligned in one column and the fields in another.
+        settings_box = QtWidgets.QGroupBox("Settings")
+        form = QtWidgets.QFormLayout(settings_box)
+        form.setLabelAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(8)
+
+        dir_row = QtWidgets.QHBoxLayout()
+        dir_row.setSpacing(4)
+        self.dir_edit = QtWidgets.QLineEdit()
+        self.dir_edit.setPlaceholderText("Folder for separate FBXs (also where 'One FBX' starts)")
+        dir_row.addWidget(self.dir_edit, 1)
+        browse_button = QtWidgets.QPushButton("Browse...")
+        browse_button.clicked.connect(self._on_browse)
+        dir_row.addWidget(browse_button)
+        form.addRow("Export To:", dir_row)
+
+        mode_row = QtWidgets.QHBoxLayout()
+        mode_row.setSpacing(16)
+        self.selection_radio = QtWidgets.QRadioButton("Selection")
+        self.everything_radio = QtWidgets.QRadioButton("Everything")
+        self.selection_radio.setChecked(True)
+        mode_group = QtWidgets.QButtonGroup(self)
+        mode_group.addButton(self.selection_radio)
+        mode_group.addButton(self.everything_radio)
+        mode_row.addWidget(self.selection_radio)
+        mode_row.addWidget(self.everything_radio)
+        mode_row.addStretch(1)
+        form.addRow("Export:", mode_row)
+
+        self.uv2_check = QtWidgets.QCheckBox("Keep {} only".format(UV2_NAME))
+        self.uv2_check.setToolTip(
+            "Export only the 2nd UV set (by position), renamed {}.\n"
+            "Your scene is left untouched.".format(UV2_NAME))
+        form.addRow("UVs:", self.uv2_check)
+
+        root.addWidget(settings_box)
+
+        # The two exports, in two equal columns.
+        export_box = QtWidgets.QGroupBox("Export")
+        grid = QtWidgets.QGridLayout(export_box)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(6)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        self.one_button = self._big_button(
+            "Export as ONE FBX", "All meshes into a single FBX file. Asks for a file name.")
+        self.one_button.clicked.connect(self._on_export_one)
+        grid.addWidget(self.one_button, 0, 0)
+
+        self.separate_button = self._big_button(
+            "Export SEPARATE FBXs", "One FBX per object, written to the Export To folder.")
+        self.separate_button.clicked.connect(self._on_export_separate)
+        grid.addWidget(self.separate_button, 0, 1)
+
+        self.by_parent_check = QtWidgets.QCheckBox("Group by top-level parent")
+        self.by_parent_check.setToolTip(
+            "One FBX per parent (with all its children) instead of one per mesh.")
+        grid.addWidget(self.by_parent_check, 1, 1)
+
+        root.addWidget(export_box)
+
+        # Log fills whatever height is left.
+        log_box = QtWidgets.QGroupBox("Log")
+        log_layout = QtWidgets.QVBoxLayout(log_box)
+        self.log_view = QtWidgets.QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        log_layout.addWidget(self.log_view)
+        root.addWidget(log_box, 1)
+
+    @staticmethod
+    def _big_button(text, tooltip):
+        button = QtWidgets.QPushButton(text)
+        button.setToolTip(tooltip)
+        button.setMinimumHeight(36)
+        font = button.font()
+        font.setBold(True)
+        button.setFont(font)
+        return button
+
+    # -- settings -----------------------------------------------------------
+    def _load_settings(self):
+        self.dir_edit.setText(_opt_get("dir", ""))
+        (self.everything_radio if _opt_get("everything", 0) else self.selection_radio).setChecked(True)
+        self.uv2_check.setChecked(bool(_opt_get("uv2", 0)))
+        self.by_parent_check.setChecked(bool(_opt_get("by_parent", 0)))
+
+    def _save_settings(self):
+        _opt_set("dir", self.dir_edit.text().strip())
+        _opt_set("everything", self.everything_radio.isChecked())
+        _opt_set("uv2", self.uv2_check.isChecked())
+        _opt_set("by_parent", self.by_parent_check.isChecked())
+
+    # -- log ----------------------------------------------------------------
+    def log(self, message, level="info"):
+        colour = self.LOG_COLOURS.get(level)
+        if colour:
+            self.log_view.appendHtml('<span style="color:{}">{}</span>'.format(
+                colour, html.escape(message)))
+        else:
+            self.log_view.appendPlainText(message)
+        # Paint now, so long exports show progress rather than a frozen log.
+        self.log_view.repaint()
+
+    # -- actions ------------------------------------------------------------
+    def _export_folder(self):
+        folder = self.dir_edit.text().strip()
+        return folder if folder and os.path.isdir(folder) else ""
+
+    def _begin(self):
+        """Common start of both exports; returns the collected meshes or None."""
+        self.log_view.clear()
+        self._save_settings()
+        if self.uv2_check.isChecked() and not uv2_allowed(self.log):
+            return None
+        return collect(self.everything_radio.isChecked(), self.log)
+
+    def _on_browse(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Export Folder", self._export_folder())
+        if folder:
+            self.dir_edit.setText(os.path.normpath(folder))
+            self._save_settings()
+
+    def _on_export_one(self):
+        collected = self._begin()
+        if not collected:
+            return
+
+        # Start the save dialog in the Export To folder, named after the scene.
+        scene = cmds.file(q=True, sceneName=True, shortName=True)
+        default_name = "{}.fbx".format(os.path.splitext(scene)[0] if scene else "export")
+        start = os.path.join(self._export_folder(), default_name)
+
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export as One FBX", start, "FBX (*.fbx)")
+        if not file_path:
+            self.log("Export canceled.", "warn")
+            return
+        if not file_path.lower().endswith(".fbx"):
+            file_path += ".fbx"
+
+        export_single(collected, self.everything_radio.isChecked(),
+                      os.path.normpath(file_path), self.uv2_check.isChecked(), self.log)
+
+    def _on_export_separate(self):
+        folder = self._export_folder()
+        if not folder:
+            self.log_view.clear()
+            self.log("Pick a valid Export To folder first.", "warn")
+            return
+
+        collected = self._begin()
+        if not collected:
+            return
+
+        export_separate(collected, self.everything_radio.isChecked(), folder,
+                        self.by_parent_check.isChecked(), self.uv2_check.isChecked(), self.log)
+
+
+def show():
+    for widget in _maya_main_window().findChildren(QtWidgets.QDialog, OBJECT_NAME):
+        widget.close()
+        widget.deleteLater()
+    window = ExporterWindow()
+    window.show()
+    return window
 
 
 if __name__ == "__main__":
-    UI()
+    show()
