@@ -20,121 +20,28 @@ from bpy.types import Panel, PropertyGroup, Scene
 ADDON_VERSION = "Version %s" % ".".join(str(n) for n in bl_info["version"])
 
 
-def ShowMessageBox(message, title, icon):
-    def draw(self, context):
-        for line in message:
-            self.layout.label(text=line)
-
-    bpy.context.window_manager.popup_menu(draw, title= title, icon= icon)
-
-
-def add_item(collection, itemname, message):
-    item = collection.add()
-    item.name = itemname
-    item.type = itemname
-    item.message = message
-
-
-def getmeshObjs():
-    meshObjs = []
-    objs = bpy.context.scene.objects
-    for obj in objs:
-        meshObjs.append(obj)
-
-    return meshObjs
-
-class CUSTOM_S4envobjectCollection(bpy.types.PropertyGroup):
-    # name: StringProperty() -> Instantiated by default
-    type: StringProperty()
-    message: StringProperty()
-    id: IntProperty()
-
-
-class CUSTOM_S4envOT_clearList(bpy.types.Operator):
-    bl_idname = "custom.s4env_clear_list"
-    bl_label = "Clear List"
-    bl_description = "Close the error report panel"
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene.custom)
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
-
-    def execute(self, context):
-        if bool(context.scene.custom):
-            context.scene.custom.clear()
-            context.scene.checkResult_all = False
-            self.report({'INFO'}, "All items removed")
-        else:
-            self.report({'INFO'}, "Nothing to remove")
-        return {'FINISHED'}
-
-
-class MATERIAL_S4env_matslots_example(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        layout.prop(item, "message", text=item.type, emboss=False, icon_value=icon)
-
-class ValidationS4EnvToolMainPanel(bpy.types.Panel):
-    bl_label = "S4 Env Validator"
-    bl_idname = "S4_Env_Validator"
-    bl_space_type = 'VIEW_3D'
-    bl_category = "S4 Environment"
-    bl_region_type = 'UI'
-    
-
-    bpy.types.Scene.checkResult_Transform = BoolProperty(name = "Boolean", description = "None")
-    bpy.types.Scene.checkResult_UnusedData = BoolProperty( name = "Boolean", description = "None")
-    bpy.types.Scene.checkResult_all = BoolProperty( name = "Boolean", description = "None")
-    
-    def initSceneProperties(scn):
-        scn.checkResult_Transform = True
-        scn.checkResult_UnusedData = True
-        scn.checkResult_all = False
-        return
-
-    def draw(self, context):
-        scn = context.scene
-        layout = self.layout
-     
-        obj = context.object
-
-        row = layout.row()
-        row.label(text="Run all check")
-
-        row1 = layout.row()
-        row1.operator("s4.envcheck", text="Check Scene")
-        
-              
-        if scn.checkResult_all == True:
-            layout.template_list("MATERIAL_S4env_matslots_example", "", scn, "custom", scn, "s4envcustom_index")
-
-            row = layout.row()
-            row.operator("custom.s4env_clear_list", text="Clear and hide result box.")
-
-        row11 = layout.row()
-        row11.label(text=ADDON_VERSION)
-
 class S4EnvCheckToolPanel(bpy.types.Panel):
     bl_label = "S4 Env Check Tool"
     bl_idname = "S4_Env_Check"
     bl_space_type = 'VIEW_3D'
     bl_category = "S4 Environment"
     bl_region_type = 'UI'
-    bl_options = {"DEFAULT_CLOSED"}
-   
+
+    # Every check runs over the whole scene - nothing here reads the selection.
+    CHECKS = (
+        ("s4.envcheckscene", "Check Scene"),
+        ("s4.envchecknames", "Check Names"),
+        ("s4.envcheckattributes", "Check Attributes"),
+        ("s4.envcheckmaterials", "Check Materials"),
+        ("s4.envcheckuvs", "Check UVs"),
+    )
+
     def draw(self, context):
-        scn = context.scene
         layout = self.layout
-     
-        obj = context.object
-
-        row1 = layout.row()
-        row1.operator("s4.envcheckmaterials", text="Check Materials")
-
-        row2 = layout.row()
-        row2.operator("s4.envcheckuvs", text="Check UVs")
+        col = layout.column(align=True)
+        for idname, text in self.CHECKS:
+            col.operator(idname, text=text)
+        layout.label(text=ADDON_VERSION)
 
 class S4EnvLODToolPanel(bpy.types.Panel):
     bl_label = "S4 Env LOD Tool"
@@ -196,144 +103,6 @@ class S4EnvUtilitiToolPanel(bpy.types.Panel):
         
         row3 = layout.row()
         row3.operator("s4.envselngon", text="Select N-Gons Face")
-
-class S4EnvInitialCheck(bpy.types.Operator):
-    bl_idname = "s4.envcheck"
-    bl_label = "Initial Check"
-    bl_description = "Run through all check processes"
-
-    def execute(self, context):
-        if bool(context.scene.custom):
-            context.scene.custom.clear()
-
-        try:
-            bpy.ops.object.mode_set(mode='OBJECT')
-        except:
-            pass
-        scn = context.scene
-        objs = bpy.context.scene.objects
-        meshObjs = getmeshObjs()
-
-        if len(meshObjs) != 0:
-            bpy.context.view_layer.objects.active = meshObjs[0]
-
-            ##Check Material node type
-            allmat = bpy.data.materials
-            for mat in allmat:
-                if not "Dots Stroke" in mat.name:
-                    mat.use_nodes = True
-                    nodes = mat.node_tree.nodes
-                    for n in nodes:
-                        if "Principled BSDF" in n.name:
-                            message = str(mat.name)
-                            add_item(scn.custom, "MaterialNode", message)
-                          
-            ##Check UVset name
-            uvmesh = []
-            for meshObj in objs:
-                if meshObj.type == "MESH":
-                    for u in meshObj.data.uv_layers:
-                        if not "UVMap" in u.name:
-                            if not meshObj in uvmesh:
-                                uvmesh.append(meshObj)
-            for o in uvmesh:
-                message = str(o.name)
-                add_item(scn.custom,"UVMap", message)
-            
-            #Check N-gon mesh
-            mesh_n_gon = []
-            for meshngon in objs:
-                if meshngon.type == "MESH":
-                    for p in meshngon.data.polygons:
-                        if len(p.vertices) > 4:
-                            if not meshngon in mesh_n_gon:
-                                mesh_n_gon.append(meshngon)
-            for ngon_obj in mesh_n_gon:
-                message = str(ngon_obj.name)
-                add_item(scn.custom,"N-Gons mesh", message)
-
-
-            ##Check Unit
-            scale_unit = bpy.context.scene.unit_settings.scale_length
-            leng_unit = bpy.context.scene.unit_settings.length_unit
-            system_unit = bpy.context.scene.unit_settings.system
-            
-            if scale_unit != 1:
-                message = "Unit Scale must be 1"
-                add_item(scn.custom, "Unit Scale", message)
-    
-            if leng_unit != "METERS":
-                message = "Length Unit must be Meters"
-                add_item(scn.custom, "Unit Scale", message)
-
-            if system_unit != "METRIC":
-                message = "Unit System must be Metric"
-                add_item(scn.custom, "Unit System", message)
-
-            ##Check Scale Transform
-            for obj in objs:
-                # Check if the object is a mesh
-                if obj.type == 'MESH':
-                    # Check if the scale transformation is not (1, 1, 1)
-                    print(obj.name, obj.scale)
-                    if obj.scale[0] != 1.0 and obj.scale[1] != 1.0 and obj.scale[2] != 1.0:
-                        message = str(obj.name)
-                        add_item(scn.custom, "Scale Mesh", message)
-                if obj.type == 'EMPTY':
-                    # Check if the scale transformation is not (1, 1, 1)
-                    print(obj.name, obj.scale)
-                    if obj.scale[0] != 1.0 and obj.scale[1] != 1.0 and obj.scale[2] != 1.0:
-                        message = str(obj.name)
-                        add_item(scn.custom, "Scale Group", message)
-
-            #Check naming structure
-            # Get the Blender file name (without extension)
-            blender_file_name = os.path.splitext(bpy.path.basename(bpy.data.filepath))[0]
-
-            # The expected naming prefix for Empty objects
-            empty_prefix = f"SM_{blender_file_name}"
-
-            # Regex pattern to check for the Empty naming structure with an optional suffix
-            empty_pattern = re.compile(rf"^{re.escape(empty_prefix)}(_\d+)?$")
-
-            # Suffixes for meshes parented to Empties
-            mesh_suffixes = ["_loda", "_lodb", "_lodc", "_lodd", "_lode"]
-
-            # Iterate through all objects in the scene
-            for obj in bpy.data.objects:
-                if obj.type == 'EMPTY':  # Check if the object is an Empty
-                    # Check if the Empty object's name matches the expected structure
-                    if not empty_pattern.match(obj.name):
-                        message = str(obj.name)
-                        add_item(scn.custom, "Group name", message)
-
-                    # Process child meshes of the Empty
-                    child_meshes = [child for child in obj.children if child.type == 'MESH']
-                    for i, child in enumerate(child_meshes):
-                        # Determine the expected mesh name
-                        if i < len(mesh_suffixes):
-                            expected_mesh_name = f"{obj.name}{mesh_suffixes[i]}"
-                        else:
-                            # Handle cases where there are more meshes than predefined suffixes
-                            expected_mesh_name = f"{obj.name}_lod{i + 1}"
-
-                        # Check if the mesh name matches the expected structure
-                        if child.name != expected_mesh_name:
-                            message = str(child.name)
-                            add_item(scn.custom, "Mesh name", message)
-
-
-            ##Finish check result
-            scn.checkResult_all = True
-            confmessage = ["Checking Finished."]
-            ShowMessageBox(confmessage, "S4 Validation", "CHECKMARK")
-            return {"FINISHED"}
-            
-        else:
-            scn.checkResult_all = True
-            confmessage = ["Scene in empty."]
-            ShowMessageBox(confmessage, "S4 Validation", "ERROR")
-            return {"FINISHED"}
 
 class S4EnvCorrectMat(bpy.types.Operator):
     bl_idname = "s4.envcorrectmat"
@@ -447,11 +216,10 @@ class S4EnvSelectNgon(bpy.types.Operator):
 # ---------------------------------------------------------------------------
 # Validator log
 #
-# Shared result list for every check tool. Individual checks used to speak only
-# through self.report(), which lands in the Info editor and is easy to miss when
-# a multi-object selection has a handful of bad meshes among good ones. Checks
-# now write their per-object findings here instead, so the panel keeps the
-# offenders on screen and can push them back into the selection.
+# Shared result list for every check tool. self.report() alone lands in the
+# Info editor and is easy to miss when a scene has a handful of bad meshes
+# among good ones, so checks write their per-object findings here, where the
+# panel keeps the offenders on screen and can select them.
 # ---------------------------------------------------------------------------
 
 S4ENV_LOG_ICONS = {
@@ -666,6 +434,252 @@ class S4EnvLogClear(bpy.types.Operator):
 
 
 # ---------------------------------------------------------------------------
+# Check plumbing
+#
+# Every check runs over the whole scene and writes its findings through
+# CheckResults, so they all read the same in the log: a summary line, then any
+# scene-wide rows, then one row per faulty object with its faults joined.
+# ---------------------------------------------------------------------------
+
+def plural(count, word, many=None):
+    """ "1 mesh", "3 meshes" - `many` for words that do not just take an s."""
+    return "%d %s" % (count, word if count == 1 else (many or word + "s"))
+
+
+def scene_meshes(context):
+    """Every mesh object in the scene, with edit-mode changes flushed back."""
+    # Mesh data read in edit mode is stale until the mode is left.
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+    return [obj for obj in context.scene.objects
+            if obj.type == 'MESH' and obj.data is not None]
+
+
+class CheckResults:
+    """One check run's findings, written to the log in one go by publish()."""
+
+    def __init__(self, check):
+        self.check = check
+        # obj name -> messages, in the order found. "" holds scene-wide rows.
+        self.errors = {}
+        self.warnings = {}
+
+    def error(self, message, obj_name=""):
+        self.errors.setdefault(obj_name, []).append(message)
+
+    def warning(self, message, obj_name=""):
+        self.warnings.setdefault(obj_name, []).append(message)
+
+    def publish(self, operator, context, checked):
+        """Replace this check's log rows and report. `checked` reads like "12 meshes"."""
+        log_clear(context, check=self.check)
+
+        failed = sum(1 for name in self.errors if name)
+        summary = "%s checked, %d with errors" % (checked, failed)
+        log_add(context, self.check, summary, status='INFO')
+
+        for message in self.errors.get("", []):
+            log_add(context, self.check, message, status='ERROR')
+        for message in self.warnings.get("", []):
+            log_add(context, self.check, message, status='WARNING')
+        for status, rows in (('ERROR', self.errors), ('WARNING', self.warnings)):
+            for obj_name, messages in rows.items():
+                if obj_name:
+                    log_add(context, self.check, " | ".join(messages), obj_name, status)
+
+        if self.errors or self.warnings:
+            operator.report({'WARNING'}, summary + " - see the S4 Env Log panel")
+        else:
+            operator.report({'INFO'}, summary)
+        return {'FINISHED'}
+
+
+class S4EnvCheckScene(bpy.types.Operator):
+    bl_idname = "s4.envcheckscene"
+    bl_label = "Check Scene"
+    bl_description = ("Check scene units, unapplied scale on meshes and empties, "
+                      "Principled BSDF materials and n-gons")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    CHECK_NAME = "Scene"
+
+    # Unit settings the pipeline exports with, as (property, required, label).
+    UNIT_RULES = (
+        ("system", 'METRIC', "Unit System must be Metric"),
+        ("length_unit", 'METERS', "Length Unit must be Meters"),
+    )
+
+    # Scale is float data, so an exact != would flag values like 0.99999994
+    # that Blender itself displays as 1.
+    SCALE_TOLERANCE = 1e-5
+
+    def check_units(self, scene, results):
+        settings = scene.unit_settings
+        for prop, want, label in self.UNIT_RULES:
+            if getattr(settings, prop) != want:
+                results.error(label)
+        if not math.isclose(settings.scale_length, 1.0, abs_tol=self.SCALE_TOLERANCE):
+            results.error("Unit Scale is %g, must be 1" % settings.scale_length)
+
+    @staticmethod
+    def principled_materials(obj, cache):
+        """Names of this object's materials that use a Principled BSDF node.
+
+        Only top-level nodes are read: the s4s group is built on a Principled
+        BSDF internally, so descending into groups would flag every material.
+        """
+        found = []
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None:
+                continue
+            hit = cache.get(mat)
+            if hit is None:
+                tree = mat.node_tree if mat.use_nodes else None
+                hit = cache[mat] = tree is not None and any(
+                    node.type == 'BSDF_PRINCIPLED' for node in tree.nodes)
+            if hit and mat.name not in found:
+                found.append(mat.name)
+        return found
+
+    @staticmethod
+    def ngon_count(mesh):
+        """How many faces in the mesh have more than four corners."""
+        count = len(mesh.polygons)
+        if count == 0:
+            return 0
+        # foreach_get reads every face size in one call - a Python loop over
+        # polygons is the slow part of this check on dense meshes.
+        sizes = np.empty(count, dtype=np.int32)
+        mesh.polygons.foreach_get("loop_total", sizes)
+        return int((sizes > 4).sum())
+
+    def execute(self, context):
+        meshes = scene_meshes(context)
+        # Empties are only checked for scale; everything else is mesh-only.
+        objects = meshes + [obj for obj in context.scene.objects if obj.type == 'EMPTY']
+        results = CheckResults(self.CHECK_NAME)
+
+        self.check_units(context.scene, results)
+        if not objects:
+            results.warning("no meshes or empties in the scene")
+
+        for obj in objects:
+            if not all(math.isclose(s, 1.0, abs_tol=self.SCALE_TOLERANCE) for s in obj.scale):
+                results.error("scale %s, apply it" % ", ".join(
+                    "%g" % round(s, 4) for s in obj.scale), obj.name)
+
+        cache = {}
+        for obj in meshes:
+            mats = self.principled_materials(obj, cache)
+            if mats:
+                results.error("Principled BSDF in %s" % " - ".join(mats), obj.name)
+            ngons = self.ngon_count(obj.data)
+            if ngons:
+                results.error(plural(ngons, "n-gon"), obj.name)
+
+        return results.publish(self, context, plural(len(objects), "object"))
+
+
+class S4EnvCheckNames(bpy.types.Operator):
+    bl_idname = "s4.envchecknames"
+    bl_label = "Check Names"
+    bl_description = ("Check every mesh is named SM_<file>[_N]_LODA/B/C, matches its "
+                      "group, and that each group's LODs have no gaps")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    CHECK_NAME = "Names"
+
+    # Assets are named after the .blend file: "SM_<file>", optionally numbered
+    # "SM_<file>_2" when one file holds several, then the LOD suffix.
+    GROUP_PREFIX = "SM_"
+    LOD_LETTERS = "ABC"
+
+    # "<prefix>_LOD<letter>". The suffix is matched either case - the addon's
+    # own "Add LODA" button writes upper case - but the prefix is exact.
+    LOD_RE = re.compile(r"^(.+)_[Ll][Oo][Dd]([A-Za-z])$")
+
+    def split_name(self, name):
+        """(prefix, upper-case LOD letter) for a LOD-named mesh, else None."""
+        match = self.LOD_RE.match(name)
+        if match is None:
+            return None
+        return match.group(1), match.group(2).upper()
+
+    def group_errors(self, group):
+        """Faults across one empty's LOD children, as {child name: [messages]}."""
+        letters = {}
+        for child in group.children:
+            if child.type != 'MESH':
+                continue
+            parts = self.split_name(child.name)
+            if parts and parts[1] in self.LOD_LETTERS:
+                letters.setdefault(parts[1], []).append(child.name)
+
+        errors = {}
+        for letter, names in letters.items():
+            if len(names) > 1:
+                # Names are unique, so only a case difference in the suffix
+                # can give two meshes the same LOD.
+                for name in names:
+                    errors.setdefault(name, []).append("duplicate LOD%s" % letter)
+
+        # LODs must run A, B, C with no gaps.
+        if letters:
+            last = self.LOD_LETTERS.index(max(letters))
+            gaps = [l for l in self.LOD_LETTERS[:last] if l not in letters]
+            if gaps:
+                message = "group missing %s" % " - ".join("LOD" + l for l in gaps)
+                for child in group.children:
+                    if child.type == 'MESH':
+                        errors.setdefault(child.name, []).append(message)
+
+        return errors
+
+    def execute(self, context):
+        meshes = scene_meshes(context)
+        results = CheckResults(self.CHECK_NAME)
+
+        file_name = os.path.splitext(bpy.path.basename(bpy.data.filepath))[0]
+        if file_name:
+            prefix_re = re.compile(r"^%s(_\d+)?$" % re.escape(self.GROUP_PREFIX + file_name))
+            prefix_label = "%s%s[_N]" % (self.GROUP_PREFIX, file_name)
+        else:
+            prefix_re = None
+            results.warning("file not saved - SM_<file> prefix not checked")
+
+        suffixes = " - ".join("_LOD" + l for l in self.LOD_LETTERS)
+        group_cache = {}
+
+        for obj in meshes:
+            parts = self.split_name(obj.name)
+
+            if parts is None:
+                results.error("must end in %s" % suffixes, obj.name)
+            else:
+                prefix, letter = parts
+                if letter not in self.LOD_LETTERS:
+                    results.error("LOD%s not allowed, use %s" % (letter, suffixes), obj.name)
+                if prefix_re is not None and not prefix_re.match(prefix):
+                    results.error("must start with %s" % prefix_label, obj.name)
+
+            group = obj.parent
+            if group is None or group.type != 'EMPTY':
+                continue
+            if parts is not None and parts[0] != group.name:
+                results.error("must start with %s, its group" % group.name, obj.name)
+
+            if group not in group_cache:
+                group_cache[group] = self.group_errors(group)
+            for message in group_cache[group].get(obj.name, []):
+                results.error(message, obj.name)
+
+        return results.publish(self, context, plural(len(meshes), "mesh", "meshes"))
+
+
+# ---------------------------------------------------------------------------
 # s4s shader
 #
 # The UV check and the material check read the same node group, so its name and
@@ -689,6 +703,8 @@ FLAG_BROAD_COLOUR = "use_broad_colour"
 FLAG_EMISSIVE = "use_emissive"
 FLAG_BROAD_EMISSIVE = "use_broad_emissive"
 FLAG_LOGO = "use_logo"
+FLAG_VC_MULTIPLY = "use_vertexcolor_multiply"
+FLAG_VC_AO = "use_vertexcolor_as_ao"
 
 
 def group_nodes(mat):
@@ -914,41 +930,149 @@ class S4EnvCheckUVs(bpy.types.Operator):
         return errors
 
     def execute(self, context):
-        # Only real geometry carries UVs; empties, lights and curves in the
-        # selection are skipped rather than reported as failures.
-        meshes = [obj for obj in context.selected_objects
-                  if obj.type == 'MESH' and obj.data is not None]
-
+        meshes = scene_meshes(context)
+        results = CheckResults(self.CHECK_NAME)
         if not meshes:
-            self.report({'WARNING'}, "No mesh objects selected")
-            return {'CANCELLED'}
-
-        # Replace this check's own rows only, so results from other checks stay.
-        log_clear(context, check=self.CHECK_NAME)
+            results.warning("no meshes in the scene")
 
         cache = {}
-        error_rows = []
-
         for obj in meshes:
-            errors = self.check_object(obj, cache)
-            if errors:
-                error_rows.append((obj.name, " | ".join(errors)))
+            for message in self.check_object(obj, cache):
+                results.error(message, obj.name)
 
-        # The summary heads the block the check just wrote.
-        summary = "%d mesh%s checked, %d error%s" % (
-            len(meshes), "" if len(meshes) == 1 else "es",
-            len(error_rows), "" if len(error_rows) == 1 else "s")
-        log_add(context, self.CHECK_NAME, summary, status='INFO')
+        return results.publish(self, context, plural(len(meshes), "mesh", "meshes"))
 
-        for obj_name, message in error_rows:
-            log_add(context, self.CHECK_NAME, message, obj_name, 'ERROR')
 
-        if error_rows:
-            self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
+class S4EnvCheckAttributes(bpy.types.Operator):
+    bl_idname = "s4.envcheckattributes"
+    bl_label = "Check Attributes"
+    bl_description = ("Check each mesh's colour attribute is vertexcolor / Face Corner / "
+                      "Byte Color, present only when its s4s shader uses vertex colour, "
+                      "and that customParameter_takeParamFromShaderNodeName is True")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    CHECK_NAME = "Attributes"
+
+    # The one colour attribute the pipeline accepts, and the format it must be
+    # in. The colour values themselves are not checked.
+    COLOR_NAME = "vertexcolor"
+    COLOR_DOMAIN = 'CORNER'
+    COLOR_TYPE = 'BYTE_COLOR'
+    DOMAIN_LABELS = {'POINT': "Vertex", 'CORNER': "Face Corner"}
+    TYPE_LABELS = {'FLOAT_COLOR': "Color", 'BYTE_COLOR': "Byte Color"}
+
+    # Either flag ticked on any of the mesh's shaders means it needs the
+    # attribute; both off everywhere means it must carry no colour attribute.
+    VERTEXCOLOR_FLAGS = (FLAG_VC_MULTIPLY, FLAG_VC_AO)
+
+    # Object custom property every mesh must carry, set to True.
+    TAKE_PARAM_PROP = "customParameter_takeParamFromShaderNodeName"
+
+    def custom_prop_error(self, obj):
+        """A message if the object's take-param property is not True, else None."""
+        prop = self.TAKE_PARAM_PROP
+        value = obj.get(prop)
+
+        if value is None:
+            # The Mesh data tab has its own Custom Properties panel, and a
+            # property set there looks right in the UI but is not the object's.
+            if obj.data.get(prop) is not None:
+                return "%s is on the mesh data, not the object" % prop
+            return "%s missing" % prop
+
+        # Files from before Blender had boolean custom properties store it as
+        # the int 1, which means the same thing. Anything else is wrong.
+        if isinstance(value, (bool, int)) and value == 1:
+            return None
+        return "%s is %r, needs True" % (prop, value)
+
+    def material_requirements(self, mat):
+        """One material's demands, as (uses vertex colour, has the shader, errors)."""
+        nodes = shader_nodes(mat)
+        # A duplicated shader's flags are not read, so the mesh would otherwise
+        # be measured against "no vertex colour" and possibly pass.
+        errors = ["on %s, not %s" % (name, SHADER_GROUP) for name in stray_shader_names(mat)]
+        needs = False
+
+        for node in nodes:
+            for flag in self.VERTEXCOLOR_FLAGS:
+                value, exists = shader_flag(node, flag)
+                if not exists:
+                    errors.append("shader has no %s" % flag)
+                needs = needs or value
+
+        return needs, bool(nodes), errors
+
+    def check_object(self, obj, cache):
+        """Every attribute rule against one mesh. Returns (errors, warnings)."""
+        needs = False
+        has_shader = False
+        errors = []
+
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None:
+                continue
+
+            result = cache.get(mat)
+            if result is None:
+                result = cache[mat] = self.material_requirements(mat)
+
+            needs = needs or result[0]
+            has_shader = has_shader or result[1]
+            for message in result[2]:
+                errors.append("%s: %s" % (mat.name, message))
+
+        attrs = obj.data.color_attributes
+        color = attrs.get(self.COLOR_NAME)
+
+        stray = [attr.name for attr in attrs if attr.name != self.COLOR_NAME]
+        if stray:
+            errors.append("%s not allowed" % " - ".join(stray))
+
+        if color is not None:
+            if color.domain != self.COLOR_DOMAIN:
+                errors.append("%s domain is %s, needs %s" % (
+                    self.COLOR_NAME, self.DOMAIN_LABELS.get(color.domain, color.domain),
+                    self.DOMAIN_LABELS[self.COLOR_DOMAIN]))
+            if color.data_type != self.COLOR_TYPE:
+                errors.append("%s type is %s, needs %s" % (
+                    self.COLOR_NAME, self.TYPE_LABELS.get(color.data_type, color.data_type),
+                    self.TYPE_LABELS[self.COLOR_TYPE]))
+
+        warnings = []
+        if needs:
+            if color is None:
+                errors.append("%s missing - shader uses vertex colour" % self.COLOR_NAME)
+        elif has_shader:
+            if color is not None:
+                errors.append("%s not needed - vertex colour flags are off" % self.COLOR_NAME)
         else:
-            self.report({'INFO'}, summary)
+            # No s4s shader means no flags to say whether the attribute belongs,
+            # so only its format was checked.
+            warnings.append("no %s node - only the attribute format was checked" % SHADER_GROUP)
 
-        return {'FINISHED'}
+        error = self.custom_prop_error(obj)
+        if error:
+            errors.append(error)
+
+        return errors, warnings
+
+    def execute(self, context):
+        meshes = scene_meshes(context)
+        results = CheckResults(self.CHECK_NAME)
+        if not meshes:
+            results.warning("no meshes in the scene")
+
+        cache = {}
+        for obj in meshes:
+            errors, warnings = self.check_object(obj, cache)
+            for message in errors:
+                results.error(message, obj.name)
+            for message in warnings:
+                results.warning(message, obj.name)
+
+        return results.publish(self, context, plural(len(meshes), "mesh", "meshes"))
 
 
 class S4EnvCheckMaterials(bpy.types.Operator):
@@ -1144,14 +1268,10 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         return errors + shader_errors, warnings
 
     def execute(self, context):
-        meshes = [obj for obj in context.selected_objects
-                  if obj.type == 'MESH' and obj.data is not None]
-
+        meshes = scene_meshes(context)
+        results = CheckResults(self.CHECK_NAME)
         if not meshes:
-            self.report({'WARNING'}, "No mesh objects selected")
-            return {'CANCELLED'}
-
-        log_clear(context, check=self.CHECK_NAME)
+            results.warning("no meshes in the scene")
 
         # One material serves many objects, so each (material, mode) pair is
         # only walked once - but the result is reported against every object
@@ -1159,29 +1279,22 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         cache = {}
         seen_modes = {}
 
-        error_rows = []
-        warning_rows = []
-        checked = 0
-
         for obj in meshes:
             mode = self.object_mode(obj)
 
             if mode is None:
                 # Ambiguous name: the alpha and glass rules contradict each
                 # other, so there is nothing to check this object against.
-                error_rows.append((obj.name, "name has both %s - cannot tell which applies"
-                                   % " and ".join(word for _, word in self.MODE_WORDS)))
+                results.error("name has both %s - cannot tell which applies"
+                              % " and ".join(word for _, word in self.MODE_WORDS), obj.name)
                 continue
 
             materials = [slot.material for slot in obj.material_slots if slot.material]
-
             if not materials:
-                warning_rows.append((obj.name, "no material assigned"))
+                results.warning("no material assigned", obj.name)
                 continue
 
             for mat in materials:
-                checked += 1
-
                 # The same material on, say, an alpha object and an opaque one
                 # cannot satisfy both - a data problem in its own right, and
                 # without flagging it the results look self-contradictory.
@@ -1193,34 +1306,15 @@ class S4EnvCheckMaterials(bpy.types.Operator):
                 errors, warnings = cache[key]
 
                 for message in errors:
-                    error_rows.append((obj.name, "%s: %s" % (mat.name, message)))
+                    results.error("%s: %s" % (mat.name, message), obj.name)
                 for message in warnings:
-                    warning_rows.append((obj.name, "%s: %s" % (mat.name, message)))
+                    results.warning("%s: %s" % (mat.name, message), obj.name)
 
-        summary = "%d mesh%s, %d material slot%s, %d error%s" % (
-            len(meshes), "" if len(meshes) == 1 else "es",
-            checked, "" if checked == 1 else "s",
-            len(error_rows), "" if len(error_rows) == 1 else "s")
-        log_add(context, self.CHECK_NAME, summary, status='INFO')
-
-        conflicts = sorted(name for name, modes in seen_modes.items() if len(modes) > 1)
-        for mat_name in conflicts:
+        for mat_name in sorted(name for name, modes in seen_modes.items() if len(modes) > 1):
             modes = sorted(self.MODE_LABELS[m] for m in seen_modes[mat_name])
-            log_add(context, self.CHECK_NAME,
-                    "%s is on %s objects" % (mat_name, " and ".join(modes)),
-                    status='WARNING')
+            results.warning("%s is on %s objects" % (mat_name, " and ".join(modes)))
 
-        for obj_name, message in error_rows:
-            log_add(context, self.CHECK_NAME, message, obj_name, 'ERROR')
-        for obj_name, message in warning_rows:
-            log_add(context, self.CHECK_NAME, message, obj_name, 'WARNING')
-
-        if error_rows or conflicts:
-            self.report({'WARNING'}, summary + " - see the S4 Env Log panel")
-        else:
-            self.report({'INFO'}, summary)
-
-        return {'FINISHED'}
+        return results.publish(self, context, plural(len(meshes), "mesh", "meshes"))
 
 
 # LOD meshes end in LODA/LODB/LODC/..., optionally followed by Blender's duplicate
@@ -1435,22 +1529,20 @@ class DuplicateLODB(DuplicateLODBase):
     DST = "LODC"
 
 classes = [
-    CUSTOM_S4envobjectCollection,
-    CUSTOM_S4envOT_clearList,
-    MATERIAL_S4env_matslots_example,
-    ValidationS4EnvToolMainPanel,
     S4EnvCheckToolPanel,
     S4EnvLogEntry,
     S4ENV_UL_log,
     S4EnvLogSelectErrors,
     S4EnvLogSelectOne,
     S4EnvLogClear,
-    S4EnvCheckUVs,
+    S4EnvCheckScene,
+    S4EnvCheckNames,
+    S4EnvCheckAttributes,
     S4EnvCheckMaterials,
+    S4EnvCheckUVs,
     S4EnvLODToolPanel,
     S4EnvUtilitiToolPanel,
     S4EnvLogPanel,
-    S4EnvInitialCheck,
     S4EnvCorrectMat,
     S4EnvToggleViewColor,
     S4EnvToggleWireFrame,
@@ -1468,8 +1560,6 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     
-    bpy.types.Scene.custom = CollectionProperty(type=CUSTOM_S4envobjectCollection)
-    bpy.types.Scene.s4envcustom_index = IntProperty(default=5)
     bpy.types.Scene.lod_holder = bpy.props.PointerProperty(type=SwitchLODValue)
     bpy.types.Scene.s4env_log = CollectionProperty(type=S4EnvLogEntry)
     bpy.types.Scene.s4env_log_index = IntProperty(default=0)
@@ -1482,8 +1572,6 @@ def unregister():
     del bpy.types.Scene.s4env_log_index
     del bpy.types.Scene.s4env_log
     del bpy.types.Scene.lod_holder
-    del bpy.types.Scene.s4envcustom_index
-    del bpy.types.Scene.custom
 
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
