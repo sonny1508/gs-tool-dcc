@@ -948,7 +948,7 @@ class S4EnvCheckAttributes(bpy.types.Operator):
     bl_label = "Check Attributes"
     bl_description = ("Check each mesh's colour attribute is vertexcolor / Face Corner / "
                       "Byte Color, present only when its s4s shader uses vertex colour, "
-                      "and that customParameter_takeParamFromShaderNodeName is True")
+                      "and that each material's customParameter_takeParamFromShaderNodeName is True")
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "Attributes"
@@ -965,24 +965,24 @@ class S4EnvCheckAttributes(bpy.types.Operator):
     # attribute; both off everywhere means it must carry no colour attribute.
     VERTEXCOLOR_FLAGS = (FLAG_VC_MULTIPLY, FLAG_VC_AO)
 
-    # Object custom property every mesh must carry, set to True.
+    # Material custom property every material on a mesh must carry, set to True.
     TAKE_PARAM_PROP = "customParameter_takeParamFromShaderNodeName"
 
-    def custom_prop_error(self, obj):
-        """A message if the object's take-param property is not True, else None."""
+    def custom_prop_error(self, mat):
+        """A message if the material's take-param property is not True, else None."""
         prop = self.TAKE_PARAM_PROP
-        value = obj.get(prop)
+        value = mat.get(prop)
 
         if value is None:
-            # The Mesh data tab has its own Custom Properties panel, and a
-            # property set there looks right in the UI but is not the object's.
-            if obj.data.get(prop) is not None:
-                return "%s is on the mesh data, not the object" % prop
             return "%s missing" % prop
 
-        # Files from before Blender had boolean custom properties store it as
-        # the int 1, which means the same thing. Anything else is wrong.
-        if isinstance(value, (bool, int)) and value == 1:
+        # The property turns up in three forms that all mean True: a real
+        # boolean, the int 1 from files older than boolean custom properties,
+        # and the string "True" that pipeline-authored materials carry.
+        if isinstance(value, str):
+            if value.strip().lower() == "true":
+                return None
+        elif isinstance(value, (bool, int)) and value == 1:
             return None
         return "%s is %r, needs True" % (prop, value)
 
@@ -993,6 +993,10 @@ class S4EnvCheckAttributes(bpy.types.Operator):
         # be measured against "no vertex colour" and possibly pass.
         errors = ["on %s, not %s" % (name, SHADER_GROUP) for name in stray_shader_names(mat)]
         needs = False
+
+        error = self.custom_prop_error(mat)
+        if error:
+            errors.append(error)
 
         for node in nodes:
             for flag in self.VERTEXCOLOR_FLAGS:
@@ -1051,10 +1055,6 @@ class S4EnvCheckAttributes(bpy.types.Operator):
             # No s4s shader means no flags to say whether the attribute belongs,
             # so only its format was checked.
             warnings.append("no %s node - only the attribute format was checked" % SHADER_GROUP)
-
-        error = self.custom_prop_error(obj)
-        if error:
-            errors.append(error)
 
         return errors, warnings
 
