@@ -104,7 +104,7 @@ GSTools/common/scripts/vendor/nitropoly/NitroPoly.py   (handled by the shim belo
 
 ### Two porting patterns, both already in the repo
 
-1. **Rewrite to cmds/om2** — the default. See commit `a6301b8` (`GS_File_Export_UI.py`).
+1. **Rewrite to cmds/om2** — the default. See commit `a6301b8` (`gs_file_export.py`).
 2. **Shim, for large vendored third-party code not worth rewriting.** See
    [pymel_nitro.py](Environment/Autodesk/Maya/scripts/GSTools/common/scripts/vendor/nitropoly/pymel_nitro.py):
    a PyMEL-shaped facade over cmds + om2 covering exactly the slice NitroPoly uses. The key
