@@ -21,6 +21,10 @@ print("Initializing GS Pipeline")
 CATEGORY_MODULES = (projects, file_io)
 CATEGORIES = [m.CATEGORY for m in CATEGORY_MODULES]
 
+# Category shown when the panel first appears. Changes only which one is active
+# on startup -- the bar order still follows CATEGORY_MODULES above.
+DEFAULT_CATEGORY_ID = "FILE_IO"
+
 
 # ----------------------------------------------------------------------------
 # Descriptor lookup helpers
@@ -45,8 +49,10 @@ def _get_tab(group, tab_value):
 # ----------------------------------------------------------------------------
 # Dynamic EnumProperty item callbacks (category > group > sub-tab)
 # ----------------------------------------------------------------------------
-def _category_items(self, context):
-    return [(c["id"], c["label"], f"{c['label']} tools") for c in CATEGORIES]
+# The category list is fixed at import time, so it can be a static enum -- which
+# is what lets it carry a `default`. Group/sub-tab stay dynamic: they depend on
+# the current selection one level up.
+CATEGORY_ITEMS = [(c["id"], c["label"], f"{c['label']} tools") for c in CATEGORIES]
 
 
 def _group_items(self, context):
@@ -68,10 +74,15 @@ def _subtab_items(self, context):
 
 
 def _register_wm_props():
+    category_ids = [item[0] for item in CATEGORY_ITEMS]
+    category_kwargs = {}
+    if DEFAULT_CATEGORY_ID in category_ids:
+        category_kwargs["default"] = DEFAULT_CATEGORY_ID
     bpy.types.WindowManager.gs_category = bpy.props.EnumProperty(
         name="Category",
         description="Active GS Pipeline category",
-        items=_category_items,
+        items=CATEGORY_ITEMS,
+        **category_kwargs
     )
     bpy.types.WindowManager.gs_group = bpy.props.EnumProperty(
         name="Group",
