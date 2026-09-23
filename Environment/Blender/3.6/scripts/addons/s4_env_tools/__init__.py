@@ -256,19 +256,14 @@ class S4EnvLogEntry(bpy.types.PropertyGroup):
         )
 
 
-def log_clear(context, check=None):
-    """Drop log rows: all of them, or only the ones a given check wrote.
+def log_clear(context):
+    """Empty the log.
 
-    Per-check clearing is what lets several tools share one panel - re-running
-    the UV check replaces its own rows without wiping another check's results.
+    Every check starts from a clean list rather than replacing only its own
+    rows, so what is on screen is always one run of one check - never a fresh
+    result read alongside another check's stale findings.
     """
-    log = context.scene.s4env_log
-    if check is None:
-        log.clear()
-    else:
-        for i in reversed(range(len(log))):
-            if log[i].check == check:
-                log.remove(i)
+    context.scene.s4env_log.clear()
     context.scene.s4env_log_index = 0
 
 
@@ -473,8 +468,8 @@ class CheckResults:
         self.warnings.setdefault(obj_name, []).append(message)
 
     def publish(self, operator, context, checked):
-        """Replace this check's log rows and report. `checked` reads like "12 meshes"."""
-        log_clear(context, check=self.check)
+        """Empty the log, write this check's rows and report. `checked` reads like "12 meshes"."""
+        log_clear(context)
 
         failed = sum(1 for name in self.errors if name)
         summary = "%s checked, %d with errors" % (checked, failed)
@@ -751,6 +746,65 @@ def shader_flag(node, name):
     return bool(socket.default_value), True
 
 
+# ---------------------------------------------------------------------------
+# Material custom properties
+#
+# The pipeline spells these in camelCase behind a kind prefix -
+# "customParameter_takeParamFromShaderNodeName". The checks keep working with
+# the real key, but a log row full of those reads as noise, so they are shown
+# humanised. The kind stays in front of the name because the same tail is used
+# under more than one prefix, and dropping it would make two different
+# properties read identically.
+# ---------------------------------------------------------------------------
+
+# Splits camelCase into words, keeping runs of capitals ("UV") together.
+CAMEL_WORDS = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z0-9]+")
+
+
+def split_camel(text):
+    """ "takeParamFromShaderNodeName" -> "Take Param From Shader Node Name"."""
+    words = CAMEL_WORDS.findall(text)
+    if not words:
+        return text
+    return " ".join(word[:1].upper() + word[1:] for word in words)
+
+
+def custom_prop_label(prop):
+    """A custom property key as it should read in the log.
+
+    "customParameter_takeParamFromShaderNodeName" becomes
+    Parameter "Take Param From Shader Node Name".
+    """
+    kind, sep, tail = prop.partition("_")
+    if not sep:
+        return '"%s"' % split_camel(prop)
+    kind = split_camel(kind)
+    # "customParameter" -> "Parameter". A key not following the house naming
+    # keeps whatever it splits into rather than being mangled.
+    if kind.startswith("Custom "):
+        kind = kind[len("Custom "):]
+    return '%s "%s"' % (kind, split_camel(tail))
+
+
+def custom_prop_truth(value):
+    """A custom property value as a bool, or None if it does not read as one.
+
+    Blender hands these back in whatever form they were written: a real
+    boolean, the int 1/0 from files older than boolean custom properties, or
+    the string "True"/"False" that pipeline-authored materials carry.
+    """
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("true", "1"):
+            return True
+        if text in ("false", "0"):
+            return False
+        return None
+    if isinstance(value, (bool, int)):
+        return bool(value)
+    return None
+
+
 class S4EnvCheckUVs(bpy.types.Operator):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs 32x32"
@@ -948,7 +1002,8 @@ class S4EnvCheckAttributes(bpy.types.Operator):
     bl_label = "Check Attributes"
     bl_description = ("Check each mesh's colour attribute is vertexcolor / Face Corner / "
                       "Byte Color, present only when its s4s shader uses vertex colour, "
-                      "and that each material's customParameter_takeParamFromShaderNodeName is True")
+                      "and that each material carries the pipeline's custom properties "
+                      "with the values it expects")
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "Attributes"
@@ -965,26 +1020,29 @@ class S4EnvCheckAttributes(bpy.types.Operator):
     # attribute; both off everywhere means it must carry no colour attribute.
     VERTEXCOLOR_FLAGS = (FLAG_VC_MULTIPLY, FLAG_VC_AO)
 
-    # Material custom property every material on a mesh must carry, set to True.
-    TAKE_PARAM_PROP = "customParameter_takeParamFromShaderNodeName"
+    # Custom properties every material on a mesh must carry, with the value
+    # the pipeline expects. Note the buffer one is the odd one out at False.
+    # Log order follows this order.
+    CUSTOM_PROPS = (
+        ("customParameter_takeParamFromShaderNodeName", True),
+        ("customParameter_preferDefaultTextureFromShaderNodeName", True),
+        ("customTexture_takeParamFromShaderNodeName", True),
+        ("customBuffer_takeParamFromShaderNodeName", False),
+    )
 
-    def custom_prop_error(self, mat):
-        """A message if the material's take-param property is not True, else None."""
-        prop = self.TAKE_PARAM_PROP
-        value = mat.get(prop)
-
-        if value is None:
-            return "%s missing" % prop
-
-        # The property turns up in three forms that all mean True: a real
-        # boolean, the int 1 from files older than boolean custom properties,
-        # and the string "True" that pipeline-authored materials carry.
-        if isinstance(value, str):
-            if value.strip().lower() == "true":
-                return None
-        elif isinstance(value, (bool, int)) and value == 1:
-            return None
-        return "%s is %r, needs True" % (prop, value)
+    def custom_prop_errors(self, mat):
+        """A message for each custom property that is missing or set wrong."""
+        messages = []
+        for prop, expected in self.CUSTOM_PROPS:
+            label = custom_prop_label(prop)
+            value = mat.get(prop)
+            if value is None:
+                messages.append("%s missing" % label)
+            elif custom_prop_truth(value) is not expected:
+                # %r keeps a string "False" distinguishable from a real False,
+                # which is the difference that usually explains the failure.
+                messages.append("%s is %r, needs %s" % (label, value, expected))
+        return messages
 
     def material_requirements(self, mat):
         """One material's demands, as (uses vertex colour, has the shader, errors)."""
@@ -994,9 +1052,7 @@ class S4EnvCheckAttributes(bpy.types.Operator):
         errors = ["on %s, not %s" % (name, SHADER_GROUP) for name in stray_shader_names(mat)]
         needs = False
 
-        error = self.custom_prop_error(mat)
-        if error:
-            errors.append(error)
+        errors.extend(self.custom_prop_errors(mat))
 
         for node in nodes:
             for flag in self.VERTEXCOLOR_FLAGS:
