@@ -10,7 +10,7 @@ bl_info = {
 
 import bpy, math, addon_utils
 import bmesh
-import os, re
+import re
 import numpy as np
 from bpy.props import *
 from bpy.types import Panel, PropertyGroup, Scene
@@ -244,6 +244,9 @@ class S4EnvLogEntry(bpy.types.PropertyGroup):
     check: StringProperty(name="Check", default="")
     obj_name: StringProperty(name="Object", default="")
     message: StringProperty(name="Message", default="")
+    # An object's findings are one header row naming it, then one row per
+    # fault beneath - the panel is too narrow for faults joined on one line.
+    header: BoolProperty(name="Header", default=False)
     status: EnumProperty(
         name="Status",
         items=(
@@ -321,15 +324,23 @@ class S4ENV_UL_log(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
         row = layout.row(align=True)
         row.alert = item.status in S4ENV_LOG_ALERT
-        row.label(text="", icon=S4ENV_LOG_ICONS.get(item.status, 'DOT'))
 
-        if item.obj_name:
-            split = row.split(factor=0.45)
+        if item.header:
+            row.label(text="", icon=S4ENV_LOG_ICONS.get(item.status, 'DOT'))
+            split = row.split(factor=0.75)
             split.label(text=item.obj_name)
-            split.label(text=item.message)
+            sub = split.row()
+            sub.alignment = 'RIGHT'
+            sub.label(text=item.message)
             row.operator("s4.envlogselectone", text="", icon='RESTRICT_SELECT_OFF',
                          emboss=False).obj_name = item.obj_name
+        elif item.obj_name:
+            # Indented under its header. Errors take their tint from the row;
+            # a warning keeps its triangle so the two stay apart in one group.
+            row.label(text="", icon='ERROR' if item.status == 'WARNING' else 'BLANK1')
+            row.label(text=item.message)
         else:
+            row.label(text="", icon=S4ENV_LOG_ICONS.get(item.status, 'DOT'))
             row.label(text="%s: %s" % (item.check, item.message) if item.check else item.message)
 
 
@@ -355,7 +366,9 @@ class S4EnvLogPanel(bpy.types.Panel):
         layout.template_list("S4ENV_UL_log", "", scn, "s4env_log", scn, "s4env_log_index",
                              rows=min(max(len(log), 3), 12))
 
-        problems = sum(1 for entry in log if entry.status in S4ENV_LOG_PROBLEMS and entry.obj_name)
+        # Headers and their fault rows repeat the object name, so count names.
+        problems = len({entry.obj_name for entry in log
+                        if entry.status in S4ENV_LOG_PROBLEMS and entry.obj_name})
 
         row = layout.row()
         row.enabled = problems > 0
@@ -433,7 +446,7 @@ class S4EnvLogClear(bpy.types.Operator):
 #
 # Every check runs over the whole scene and writes its findings through
 # CheckResults, so they all read the same in the log: a summary line, then any
-# scene-wide rows, then one row per faulty object with its faults joined.
+# scene-wide rows, then per faulty object a header row and one row per fault.
 # ---------------------------------------------------------------------------
 
 def plural(count, word, many=None):
@@ -479,10 +492,21 @@ class CheckResults:
             log_add(context, self.check, message, status='ERROR')
         for message in self.warnings.get("", []):
             log_add(context, self.check, message, status='WARNING')
-        for status, rows in (('ERROR', self.errors), ('WARNING', self.warnings)):
-            for obj_name, messages in rows.items():
-                if obj_name:
-                    log_add(context, self.check, " | ".join(messages), obj_name, status)
+
+        # Objects with errors first, then warning-only ones. Each object gets
+        # one header carrying its worst status, then a row per fault.
+        names = [name for name in self.errors if name]
+        names += [name for name in self.warnings if name and name not in self.errors]
+        for obj_name in names:
+            errors = self.errors.get(obj_name, [])
+            warnings = self.warnings.get(obj_name, [])
+            header = log_add(context, self.check, plural(len(errors) + len(warnings), "issue"),
+                             obj_name, 'ERROR' if errors else 'WARNING')
+            header.header = True
+            for message in errors:
+                log_add(context, self.check, message, obj_name, 'ERROR')
+            for message in warnings:
+                log_add(context, self.check, message, obj_name, 'WARNING')
 
         if self.errors or self.warnings:
             operator.report({'WARNING'}, summary + " - see the S4 Env Log panel")
@@ -581,14 +605,15 @@ class S4EnvCheckScene(bpy.types.Operator):
 class S4EnvCheckNames(bpy.types.Operator):
     bl_idname = "s4.envchecknames"
     bl_label = "Check Names"
-    bl_description = ("Check every mesh is named SM_<file>[_N]_LODA/B/C, matches its "
-                      "group, and that each group's LODs have no gaps")
+    bl_description = ("Check every mesh is named SM_<parent empty>_LODA/B/C, its mesh "
+                      "data carries the same name, and each group's LODs have no gaps")
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "Names"
 
-    # Assets are named after the .blend file: "SM_<file>", optionally numbered
-    # "SM_<file>_2" when one file holds several, then the LOD suffix.
+    # A mesh is named after its parent empty: empty "fuj_pitbuilding_01_alpha"
+    # holds "SM_fuj_pitbuilding_01_alpha_LODA". A mesh with no empty parent
+    # still needs the prefix, it just has nothing further to be matched against.
     GROUP_PREFIX = "SM_"
     LOD_LETTERS = "ABC"
 
@@ -633,23 +658,33 @@ class S4EnvCheckNames(bpy.types.Operator):
 
         return errors
 
+    def data_name_error(self, obj, data_users):
+        """Why this object's mesh data is misnamed, or None if it matches."""
+        # Linked duplicates share one data block, which can only carry one of
+        # their names - so the sharing is the fault, not each name mismatch.
+        others = [name for name in data_users[obj.data] if name != obj.name]
+        if others:
+            return "mesh data %s shared with %s" % (obj.data.name, " - ".join(others))
+        if obj.data.name != obj.name:
+            return "mesh data is named %s" % obj.data.name
+        return None
+
     def execute(self, context):
         meshes = scene_meshes(context)
         results = CheckResults(self.CHECK_NAME)
 
-        file_name = os.path.splitext(bpy.path.basename(bpy.data.filepath))[0]
-        if file_name:
-            prefix_re = re.compile(r"^%s(_\d+)?$" % re.escape(self.GROUP_PREFIX + file_name))
-            prefix_label = "%s%s[_N]" % (self.GROUP_PREFIX, file_name)
-        else:
-            prefix_re = None
-            results.warning("file not saved - SM_<file> prefix not checked")
-
         suffixes = " - ".join("_LOD" + l for l in self.LOD_LETTERS)
         group_cache = {}
 
+        data_users = {}
+        for obj in meshes:
+            data_users.setdefault(obj.data, []).append(obj.name)
+
         for obj in meshes:
             parts = self.split_name(obj.name)
+            group = obj.parent
+            if group is not None and group.type != 'EMPTY':
+                group = None
 
             if parts is None:
                 results.error("must end in %s" % suffixes, obj.name)
@@ -657,15 +692,19 @@ class S4EnvCheckNames(bpy.types.Operator):
                 prefix, letter = parts
                 if letter not in self.LOD_LETTERS:
                     results.error("LOD%s not allowed, use %s" % (letter, suffixes), obj.name)
-                if prefix_re is not None and not prefix_re.match(prefix):
-                    results.error("must start with %s" % prefix_label, obj.name)
+                if group is not None:
+                    if prefix != self.GROUP_PREFIX + group.name:
+                        results.error("must start with %s%s, after its group"
+                                      % (self.GROUP_PREFIX, group.name), obj.name)
+                elif not prefix.startswith(self.GROUP_PREFIX):
+                    results.error("must start with %s" % self.GROUP_PREFIX, obj.name)
 
-            group = obj.parent
-            if group is None or group.type != 'EMPTY':
+            message = self.data_name_error(obj, data_users)
+            if message:
+                results.error(message, obj.name)
+
+            if group is None:
                 continue
-            if parts is not None and parts[0] != group.name:
-                results.error("must start with %s, its group" % group.name, obj.name)
-
             if group not in group_cache:
                 group_cache[group] = self.group_errors(group)
             for message in group_cache[group].get(obj.name, []):
@@ -1134,7 +1173,7 @@ class S4EnvCheckAttributes(bpy.types.Operator):
 class S4EnvCheckMaterials(bpy.types.Operator):
     bl_idname = "s4.envcheckmaterials"
     bl_label = "Check Materials"
-    bl_description = ("Check each material's blend settings and s4s shader flags "
+    bl_description = ("Check each material's blend settings, s4s shader flags and UV Map wiring "
                       "against the object name and the textures actually assigned")
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -1183,6 +1222,24 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         ("emissive", FLAG_EMISSIVE),
         ("logo", FLAG_LOGO),
     )
+    TEXTURE_NODES = frozenset(name for name, _ in TEXTURE_FLAGS)
+
+    # Which UV map feeds which node, as (node name, node type, ((input, UV map),)).
+    # Every s4s material must be wired this way whatever its flags say - a node
+    # left over from a disabled feature still has to be set up right. Each input
+    # takes a UV Map node - through reroutes at most, no other node in between -
+    # and no blank map, which would quietly fall back to the active UV map.
+    # The emissive textures take their vector from the two switches, so it is
+    # the switches that are checked, not those textures.
+    UV_WIRING = (
+        ("base_color", 'TEX_IMAGE', (("Vector", "UVMap00"),)),
+        ("broad_color", 'TEX_IMAGE', (("Vector", "UVMap01"),)),
+        ("logo", 'TEX_IMAGE', (("Vector", "UVMap03"),)),
+        ("emissive_uv_switch", 'GROUP', (("A", "UVMap00"), ("B", "UVMap01"))),
+        ("broad_emissive_uv_switch", 'GROUP', (("A", "UVMap00"), ("B", "UVMap02"))),
+    )
+    WIRED_NODES = frozenset(name for name, _, _ in UV_WIRING)
+    NODE_TYPE_LABELS = {'TEX_IMAGE': "an image texture", 'GROUP': "a node group"}
 
     def object_mode(self, obj):
         """Which render mode an object's name asks for, or None if ambiguous.
@@ -1255,6 +1312,67 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
         return state, errors
 
+    @staticmethod
+    def feeding_node(socket):
+        """The node driving a socket, looking through reroutes, or None.
+
+        Reroutes only tidy the layout, so a UV Map reaching a texture through
+        any number of them counts as wired straight in. A muted link, or a
+        reroute chain that ends unplugged, carries nothing and reads as None.
+        """
+        while True:
+            links = [link for link in socket.links if not getattr(link, "is_muted", False)]
+            if not links:
+                return None
+            node = links[0].from_node
+            if node.type != 'REROUTE':
+                return node
+            socket = node.inputs[0]
+
+    def uv_input_error(self, node, socket_name, want):
+        """Why one input is not fed by a UV Map set to `want`, or None."""
+        socket = node.inputs.get(socket_name)
+        if socket is None:
+            return "%s has no %s input" % (node.name, socket_name)
+
+        # Texture nodes have the one Vector input, so the node name says enough.
+        label = node.name if node.type == 'TEX_IMAGE' else "%s %s" % (node.name, socket_name)
+        source = self.feeding_node(socket)
+        if source is None:
+            return "%s needs a UV Map (%s)" % (label, want)
+        if source.type != 'UVMAP':
+            return "%s is fed by %s, needs a UV Map (%s)" % (label, source.name, want)
+        if not source.uv_map:
+            return "%s UV Map is blank, needs %s" % (label, want)
+        if source.uv_map != want:
+            return "%s UV Map is %s, needs %s" % (label, source.uv_map, want)
+        return None
+
+    def check_uv_wiring(self, mat):
+        """Every UV_WIRING rule against one material's node tree."""
+        tree = mat.node_tree
+        errors = []
+
+        for name, node_type, inputs in self.UV_WIRING:
+            node = tree.nodes.get(name)
+
+            if node is None:
+                near = self.near_miss(tree, name)
+                errors.append("no %s node%s" % (name, " - found %s" % near if near else ""))
+                continue
+            if node.type != node_type:
+                if name not in self.TEXTURE_NODES:  # else texture_state reported it
+                    errors.append("%s is a %s node, not %s"
+                                  % (name, node.type, self.NODE_TYPE_LABELS[node_type]))
+                continue
+
+            for socket_name, want in inputs:
+                message = self.uv_input_error(node, socket_name, want)
+                if message:
+                    errors.append(message)
+
+        return errors
+
     def check_shader(self, mat, mode):
         """The s4s group's flags against the textures wired into the material."""
         groups = shader_nodes(mat)
@@ -1275,6 +1393,7 @@ class S4EnvCheckMaterials(bpy.types.Operator):
 
         state, type_errors = self.texture_state(mat)
         errors.extend(type_errors)
+        errors.extend(self.check_uv_wiring(mat))
 
         for node in groups:
             # Only see-through assets have a stated use_alpha requirement, so an
@@ -1298,6 +1417,8 @@ class S4EnvCheckMaterials(bpy.types.Operator):
                     continue  # texture_state already reported it
 
                 if status == 'missing':
+                    if name in self.WIRED_NODES:
+                        continue  # check_uv_wiring reports it, flag or not
                     found = " - found %s" % detail if detail else ""
                     if value:
                         errors.append("%s is on but there is no %s node%s"
