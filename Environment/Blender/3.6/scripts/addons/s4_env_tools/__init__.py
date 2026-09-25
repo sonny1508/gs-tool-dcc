@@ -739,6 +739,15 @@ FLAG_BROAD_EMISSIVE = "use_broad_emissive"
 FLAG_LOGO = "use_logo"
 FLAG_VC_MULTIPLY = "use_vertexcolor_multiply"
 FLAG_VC_AO = "use_vertexcolor_as_ao"
+FLAG_FLIP_NORMAL = "flip_normal"
+
+# The emissive UV switch nodes, as (node name, its boolean input, the shader
+# flag for the feature it serves). A switch on moves its texture onto a higher
+# UV map; on while its feature is off is a conflicting material setting.
+UV_SWITCHES = (
+    ("emissive_uv_switch", "switch_uv0_to_uv1", FLAG_EMISSIVE),
+    ("broad_emissive_uv_switch", "switch_uv0_to_uv2", FLAG_BROAD_EMISSIVE),
+)
 
 
 def group_nodes(mat):
@@ -847,7 +856,8 @@ def custom_prop_truth(value):
 class S4EnvCheckUVs(bpy.types.Operator):
     bl_idname = "s4.envcheckuvs"
     bl_label = "Check UVs 32x32"
-    bl_description = "Check UV range, and that each mesh carries exactly the UV maps its shaders need"
+    bl_description = ("Check UV range, and that each mesh carries exactly the UV maps its "
+                      "shaders need, in index order")
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "UV Range"
@@ -860,47 +870,52 @@ class S4EnvCheckUVs(bpy.types.Operator):
     UV_NAMES = ("UVMap00", "UVMap01", "UVMap02", "UVMap03")
     UV_NAME_SET = frozenset(UV_NAMES)
 
-    # Requirements read off the s4s shader. Emissive wins outright - it calls for
-    # three maps whatever the broad colour flag says - so broad is only worth
-    # reading once emissive is ruled out. use_logo is independent of both and
-    # decides UVMap03 on its own.
-    EMISSIVE_FLAGS = (FLAG_EMISSIVE, FLAG_BROAD_EMISSIVE)
-    LOGO_UV = "UVMap03"
+    # How many maps a mesh needs, read off its s4s shaders: UVMap00 always, up
+    # to UVMap01 for broad colour, up to UVMap02 once either emissive switch
+    # moves onto a higher map, and all four once the logo is used. Maps always
+    # run from UVMap00 with no gaps, so a count is the whole requirement.
     BASE_UVS = 1
     BROAD_UVS = 2
-    EMISSIVE_UVS = 3
+    SWITCH_UVS = 3
+    LOGO_UVS = 4
 
     def material_requirements(self, mat):
-        """One material's demands, as (uv map count, needs the logo map)."""
+        """One material's demands, as (uv map count, problems)."""
         count = self.BASE_UVS
-        logo = False
+        problems = []
+        groups = shader_nodes(mat)
+        if not groups:
+            return count, problems
 
-        for node in shader_nodes(mat):
-            inputs = node.inputs
-            logo = logo or flag_on(inputs, FLAG_LOGO)
+        for node in groups:
+            if flag_on(node.inputs, FLAG_LOGO):
+                count = max(count, self.LOGO_UVS)
+            if flag_on(node.inputs, FLAG_BROAD_COLOUR):
+                count = max(count, self.BROAD_UVS)
 
-            if count == self.EMISSIVE_UVS:
-                continue  # already the strictest; only logo can still change
-            if any(flag_on(inputs, f) for f in self.EMISSIVE_FLAGS):
-                count = self.EMISSIVE_UVS
-            elif flag_on(inputs, FLAG_BROAD_COLOUR):
-                count = self.BROAD_UVS
+        # A switch only counts with its feature on. A missing node or input,
+        # or a switch on with its feature off, is a material fault that Check
+        # Materials reports - here it just does not raise the count.
+        tree = mat.node_tree
+        for switch_name, socket_name, feature in UV_SWITCHES:
+            switch = tree.nodes.get(switch_name)
+            if (switch is not None and flag_on(switch.inputs, socket_name)
+                    and any(flag_on(node.inputs, feature) for node in groups)):
+                count = max(count, self.SWITCH_UVS)
 
-        return count, logo
+        return count, problems
 
     def object_requirements(self, obj, cache):
-        """What this object needs, as (uv map count, needs the logo map, strays).
+        """What this object needs, as (uv map count, problems).
 
-        Materials disagree by design - the strictest wins, and any one of them
-        asking for the logo map is enough to require it.
+        Materials disagree by design - the strictest wins.
 
-        `strays` names materials sitting on a duplicated copy of the shader.
-        Their flags are not read, so without naming them here the mesh would be
-        measured against the one-map default and quietly pass.
+        `problems` also names materials sitting on a duplicated copy of the
+        shader. Their flags are not read, so without naming them here the mesh
+        would be measured against the one-map default and quietly pass.
         """
         count = self.BASE_UVS
-        logo = False
-        strays = []
+        problems = []
 
         for slot in obj.material_slots:
             mat = slot.material
@@ -911,20 +926,17 @@ class S4EnvCheckUVs(bpy.types.Operator):
             # walked once per run.
             needs = cache.get(mat)
             if needs is None:
-                needs = (self.material_requirements(mat) +
-                         (tuple(stray_shader_names(mat)),))
-                cache[mat] = needs
+                needed, found = self.material_requirements(mat)
+                strays = ["duplicate shader - %s on %s" % (mat.name, name)
+                          for name in stray_shader_names(mat)]
+                needs = cache[mat] = (needed, strays + found)
 
-            if needs[0] > count:
-                count = needs[0]
-            logo = logo or needs[1]
+            count = max(count, needs[0])
+            for problem in needs[1]:
+                if problem not in problems:
+                    problems.append(problem)
 
-            for name in needs[2]:
-                entry = "%s on %s" % (mat.name, name)
-                if entry not in strays:
-                    strays.append(entry)
-
-        return count, logo, strays
+        return count, problems
 
     @staticmethod
     def get_uv_bounds(uv_layer):
@@ -963,13 +975,12 @@ class S4EnvCheckUVs(bpy.types.Operator):
 
     def check_object(self, obj, cache):
         """Run every UV rule against one mesh. Returns a list of error strings."""
-        count, logo, shader_strays = self.object_requirements(obj, cache)
+        count, problems = self.object_requirements(obj, cache)
 
         expected = set(self.UV_NAMES[:count])
-        if logo:
-            expected.add(self.LOGO_UV)
 
         present = set()
+        order = []
         spare = []
         stray = []
         out_of_range = []
@@ -980,6 +991,9 @@ class S4EnvCheckUVs(bpy.types.Operator):
         # be on the mesh at all.
         for uv_layer in obj.data.uv_layers:
             uv_name = uv_layer.name
+
+            if uv_name in self.UV_NAME_SET:
+                order.append(uv_name)
 
             if uv_name not in expected:
                 if uv_name in self.UV_NAME_SET:
@@ -1002,10 +1016,13 @@ class S4EnvCheckUVs(bpy.types.Operator):
         missing = [name for name in sorted(expected) if name not in present]
 
         errors = []
-        # Named first: on a duplicated shader the flags below were never read,
-        # so every other finding on this mesh is measured against the default.
-        for entry in shader_strays:
-            errors.append("duplicate shader - %s" % entry)
+        # Named first: on a duplicated shader the flags were never read, so
+        # every other finding on this mesh is measured against the default.
+        errors.extend(problems)
+        # The maps must be stacked in index order - UVMap00, UVMap01, ...
+        if order != sorted(order):
+            errors.append("UV maps out of order - %s, needs %s"
+                          % (" - ".join(order), " - ".join(sorted(order))))
         if missing:
             errors.append("%s missing" % " - ".join(missing))
         if spare:
@@ -1066,7 +1083,7 @@ class S4EnvCheckAttributes(bpy.types.Operator):
         ("customParameter_takeParamFromShaderNodeName", True),
         ("customParameter_preferDefaultTextureFromShaderNodeName", True),
         ("customTexture_takeParamFromShaderNodeName", True),
-        ("customBuffer_takeParamFromShaderNodeName", False),
+        ("customBuffer_takeParamFromShaderNodeName", True),
     )
 
     def custom_prop_errors(self, mat):
@@ -1173,8 +1190,8 @@ class S4EnvCheckAttributes(bpy.types.Operator):
 class S4EnvCheckMaterials(bpy.types.Operator):
     bl_idname = "s4.envcheckmaterials"
     bl_label = "Check Materials"
-    bl_description = ("Check each material's blend settings, s4s shader flags and UV Map wiring "
-                      "against the object name and the textures actually assigned")
+    bl_description = ("Check each material's blend settings, Material Output, texture nodes "
+                      "and colour spaces, s4s shader flags and UV Map wiring")
     bl_options = {'REGISTER', 'UNDO'}
 
     CHECK_NAME = "Materials"
@@ -1199,9 +1216,10 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         'OPAQUE': (True, 'OPAQUE', 'OPAQUE'),
     }
 
-    # Both see-through modes require the shader's alpha flag; opaque is left
-    # alone, since only the see-through cases have a stated requirement.
-    MODES_NEEDING_ALPHA = ('ALPHA', 'GLASS')
+    # Both see-through modes require the shader's alpha flag, and should have
+    # flip_normal on; opaque is left alone on both, since only the see-through
+    # cases have a stated requirement.
+    SEE_THROUGH_MODES = ('ALPHA', 'GLASS')
 
     # How each mode and setting reads in the UI, for the log row.
     MODE_LABELS = {'ALPHA': "alpha", 'GLASS': "glass", 'OPAQUE': "opaque"}
@@ -1222,7 +1240,23 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         ("emissive", FLAG_EMISSIVE),
         ("logo", FLAG_LOGO),
     )
-    TEXTURE_NODES = frozenset(name for name, _ in TEXTURE_FLAGS)
+
+    # Image textures every s4s material must carry under exactly these names,
+    # whether or not an image is in them, with the colour space an assigned
+    # image must be read in. Colour maps are sRGB; data maps are Linear.
+    REQUIRED_TEXTURES = (
+        ("base_color", "sRGB"),
+        ("broad_color", "sRGB"),
+        ("emissive", "sRGB"),
+        ("broad_emissive", "sRGB"),
+        ("logo", "sRGB"),
+        ("orm", "Linear"),
+        ("normal", "Linear"),
+    )
+    TEXTURE_NODES = frozenset(name for name, _ in REQUIRED_TEXTURES)
+
+    # Exactly one, under Blender's default name.
+    OUTPUT_NAME = "Material Output"
 
     # Which UV map feeds which node, as (node name, node type, ((input, UV map),)).
     # Every s4s material must be wired this way whatever its flags say - a node
@@ -1238,7 +1272,6 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         ("emissive_uv_switch", 'GROUP', (("A", "UVMap00"), ("B", "UVMap01"))),
         ("broad_emissive_uv_switch", 'GROUP', (("A", "UVMap00"), ("B", "UVMap02"))),
     )
-    WIRED_NODES = frozenset(name for name, _, _ in UV_WIRING)
     NODE_TYPE_LABELS = {'TEX_IMAGE': "an image texture", 'GROUP': "a node group"}
 
     def object_mode(self, obj):
@@ -1288,29 +1321,49 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         return None
 
     def texture_state(self, mat):
-        """Each texture slot's state, as {flag: (status, detail)}.
+        """Every required texture checked, as ({name: has image}, errors).
 
-        status is 'ok' with detail True/False for whether an image is
-        assigned, 'missing' with detail naming a near miss (or None), or
-        'wrong_type' with detail naming the node type found instead.
+        A texture that is missing or not an image texture is reported here
+        once and left out of the dict, so later rules skip it rather than
+        reporting it again.
         """
         state = {}
         errors = []
         tree = mat.node_tree
 
-        for name, flag in self.TEXTURE_FLAGS:
+        for name, space in self.REQUIRED_TEXTURES:
             node = tree.nodes.get(name)
 
             if node is None:
-                state[flag] = ('missing', self.near_miss(tree, name))
-            elif node.type != 'TEX_IMAGE':
-                state[flag] = ('wrong_type', node.type)
-                errors.append("%s is a %s node, not an image texture"
-                              % (name, node.type))
-            else:
-                state[flag] = ('ok', node.image is not None)
+                near = self.near_miss(tree, name)
+                errors.append("no %s node%s" % (name, " - found %s" % near if near else ""))
+                continue
+            if node.type != 'TEX_IMAGE':
+                errors.append("%s is a %s node, not an image texture" % (name, node.type))
+                continue
+
+            state[name] = node.image is not None
+            if node.image is not None:
+                got = node.image.colorspace_settings.name
+                if got != space:
+                    errors.append("%s color space is %s, needs %s" % (name, got, space))
 
         return state, errors
+
+    def check_output(self, mat):
+        """Exactly one Material Output node, carrying its default name."""
+        tree = mat.node_tree if mat.use_nodes else None
+        if tree is None:
+            return []
+        outputs = [node for node in tree.nodes if node.type == 'OUTPUT_MATERIAL']
+        if not outputs:
+            return ["no %s node" % self.OUTPUT_NAME]
+        if len(outputs) > 1:
+            return ["%d %s nodes, needs exactly one - %s" % (
+                len(outputs), self.OUTPUT_NAME, " - ".join(node.name for node in outputs))]
+        if outputs[0].name != self.OUTPUT_NAME:
+            return ["%s node is named %s" % (self.OUTPUT_NAME, outputs[0].name)]
+        return []
 
     @staticmethod
     def feeding_node(socket):
@@ -1357,11 +1410,12 @@ class S4EnvCheckMaterials(bpy.types.Operator):
             node = tree.nodes.get(name)
 
             if node is None:
-                near = self.near_miss(tree, name)
-                errors.append("no %s node%s" % (name, " - found %s" % near if near else ""))
+                if name not in self.TEXTURE_NODES:  # else texture_state reported it
+                    near = self.near_miss(tree, name)
+                    errors.append("no %s node%s" % (name, " - found %s" % near if near else ""))
                 continue
             if node.type != node_type:
-                if name not in self.TEXTURE_NODES:  # else texture_state reported it
+                if name not in self.TEXTURE_NODES:  # likewise
                     errors.append("%s is a %s node, not %s"
                                   % (name, node.type, self.NODE_TYPE_LABELS[node_type]))
                 continue
@@ -1371,6 +1425,21 @@ class S4EnvCheckMaterials(bpy.types.Operator):
                 if message:
                     errors.append(message)
 
+        return errors
+
+    def check_switches(self, mat, groups):
+        """Each UV switch's boolean against the feature it serves."""
+        tree = mat.node_tree
+        errors = []
+        for switch_name, socket_name, feature in UV_SWITCHES:
+            switch = tree.nodes.get(switch_name)
+            if switch is None or switch.type != 'GROUP':
+                continue  # check_uv_wiring reports it
+            value, exists = shader_flag(switch, socket_name)
+            if not exists:
+                errors.append("%s has no %s" % (switch_name, socket_name))
+            elif value and not any(flag_on(node.inputs, feature) for node in groups):
+                errors.append("%s is on but %s is off" % (socket_name, feature))
         return errors
 
     def check_shader(self, mat, mode):
@@ -1394,53 +1463,45 @@ class S4EnvCheckMaterials(bpy.types.Operator):
         state, type_errors = self.texture_state(mat)
         errors.extend(type_errors)
         errors.extend(self.check_uv_wiring(mat))
+        errors.extend(self.check_switches(mat, groups))
 
+        warnings = []
         for node in groups:
-            # Only see-through assets have a stated use_alpha requirement, so an
-            # opaque material's alpha flag is left alone.
-            if mode in self.MODES_NEEDING_ALPHA:
+            # Only see-through assets have stated use_alpha and flip_normal
+            # requirements, so an opaque material's are left alone. A wrong
+            # flip_normal is a warning, not an error.
+            if mode in self.SEE_THROUGH_MODES:
                 value, exists = shader_flag(node, FLAG_ALPHA)
                 if not exists:
                     errors.append("shader has no %s" % FLAG_ALPHA)
                 elif not value:
                     errors.append("%s is off" % FLAG_ALPHA)
 
-            for name, flag in self.TEXTURE_FLAGS:
-                status, detail = state[flag]
-                value, exists = shader_flag(node, flag)
+                value, exists = shader_flag(node, FLAG_FLIP_NORMAL)
+                if not exists:
+                    warnings.append("shader has no %s" % FLAG_FLIP_NORMAL)
+                elif not value:
+                    warnings.append("%s is off (%s)" % (FLAG_FLIP_NORMAL, self.MODE_LABELS[mode]))
 
+            for name, flag in self.TEXTURE_FLAGS:
+                value, exists = shader_flag(node, flag)
                 if not exists:
                     errors.append("shader has no %s" % flag)
                     continue
+                if name not in state:
+                    continue  # missing or wrong type - texture_state reported it
 
-                if status == 'wrong_type':
-                    continue  # texture_state already reported it
-
-                if status == 'missing':
-                    if name in self.WIRED_NODES:
-                        continue  # check_uv_wiring reports it, flag or not
-                    found = " - found %s" % detail if detail else ""
-                    if value:
-                        errors.append("%s is on but there is no %s node%s"
-                                      % (flag, name, found))
-                    elif detail:
-                        # Flag off and node absent would otherwise pass, but a
-                        # near miss means the node is there under the wrong
-                        # name, which is exactly what must not slip through.
-                        errors.append("%s should be named %s" % (detail, name))
-                    continue
-
-                has_image = detail
+                has_image = state[name]
                 if value != has_image:
                     errors.append("%s is %s but %s %s" % (
                         flag, "on" if value else "off",
                         name, "has an image" if has_image else "has no image"))
 
-        return errors, []
+        return errors, warnings
 
     def check_material(self, mat, mode):
         """Every rule against one material. Returns (errors, warnings)."""
-        errors = self.check_settings(mat, mode)
+        errors = self.check_settings(mat, mode) + self.check_output(mat)
         shader_errors, warnings = self.check_shader(mat, mode)
         return errors + shader_errors, warnings
 
