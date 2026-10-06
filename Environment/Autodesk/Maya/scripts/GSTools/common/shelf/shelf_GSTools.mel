@@ -223,27 +223,27 @@ global proc shelf_GSTools () {
         -manage 1
         -visible 1
         -preventOverride 0
-        -annotation "Remove all non-reference namespaces."
+        -annotation "Scene clean-up panel: find duplicate materials and merge them."
         -enableBackground 0
-        -backgroundColor 0 0 0 
-        -highlightColor 0.321569 0.521569 0.65098 
-        -align "center" 
-        -label "Remove NameSpace" 
+        -backgroundColor 0 0 0
+        -highlightColor 0.321569 0.521569 0.65098
+        -align "center"
+        -label "GS Clean Up"
         -labelOffset 0
         -rotation 0
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
-        -imageOverlayLabel "Remove" 
-        -overlayLabelColor 0.8 0.8 0.8 
-        -overlayLabelBackColor 0 0 0 0.5 
-        -image "namespaceEditor.png" 
-        -image1 "namespaceEditor.png" 
-        -style "iconOnly" 
+        -font "plainLabelFont"
+        -imageOverlayLabel "Clean"
+        -overlayLabelColor 0.8 0.8 0.8
+        -overlayLabelBackColor 0 0 0 0.5
+        -image "zoo_objectClean_32.png"
+        -image1 "zoo_objectClean_32.png"
+        -style "iconOnly"
         -marginWidth 1
         -marginHeight 1
-        -command "import gstools; gstools.launch('remove_namespace', 'shelf')" 
+        -command "import gstools; gstools.launch('gs_cleanup', 'shelf')"
         -sourceType "python" 
         -commandRepeatable 1
         -flat 1

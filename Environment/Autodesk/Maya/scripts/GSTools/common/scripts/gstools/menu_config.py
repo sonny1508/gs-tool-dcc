@@ -48,9 +48,9 @@ MENU = [
             {"id": "welder", "label": "Welder", "icon": "Welder_icons/Welder_Icon.png",
              "type": "python", "module": "welder", "function": "show",
              "annotation": "Welder create tool."},
-            {"id": "remove_namespace", "label": "Remove NameSpace", "icon": "pythonFamily.png",
-             "type": "python", "module": "remove_namespace", "function": "run",
-             "annotation": "Remove all non-reference namespaces."},
+            {"id": "gs_cleanup", "label": "GS Clean Up", "icon": "zoo_objectClean_32.png",
+             "type": "python", "module": "gs_cleanup", "function": "show",
+             "annotation": "Scene clean-up panel: find duplicate materials and merge them."},
             {"id": "material_manager", "label": "Material Manager", "icon": "ddoMM/icon_DP.png",
              "type": "mel_source", "source": "tools/material_manager/dp_MaterialManager.mel",
              "command": "materialManager;", "annotation": "Material Manager."},
@@ -243,7 +243,7 @@ MENU = [
 # launch + telemetry path) with the menu above. None entries are separators.
 SHELF = [
     "instance_utility", "flatten_combine", "force_cleanup", "extract_tool", "gs_mirror",
-    "gs_property_transfer", "remove_namespace",
+    "gs_property_transfer", "gs_cleanup",
     None,
     "straighten_uv", "transfer_uv", "rizomuv_tool",
     None,
