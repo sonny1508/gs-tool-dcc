@@ -76,11 +76,15 @@ class MaterialSection(CleanupSection):
 
         find = QtWidgets.QPushButton("Find Duplicate Materials")
         find.setToolTip(
-            "Group materials whose names match once the namespace and any number\n"
-            "suffix are ignored: materialA, materialA_001, materialA1, ns:materialA.\n\n"
+            "Group materials whose names match once the namespace, any pasted__\n"
+            "prefix and any number suffix are ignored: materialA, materialA_001,\n"
+            "materialA1, ns:materialA, pasted__materialA, pasted__pasted__materialA.\n\n"
             "Groups where one material is named exactly the base (materialA) are\n"
             "ticked for you. Numbered series with no such base (Tire_01, Tire_02)\n"
-            "are listed but left unticked - they may well be different materials.")
+            "are listed but left unticked - they may well be different materials.\n\n"
+            "Pasted copies always pair with their original: Tire_01 and\n"
+            "pasted__Tire_01 are a ticked group of their own, and the rest of the\n"
+            "series shows up again on the next Find.")
         find.clicked.connect(self.scan)
         body.addWidget(find)
 

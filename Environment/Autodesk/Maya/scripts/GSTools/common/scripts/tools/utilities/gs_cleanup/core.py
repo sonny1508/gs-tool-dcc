@@ -4,16 +4,25 @@ gs_cleanup.core - no UI, all the actual work.
 Duplicate materials
 -------------------
 Duplicates are found by name. Each material name is reduced to a *base* by
-dropping its namespace and any trailing number suffix - the forms left behind by
-Blender (Material.001; Maya names cannot hold a dot, so it arrives as
-Material_001 or MaterialFBXASC046001), by Maya renaming a clash on import
-(Material1) and by duplicating (Material_01 -> Material_02). Materials sharing a
-base, case-insensitively, form a group.
+dropping its namespace, any "pasted__" prefixes and any trailing number suffix -
+the forms left behind by copy / paste between scenes (material01 ->
+pasted__material01 -> pasted__pasted__material01), by Blender (Material.001;
+Maya names cannot hold a dot, so it arrives as Material_001 or
+MaterialFBXASC046001), by Maya renaming a clash on import (Material1) and by
+duplicating (Material_01 -> Material_02). Materials sharing a base,
+case-insensitively, form a group.
 
 Name matching on its own over-reports: a deliberately numbered series (Tire_01,
 Tire_02) groups too. So each group also says whether it is *obvious* - one of
-its members is literally the base name (materialA next to materialA_001). The UI
-pre-ticks only those and leaves the rest for the artist to judge.
+its members is literally the base name once any "pasted__" is dropped
+(materialA next to materialA_001 or pasted__materialA). The UI pre-ticks only
+those and leaves the rest for the artist to judge.
+
+A pasted copy is the surest sign of all, so it is not left buried in a series
+group. When a group has no member named the base but does hold pasted copies,
+each original and its copies become a group of their own (Tire_01 with
+pasted__Tire_01), and the rest of the series is set aside until the next Find -
+merging a whole group would otherwise fold Tire_02 into Tire_01 as well.
 
 Merging a group keeps one material and, for every other member:
   * moves everything assigned to it - whole objects, instances and per-face
@@ -36,6 +45,10 @@ import maya.cmds as cmds
 # Trailing number suffix plus any separators in front of it: _001, 1, _01_2,
 # and FBXASC046001 (an FBX-escaped ".001").
 _SUFFIX = re.compile(r"(?:(?:[._]|FBXASC046)*\d+)+$")
+
+# Prefix Maya's paste gives every pasted node (renamingPrefix "pasted_" plus the
+# joining underscore), once per paste: pasted__pasted__material01.
+_PASTED = re.compile(r"^(?:pasted_+)+")
 
 # Downstream nodes that do not count as "using" a texture node: Maya's own
 # bookkeeping lists and the Hypershade / node editor layout.
@@ -65,9 +78,23 @@ def short_name(node):
     return node.rsplit(":", 1)[-1]
 
 
-def base_name(material):
-    """`material` without its namespace or trailing number suffix."""
+def copy_name(material):
+    """`material` without its namespace or "pasted__" prefixes - the name it was
+    copied from."""
     leaf = short_name(material)
+    return _PASTED.sub("", leaf) or leaf
+
+
+def paste_count(material):
+    """How many times `material` has been pasted (pasted__pasted__x -> 2)."""
+    match = _PASTED.match(short_name(material))
+    return match.group().count("pasted") if match else 0
+
+
+def base_name(material):
+    """`material` without its namespace, "pasted__" prefixes or trailing number
+    suffix."""
+    leaf = copy_name(material)
     return _SUFFIX.sub("", leaf) or leaf
 
 
@@ -137,12 +164,35 @@ def _target_shading_group(material):
 # ---------------------------------------------------------------------------
 # finding duplicates
 # ---------------------------------------------------------------------------
+def _material_group(names, key, default_nodes):
+    """MaterialGroup of `names`, whose members named `key` (case-insensitively,
+    once namespace and "pasted__" are dropped) make it obvious."""
+    roots = set(name for name in names if copy_name(name).lower() == key)
+    members = [MaterialInfo(name, cmds.nodeType(name),
+                            len(distinct_objects(assigned_members(name))),
+                            protected_reason(name, default_nodes))
+               for name in names]
+    members.sort(key=lambda info: (not info.protected, info.name not in roots,
+                                   paste_count(info.name), -info.objects,
+                                   ":" in info.name, len(info.name), info.name))
+    shortest = min(roots or names, key=len)
+    return MaterialGroup(
+        base=copy_name(shortest) if roots else base_name(shortest),
+        members=members,
+        keeper=members[0].name,
+        obvious=bool(roots))
+
+
 def find_duplicate_materials():
     """Group the scene's materials by base name; groups of two or more only.
 
+    A group with no member named the base that holds pasted copies is replaced
+    by one group per original and its copies (see the module docstring).
+
     Returns a list of MaterialGroup sorted by base name. The suggested keeper is
     a protected member if there is one (it cannot be removed anyway), then the
-    member literally named the base, then the one used by the most objects.
+    member named the base, then the least pasted, then the one used by the most
+    objects.
     """
     default_nodes = _default_nodes()
     by_base = {}
@@ -156,19 +206,18 @@ def find_duplicate_materials():
         names = by_base[key]
         if len(names) < 2:
             continue
-        roots = set(name for name in names if short_name(name).lower() == key)
-        members = [MaterialInfo(name, cmds.nodeType(name),
-                                len(distinct_objects(assigned_members(name))),
-                                protected_reason(name, default_nodes))
-                   for name in names]
-        members.sort(key=lambda info: (not info.protected, info.name not in roots,
-                                       -info.objects, ":" in info.name,
-                                       len(info.name), info.name))
-        groups.append(MaterialGroup(
-            base=base_name(min(names, key=len)),
-            members=members,
-            keeper=members[0].name,
-            obvious=bool(roots)))
+        if any(copy_name(name).lower() == key for name in names):
+            groups.append(_material_group(names, key, default_nodes))
+            continue
+        by_copy = {}
+        for name in names:
+            by_copy.setdefault(copy_name(name).lower(), []).append(name)
+        copies = [copy_key for copy_key in sorted(by_copy) if len(by_copy[copy_key]) > 1]
+        if copies:
+            groups.extend(_material_group(by_copy[copy_key], copy_key, default_nodes)
+                          for copy_key in copies)
+        else:
+            groups.append(_material_group(names, key, default_nodes))
     return groups
 
 
