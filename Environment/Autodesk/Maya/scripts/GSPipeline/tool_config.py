@@ -39,7 +39,8 @@ TOOLS = [
     ]),
 
     ("03 UV", [
-        {"name": "Texel Density Visualizer",   "script": "UV/texel-density-visualizer/texel-density-visualizer.py",   "icon": "texel-density-visualzier-icon.png"}
+        {"name": "Texel Density Visualizer",   "script": "UV/texel-density-visualizer/texel-density-visualizer.py",   "icon": "texel-density-visualzier-icon.png"},
+        {"name": "UV Shell Scaler",            "script": "UV/uv-shell-scaler/uv-shell-scaler.py"},
     ]),
 
     ("04 Files I/O", [
