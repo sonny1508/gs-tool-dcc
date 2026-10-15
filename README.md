@@ -56,9 +56,8 @@ Environment/
 │   │   │   ├── GSPipeline/           pipeline menu + project tools
 │   │   │   └── launcher_config.ini   user type / project / dev-user config
 │   │   └── plug-ins/                 e.g. gsNormalApiUndo.py
-│   └── 3dsMax/
-│       ├── 2023 - 64bit/ENU/         → %USERPROFILE%\AppData\Local\Autodesk\3dsMax\...
-│       └── 2025 - 64bit/ENU/         scripts, usermacros, usericons, startup
+│   └── 3dsMax/                       → %USERPROFILE%\AppData\Local\Autodesk\3dsMax\...
+│       └── 2023/2025/2026/2027 - 64bit/ENU/   scripts, usermacros, usericons, startup
 ├── Blender/                          → %USERPROFILE%\AppData\Roaming\Blender Foundation\Blender
 │   ├── 3.6/ 4.2/ 4.5/                per-version scripts
 │   └── common/scripts/addons/        GS_* addons shared across versions
@@ -75,7 +74,7 @@ Environment/
   `XBMLANGPATH`, `MAYA_SHELF_PATH` at the installed folders; `scripts/userSetup.py` runs on
   startup and wires up the pipeline menu.
 - **3ds Max** — scripts/macros drop into the version's `ENU` tree; `startup/` scripts
-  auto-run.
+  auto-run. API quirks and maintenance notes: [Docs/3dsMax_Maintenance.md](Docs/3dsMax_Maintenance.md).
 - **Blender** — addons live under the version `scripts/addons` and `common/scripts/addons`.
 - **Substance Painter** — Painter auto-loads everything under its `python/plugins` folder
   on launch.

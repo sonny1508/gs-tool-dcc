@@ -61,7 +61,8 @@ to `QtGui`, `QApplication.desktop()` is gone, and enums are properly scoped
 
 > Note: 3ds Max is the opposite case — there the binding must be picked by *Max version*,
 > not by import availability, because a stray PySide6 in Max 2023 crashes `qtmax` parenting.
-> That rule does not apply to Maya.
+> That rule does not apply to Maya. For 3ds Max work in general, read
+> [Docs/3dsMax_Maintenance.md](Docs/3dsMax_Maintenance.md) first.
 
 ---
 
