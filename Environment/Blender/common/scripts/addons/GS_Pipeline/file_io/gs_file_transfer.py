@@ -1,19 +1,27 @@
 """GS File Transfer tool, integrated into the GS Pipeline 'File I/O' category.
 
-Ported verbatim (logic-wise) from the standalone GS_File_Transfer addon, with the
-panel ``draw`` body extracted into ``draw_file_transfer`` so the GS Pipeline menu
-framework can render it under File I/O > GS File Transfer. Operators, properties,
-the person list and the persistent load handler are unchanged.
+Moves FBX files between Blender, Maya and 3ds Max, either through this machine's
+temp folder (Local) or through the studio share (Server). The panel is the
+import / export settings side by side, then a Local and a Server section, each
+with one software picker and an Import and Export button.
+
+File names are a contract with the Maya and 3ds Max sides of GS File Transfer
+(``<source>_to_<target>.fbx`` and the per-object / per-user variants built in
+the operators below). Change them in all three tools or not at all.
 """
 from __future__ import annotations
 
+import contextlib
 import csv
 import getpass
 import math
 import os
-import shutil
+import re
 import tempfile
+import threading
+from collections import deque
 
+import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from bpy.types import Operator
@@ -22,9 +30,34 @@ from bpy.types import Operator
 username = getpass.getuser()
 temp_dir = tempfile.gettempdir()
 
+LOCAL_DIR = os.path.join(temp_dir, "fileTransferFbx")
+LOCAL_DIR_INDIVIDUAL = os.path.join(temp_dir, "fileTransferFbxIndividual")
+SERVER_DIR = r"\\192.168.1.210\Temp\File_Transfer"
+# Combined into one user list. Same format: a header row with a 'User' column.
+USER_CSVS = (
+    r"\\192.168.1.210\Pipeline\Library\Data\Data_Computer_Update.csv",
+    r"\\192.168.1.210\Pipeline\Library\Data\Data_Computer_Manual.csv",
+)
+
+# (token used in transfer file names, label shown in the panel). The tokens are
+# shared with the Maya and 3ds Max tools -- don't rename them.
+APPS = (
+    ("maya", "Maya"),
+    ("max", "3ds Max"),
+    ("blender", "Blender"),
+)
+APP_LABELS = dict(APPS)
+APP_ITEMS = [(token, label, "") for token, label in APPS]
+THIS_APP = "blender"
+
 
 class FBXSettings:
-    """Centralized FBX import/export settings configuration"""
+    """Centralized FBX import/export settings configuration.
+
+    IMPORT and EXPORT keys are passed straight through to the FBX operators, so
+    every key must be a real parameter of bpy.ops.import_scene.fbx /
+    bpy.ops.export_scene.fbx.
+    """
 
     IMPORT = {
         'use_custom_normals': True,
@@ -53,7 +86,7 @@ class FBXSettings:
         'object_types': {'MESH'},
         'use_mesh_modifiers': True,
         'use_mesh_modifiers_render': True,
-        'mesh_smooth_type': 'OFF',
+        'mesh_smooth_type': 'OFF',  # switched to 'SMOOTH_GROUP' for 3ds Max when enabled
         'use_subsurf': False,
         'use_mesh_edges': False,
         'use_tspace': False,
@@ -89,56 +122,40 @@ class FBXSettings:
     }
 
 
-def safe_path(path):
-    return path.replace('\\', '/')
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
+def transfer_stem(source_app, target_app):
+    """'<source>_to_<target>', the core of every transfer file name."""
+    return f"{source_app}_to_{target_app}"
 
 
-def clean_directory(directory_path):
-    if os.path.exists(directory_path):
-        for filename in os.listdir(directory_path):
-            file_path = os.path.join(directory_path, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print(f'Failed to delete {file_path}. Reason: {e}')
+def safe_file_name(name):
+    cleaned = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    return cleaned or "object"
 
 
-def clear_normals_from_objects(objects):
+def individual_files(directory, stem):
+    """Every '<object>_<stem>.fbx' in ``directory`` -- the per-object files of one transfer."""
+    suffix = f"_{stem}.fbx".lower()
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return []
+    return [os.path.join(directory, name) for name in names if name.lower().endswith(suffix)]
+
+
+def select_only(context, objects):
+    bpy.ops.object.select_all(action='DESELECT')
     for obj in objects:
-        if obj.type == 'MESH':
-            bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.customdata_custom_splitnormals_clear()
-            bpy.ops.mesh.mark_sharp(clear=False)
-            bpy.ops.object.mode_set(mode='OBJECT')
-            bpy.ops.object.shade_smooth()
+        obj.select_set(True)
+    if objects:
+        context.view_layer.objects.active = objects[0]
 
 
-def apply_auto_smooth_to_objects(objects, angle_degrees):
-    """Apply auto smooth to a list of mesh objects (version-compatible)."""
-    for obj in objects:
-        if obj.type != 'MESH':
-            continue
-        mesh = obj.data
-        # Blender 4.1+ removed mesh.use_auto_smooth / auto_smooth_angle.
-        if hasattr(mesh, "use_auto_smooth"):
-            mesh.use_auto_smooth = True
-            mesh.auto_smooth_angle = math.radians(angle_degrees)
-        else:
-            # 4.1+ : emulate via the Smooth by Angle operator on the active object.
-            bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
-            try:
-                bpy.ops.object.shade_smooth_by_angle(angle=math.radians(angle_degrees))
-            except Exception:
-                bpy.ops.object.shade_smooth()
+def ensure_object_mode(context):
+    if context.mode != 'OBJECT' and context.view_layer.objects.active is not None:
+        bpy.ops.object.mode_set(mode='OBJECT')
 
 
 def calculate_import_scale(context):
@@ -155,78 +172,293 @@ def calculate_export_scale(context):
     return 1.0 / unit_scale if unit_scale > 0 else 1.0
 
 
+# ---------------------------------------------------------------------------
+# Import post-processing
+# ---------------------------------------------------------------------------
+def clear_normals_from_objects(context, objects):
+    """Strip custom normals and sharp edges, leaving plain smooth shading."""
+    for obj in objects:
+        select_only(context, [obj])
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        bpy.ops.mesh.mark_sharp(clear=True)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.shade_smooth()
+
+
+def _legacy_auto_smooth():
+    """True on Blender 3.6, where auto smooth is a mesh setting (4.1+ replaced it with a modifier)."""
+    return "use_auto_smooth" in bpy.types.Mesh.bl_rna.properties
+
+
+def set_auto_smooth(context, objects, angle):
+    """Blender's own Object > Shade Auto Smooth, so the result matches the menu entry exactly."""
+    select_only(context, objects)
+    if _legacy_auto_smooth():
+        # 3.6: Shade Auto Smooth is Shade Smooth with the mesh's auto smooth turned on.
+        bpy.ops.object.shade_smooth(use_auto_smooth=True, auto_smooth_angle=angle)
+    else:
+        # 4.1+: adds (or updates) the "Smooth by Angle" modifier.
+        bpy.ops.object.shade_auto_smooth(angle=angle)
+
+
+def keep_imported_normals(objects):
+    """Blender 3.6 only: stop auto smooth's angle from re-splitting the imported normals.
+
+    3.6's FBX importer turns auto smooth on by itself (custom normals need it) at
+    the default 30 deg, which facets smooth low-poly surfaces coming from Max.
+    At 180 deg shading is left to the imported normals and sharp edges, which is
+    what 4.1+ does when no Smooth by Angle modifier is added.
+    """
+    if not _legacy_auto_smooth():
+        return
+    for obj in objects:
+        if obj.data.use_auto_smooth:
+            obj.data.auto_smooth_angle = math.pi
+
+
+# Blender's rename-on-collision suffix: "Material" -> "Material.001", "Material.002"...
+_DUPLICATE_SUFFIX = re.compile(r"^(?P<base>.+)\.\d{3,}$")
+
+
+def merge_duplicate_materials(new_materials):
+    """Fold 'name.001'-style copies an import just created back into an existing 'name'.
+
+    Only materials the import created are touched -- anything already in the file,
+    a deliberate 'name.001' included, is left alone. Returns how many were merged.
+    """
+    merged = 0
+    for material in new_materials:
+        match = _DUPLICATE_SUFFIX.match(material.name)
+        if not match:
+            continue
+        original = bpy.data.materials.get(match.group("base"))
+        if original is None or original == material:
+            continue
+        material.user_remap(original)
+        bpy.data.materials.remove(material)
+        merged += 1
+    return merged
+
+
+def post_process_imported_objects(context, objects):
+    gs_props = context.scene.gs_file_transfer_props
+    meshes = [obj for obj in objects if obj.type == 'MESH']
+    if gs_props.clear_normals and meshes:
+        clear_normals_from_objects(context, meshes)
+        print(f"Cleared normals and sharp edges from {len(meshes)} mesh objects")
+    if meshes:
+        if gs_props.set_auto_smooth:
+            set_auto_smooth(context, meshes, gs_props.smooth_angle)
+        else:
+            keep_imported_normals(meshes)
+    # The steps above leave only the last mesh selected; put the whole import
+    # back, both for the artist and because transform_apply works on the selection.
+    select_only(context, objects)
+    if FBXSettings.TRANSFORM['apply_transform_on_import'] and objects:
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+
+# ---------------------------------------------------------------------------
+# Export: 3ds Max smoothing groups
+# ---------------------------------------------------------------------------
+def fbx_supports_smoothing_groups():
+    """True when this Blender's FBX exporter can write 3ds Max smoothing groups.
+
+    The 'SMOOTH_GROUP' smoothing mode exists in 4.5 and 5.2 but not in 3.6, whose
+    exporter only offers normals / face / edge smoothing.
+    """
+    try:
+        prop = bpy.ops.export_scene.fbx.get_rna_type().properties["mesh_smooth_type"]
+    except (AttributeError, KeyError, RuntimeError):
+        return False
+    return "SMOOTH_GROUP" in prop.enum_items.keys()
+
+
+# Sharp-edge fill tuning. Angles are the dihedral angle between an edge's two faces.
+_FOLLOW_CREASE = 0.35     # ~20 deg: a fold this strong is always the way to go
+_FALLBACK_CREASE = 0.26   # ~15 deg: a weaker fold, taken only when no edge loop carries on straight
+_MIN_STRAIGHTNESS = 0.2   # cosine between incoming and outgoing direction to count as "straight on"
+_MAX_WALK = 1000          # safety cap on edges added from a single dead end
+
+
+def _smooth_inside(edge):
+    """A plain two-face edge that smoothing flows across."""
+    faces = edge.link_faces
+    return len(faces) == 2 and edge.smooth and faces[0].smooth and faces[1].smooth
+
+
+def _splits_smoothing(edge):
+    """Marked sharp, on a border, non-manifold, or beside a flat face. Loose wire edges don't count."""
+    return len(edge.link_faces) > 0 and not _smooth_inside(edge)
+
+
+def _next_sharp_edge(vert, incoming, candidates):
+    """Pick the edge that best continues the sharp line arriving at ``vert`` along ``incoming``."""
+    crease_edge, crease = None, -1.0
+    for edge in candidates:
+        angle = edge.calc_face_angle()
+        if angle > crease:
+            crease_edge, crease = edge, angle
+    if crease > _FOLLOW_CREASE:
+        return crease_edge
+
+    # No strong fold: carry on along the edge loop, skipping edges that share a
+    # face with the incoming edge (those turn the corner instead of continuing).
+    heading = vert.co - incoming.other_vert(vert).co
+    if heading.length > 1e-6:
+        heading.normalize()
+        beside = {edge for face in incoming.link_faces for edge in face.edges}
+        ahead = [edge for edge in candidates if edge not in beside] or candidates
+        straight_edge, straightness = None, -2.0
+        for edge in ahead:
+            out = edge.other_vert(vert).co - vert.co
+            if out.length > 1e-6:
+                dot = heading.dot(out.normalized())
+                if dot > straightness:
+                    straight_edge, straightness = edge, dot
+        if straightness > _MIN_STRAIGHTNESS:
+            return straight_edge
+
+    return crease_edge if crease >= _FALLBACK_CREASE else None
+
+
+def find_sharp_fill_edges(mesh):
+    """Indices of the edges the smoothing-group export would mark sharp on ``mesh``. ``mesh`` is not modified.
+
+    A 3ds Max smoothing group is a region of faces, so a hard edge only survives
+    the trip if it separates two regions. A sharp edge that stops mid-surface has
+    the same region on both sides and comes out smooth in Max. Each such dead end
+    is walked onward -- along a crease if there is one, otherwise straight along
+    the edge loop -- until it meets another sharp edge or a border.
+    """
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(mesh)
+        bm.verts.index_update()
+        bm.edges.index_update()
+
+        # How many smoothing-splitting edges meet at each vertex; exactly one is a dead end.
+        splits = [0] * len(bm.verts)
+        for edge in bm.edges:
+            if _splits_smoothing(edge):
+                for vert in edge.verts:
+                    splits[vert.index] += 1
+
+        added = []
+        dead_ends = deque(vert for vert in bm.verts if splits[vert.index] == 1)
+        while dead_ends:
+            vert = dead_ends.popleft()
+            if splits[vert.index] != 1:
+                continue  # already closed by an earlier walk
+            incoming = next(edge for edge in vert.link_edges if _splits_smoothing(edge))
+            for _ in range(_MAX_WALK):
+                candidates = [edge for edge in vert.link_edges if _smooth_inside(edge)]
+                edge = _next_sharp_edge(vert, incoming, candidates) if candidates else None
+                if edge is None:
+                    break
+                edge.smooth = False  # BMesh copy only; the caller marks the real mesh
+                added.append(edge.index)
+                for end in edge.verts:
+                    splits[end.index] += 1
+                vert, incoming = edge.other_vert(vert), edge
+                if splits[vert.index] > 1:
+                    break  # reached another hard edge or a border: the line is closed
+        return added
+    finally:
+        bm.free()
+
+
+def _sharp_fill_for_object(obj, depsgraph):
+    """Edge indices into ``obj.data`` that close the object's dead-end sharp edges.
+
+    Reads the evaluated mesh when its topology matches the base mesh, so sharp
+    edges coming from modifiers such as Smooth by Angle count; otherwise
+    (Mirror, Subdivision...) falls back to the base mesh.
+    """
+    mesh = obj.data
+    obj_eval = obj.evaluated_get(depsgraph)
+    evaluated = obj_eval.to_mesh()
+    try:
+        same_topology = (
+            (len(evaluated.vertices), len(evaluated.edges), len(evaluated.polygons))
+            == (len(mesh.vertices), len(mesh.edges), len(mesh.polygons))
+        )
+        return find_sharp_fill_edges(evaluated if same_topology else mesh)
+    finally:
+        obj_eval.to_mesh_clear()
+
+
+@contextlib.contextmanager
+def temporarily_filled_sharp_edges(context, objects, enabled=True):
+    """Fill in open-ended sharp edges on ``objects`` for the duration of the block, then take it back out.
+
+    Yields the number of edges added. The fill goes onto the real meshes so the
+    FBX exporter (which evaluates modifiers itself) sees it, and is removed
+    afterwards so the artist's scene is left exactly as it was.
+    """
+    filled = []  # (mesh, edge indices, whether the mesh already had a sharp_edge attribute)
+    try:
+        if enabled:
+            depsgraph = context.evaluated_depsgraph_get()
+            seen = set()
+            for obj in objects:
+                if obj.type != 'MESH' or obj.data in seen or obj.data.library is not None:
+                    continue
+                mesh = obj.data
+                seen.add(mesh)
+                indices = _sharp_fill_for_object(obj, depsgraph)
+                if not indices:
+                    continue
+                filled.append((mesh, indices, "sharp_edge" in mesh.attributes))
+                for index in indices:
+                    mesh.edges[index].use_edge_sharp = True
+                mesh.update()
+        yield sum(len(indices) for _mesh, indices, _had in filled)
+    finally:
+        for mesh, indices, had_attribute in filled:
+            for index in indices:
+                mesh.edges[index].use_edge_sharp = False
+            if not had_attribute:
+                attribute = mesh.attributes.get("sharp_edge")
+                if attribute is not None:
+                    try:
+                        mesh.attributes.remove(attribute)
+                    except RuntimeError:
+                        pass
+            mesh.update()
+
+
+# ---------------------------------------------------------------------------
+# FBX calls
+# ---------------------------------------------------------------------------
 def import_fbx_with_settings(filepath, context):
-    scale_factor = calculate_import_scale(context)
     bpy.ops.import_scene.fbx(
         filepath=filepath,
-        global_scale=scale_factor,
-        use_custom_normals=FBXSettings.IMPORT['use_custom_normals'],
-        use_image_search=FBXSettings.IMPORT['use_image_search'],
-        use_alpha_decals=FBXSettings.IMPORT['use_alpha_decals'],
-        decal_offset=FBXSettings.IMPORT['decal_offset'],
-        use_anim=FBXSettings.IMPORT['use_anim'],
-        anim_offset=FBXSettings.IMPORT['anim_offset'],
-        use_subsurf=FBXSettings.IMPORT['use_subsurf'],
-        use_custom_props=FBXSettings.IMPORT['use_custom_props'],
-        use_custom_props_enum_as_string=FBXSettings.IMPORT['use_custom_props_enum_as_string'],
-        ignore_leaf_bones=FBXSettings.IMPORT['ignore_leaf_bones'],
-        force_connect_children=FBXSettings.IMPORT['force_connect_children'],
-        automatic_bone_orientation=FBXSettings.IMPORT['automatic_bone_orientation'],
-        primary_bone_axis=FBXSettings.IMPORT['primary_bone_axis'],
-        secondary_bone_axis=FBXSettings.IMPORT['secondary_bone_axis'],
+        global_scale=calculate_import_scale(context),
+        **FBXSettings.IMPORT,
     )
 
 
-def export_fbx_with_settings(filepath, context):
-    scale_factor = calculate_export_scale(context)
-    bpy.ops.export_scene.fbx(
-        filepath=filepath,
-        use_selection=FBXSettings.EXPORT['use_selection'],
-        use_active_collection=FBXSettings.EXPORT['use_active_collection'],
-        global_scale=scale_factor,
-        apply_unit_scale=FBXSettings.EXPORT['apply_unit_scale'],
-        apply_scale_options=FBXSettings.EXPORT['apply_scale_options'],
-        use_space_transform=FBXSettings.EXPORT['use_space_transform'],
-        bake_space_transform=FBXSettings.EXPORT['bake_space_transform'],
-        object_types=FBXSettings.EXPORT['object_types'],
-        use_mesh_modifiers=FBXSettings.EXPORT['use_mesh_modifiers'],
-        use_mesh_modifiers_render=FBXSettings.EXPORT['use_mesh_modifiers_render'],
-        mesh_smooth_type=FBXSettings.EXPORT['mesh_smooth_type'],
-        use_subsurf=FBXSettings.EXPORT['use_subsurf'],
-        use_mesh_edges=FBXSettings.EXPORT['use_mesh_edges'],
-        use_tspace=FBXSettings.EXPORT['use_tspace'],
-        use_custom_props=FBXSettings.EXPORT['use_custom_props'],
-        add_leaf_bones=FBXSettings.EXPORT['add_leaf_bones'],
-        primary_bone_axis=FBXSettings.EXPORT['primary_bone_axis'],
-        secondary_bone_axis=FBXSettings.EXPORT['secondary_bone_axis'],
-        use_armature_deform_only=FBXSettings.EXPORT['use_armature_deform_only'],
-        armature_nodetype=FBXSettings.EXPORT['armature_nodetype'],
-        bake_anim=FBXSettings.EXPORT['bake_anim'],
-        bake_anim_use_all_bones=FBXSettings.EXPORT['bake_anim_use_all_bones'],
-        bake_anim_use_nla_strips=FBXSettings.EXPORT['bake_anim_use_nla_strips'],
-        bake_anim_use_all_actions=FBXSettings.EXPORT['bake_anim_use_all_actions'],
-        bake_anim_force_startend_keying=FBXSettings.EXPORT['bake_anim_force_startend_keying'],
-        bake_anim_step=FBXSettings.EXPORT['bake_anim_step'],
-        bake_anim_simplify_factor=FBXSettings.EXPORT['bake_anim_simplify_factor'],
-        path_mode=FBXSettings.EXPORT['path_mode'],
-        embed_textures=FBXSettings.EXPORT['embed_textures'],
-        batch_mode=FBXSettings.EXPORT['batch_mode'],
-        use_batch_own_dir=FBXSettings.EXPORT['use_batch_own_dir'],
-        use_metadata=FBXSettings.EXPORT['use_metadata'],
-    )
-
-
-def post_process_imported_objects(objects, context):
+def export_fbx_with_settings(filepath, context, target_app):
+    """Export the selection for ``target_app``. Returns how many sharp edges were filled in."""
     gs_props = context.scene.gs_file_transfer_props
-    if gs_props.clear_normals:
-        clear_normals_from_objects(objects)
-        print(f"Cleared normals and sharp edges from {len([o for o in objects if o.type == 'MESH'])} mesh objects")
-    apply_auto_smooth_to_objects(objects, gs_props.auto_smooth_angle)
-    print(f"Applied auto smooth ({gs_props.auto_smooth_angle}°) to {len([o for o in objects if o.type == 'MESH'])} mesh objects")
-    if FBXSettings.TRANSFORM['apply_transform_on_import']:
-        if len(bpy.context.selected_objects) != 0:
-            bpy.context.view_layer.objects.active = bpy.context.selected_objects[0]
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    settings = dict(FBXSettings.EXPORT)
+    smoothing_groups = (target_app == "max" and gs_props.export_smooth_groups
+                        and fbx_supports_smoothing_groups())
+    if smoothing_groups:
+        settings['mesh_smooth_type'] = 'SMOOTH_GROUP'
+    # Closing open-ended sharp edges is part of exporting smoothing groups, not
+    # a separate choice: without it those hard edges silently come out soft in Max.
+    with temporarily_filled_sharp_edges(context, list(context.selected_objects),
+                                        enabled=smoothing_groups) as filled:
+        bpy.ops.export_scene.fbx(
+            filepath=filepath,
+            global_scale=calculate_export_scale(context),
+            **settings,
+        )
+    return filled
 
 
 def pre_process_export_objects(context):
@@ -235,293 +467,249 @@ def pre_process_export_objects(context):
 
 
 # ---------------------------------------------------------------------------
-# Person list (shared scene collection)
+# Transfer runners, shared by the local and server operators
+# ---------------------------------------------------------------------------
+def _import_one(op, context, path):
+    """Import one FBX and post-process it. Returns merged-material count, or None on failure."""
+    gs_props = context.scene.gs_file_transfer_props
+    objects_before = set(context.scene.objects)
+    materials_before = set(bpy.data.materials)
+    print("Attempting to import: " + path)
+    try:
+        import_fbx_with_settings(path, context)
+    except Exception as e:
+        op.report({'ERROR'}, f"Failed to import {path}: {e}")
+        return None
+
+    merged = 0
+    if gs_props.merge_materials:
+        merged = merge_duplicate_materials([m for m in bpy.data.materials if m not in materials_before])
+
+    imported = [obj for obj in context.scene.objects if obj not in objects_before]
+    try:
+        post_process_imported_objects(context, imported)
+    except Exception as e:
+        op.report({'WARNING'}, f"Imported {os.path.basename(path)}, but post-processing failed: {e}")
+    return merged
+
+
+def run_import(op, context, directory, stem):
+    """Import '<stem>.fbx' (All) or every '<object>_<stem>.fbx' (Individual) from ``directory``."""
+    gs_props = context.scene.gs_file_transfer_props
+    ensure_object_mode(context)
+
+    if gs_props.export_mode == "INDIVIDUAL":
+        files = individual_files(directory, stem)
+        if not files:
+            op.report({'ERROR'}, f"No *_{stem}.fbx files found in {directory}")
+            return {'CANCELLED'}
+    else:
+        path = os.path.join(directory, stem + ".fbx")
+        if not os.path.isfile(path):
+            op.report({'ERROR'}, f"File does not exist: {path}")
+            return {'CANCELLED'}
+        files = [path]
+
+    imported, merged = 0, 0
+    for path in files:
+        result = _import_one(op, context, path)
+        if result is not None:
+            imported += 1
+            merged += result
+    if not imported:
+        return {'CANCELLED'}
+
+    message = f"Imported {imported} FBX file(s)" if len(files) > 1 else f"Imported {files[0]}"
+    if merged:
+        message += f", merged {merged} duplicate material(s)"
+    op.report({'INFO'}, message)
+    return {'FINISHED'}
+
+
+def _export_one(op, context, path, target_app):
+    """Export the current selection to ``path``. Returns filled-edge count, or None on failure."""
+    print("Attempting to export to: " + path)
+    try:
+        pre_process_export_objects(context)
+        return export_fbx_with_settings(path, context, target_app)
+    except Exception as e:
+        op.report({'ERROR'}, f"Failed to export to {path}: {e}")
+        return None
+
+
+def run_export(op, context, directory, stem, target_app):
+    """Export the selection as '<stem>.fbx' (All) or one '<object>_<stem>.fbx' per object (Individual)."""
+    gs_props = context.scene.gs_file_transfer_props
+    ensure_object_mode(context)
+    selected = list(context.selected_objects)
+    if not selected:
+        op.report({'WARNING'}, "Please select objects to export!")
+        return {'CANCELLED'}
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError:
+        op.report({'ERROR'}, f"Failed to create directory: {directory}")
+        return {'CANCELLED'}
+
+    if gs_props.export_mode == "INDIVIDUAL":
+        # Clear out the previous per-object files of this same transfer, so the
+        # receiver doesn't pick up objects from an older send. Other transfers'
+        # files in the folder are left alone.
+        for stale in individual_files(directory, stem):
+            try:
+                os.remove(stale)
+            except OSError as e:
+                print(f"Failed to delete {stale}. Reason: {e}")
+
+        active = context.view_layer.objects.active
+        exported, filled = 0, 0
+        try:
+            for obj in selected:
+                select_only(context, [obj])
+                path = os.path.join(directory, f"{safe_file_name(obj.name)}_{stem}.fbx")
+                result = _export_one(op, context, path, target_app)
+                if result is None:
+                    op.report({'WARNING'}, f"Failed to export {obj.name}")
+                    continue
+                exported += 1
+                filled += result
+        finally:
+            select_only(context, selected)
+            context.view_layer.objects.active = active
+        message = f"Exported {exported} object(s) individually"
+    else:
+        path = os.path.join(directory, stem + ".fbx")
+        filled = _export_one(op, context, path, target_app)
+        if filled is None:
+            return {'CANCELLED'}
+        message = f"Exported to {path}"
+
+    if filled:
+        message += f" ({filled} open sharp edge(s) closed for 3ds Max smoothing groups)"
+    op.report({'INFO'}, message)
+    return {'FINISHED'}
+
+
+def _local_dir(context):
+    mode = context.scene.gs_file_transfer_props.export_mode
+    return LOCAL_DIR_INDIVIDUAL if mode == "INDIVIDUAL" else LOCAL_DIR
+
+
+# ---------------------------------------------------------------------------
+# Person list (shared scene collection, the search source for the User field)
 # ---------------------------------------------------------------------------
 class GS_PersonItem(bpy.types.PropertyGroup):
     name: StringProperty()
 
 
-class GS_UL_PersonList(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.label(text=item.name, icon="USER")
-        elif self.layout_type in {'GRID'}:
-            layout.alignment = 'CENTER'
-            layout.label(text="", icon="USER")
-
-
 # ---------------------------------------------------------------------------
-# Operators (unchanged logic)
+# Operators
 # ---------------------------------------------------------------------------
 class IMPORT_OT_from_application(Operator):
     bl_idname = "gs.import_from_application"
     bl_label = "Import"
-    bl_description = "Import FBX from another application"
+    bl_description = "Import what another application exported on this machine"
+    bl_options = {'UNDO'}
 
     source_app: StringProperty(default="")
 
-    def execute(self, context):
-        gs_props = context.scene.gs_file_transfer_props
-        if gs_props.export_mode == "INDIVIDUAL":
-            local_export_path = os.path.join(temp_dir, "fileTransferFbxIndividual\\")
-            if self.source_app == "maya":
-                import_pattern = "maya_to_blender"
-            elif self.source_app == "max":
-                import_pattern = "max_to_blender"
-            else:
-                self.report({'ERROR'}, "Invalid source application")
-                return {'CANCELLED'}
-            if not os.path.exists(local_export_path):
-                self.report({'ERROR'}, f"Directory does not exist: {local_export_path}")
-                return {'CANCELLED'}
-            fbx_files = [f for f in os.listdir(local_export_path) if f.endswith('.fbx') and import_pattern in f]
-            if not fbx_files:
-                self.report({'ERROR'}, f"No {import_pattern} FBX files found in {local_export_path}")
-                return {'CANCELLED'}
-            imported_count = 0
-            for fbx_file in fbx_files:
-                import_file = os.path.join(local_export_path, fbx_file)
-                if self.import_single_fbx(context, import_file):
-                    imported_count += 1
-            self.report({'INFO'}, f"Successfully imported {imported_count} FBX file(s)")
-            return {'FINISHED'}
-        else:
-            local_export_path = os.path.join(temp_dir, "fileTransferFbx\\")
-            if self.source_app == "maya":
-                import_file = os.path.join(local_export_path, "maya_to_blender.fbx")
-            elif self.source_app == "max":
-                import_file = os.path.join(local_export_path, "max_to_blender.fbx")
-            else:
-                self.report({'ERROR'}, "Invalid source application")
-                return {'CANCELLED'}
-            if os.path.exists(import_file):
-                if self.import_single_fbx(context, import_file):
-                    self.report({'INFO'}, f"Successfully imported from {import_file}")
-                    return {'FINISHED'}
-                return {'CANCELLED'}
-            self.report({'ERROR'}, f"File does not exist: {import_file}")
-            return {'CANCELLED'}
+    @classmethod
+    def description(cls, context, properties):
+        label = APP_LABELS.get(properties.source_app, "another application")
+        stem = transfer_stem(properties.source_app, THIS_APP)
+        return f"Import what {label} last exported on this machine ({stem}.fbx)"
 
-    def import_single_fbx(self, context, import_file):
-        try:
-            print("Attempting to import: " + import_file)
-            objects_before_import = set(bpy.context.scene.objects)
-            import_fbx_with_settings(import_file, context)
-            objects_after_import = set(bpy.context.scene.objects)
-            imported_objects = list(objects_after_import - objects_before_import)
-            post_process_imported_objects(imported_objects, context)
-            return True
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to import {import_file}: {str(e)}")
-            return False
+    def execute(self, context):
+        if self.source_app not in APP_LABELS:
+            self.report({'ERROR'}, "Invalid source application")
+            return {'CANCELLED'}
+        return run_import(self, context, _local_dir(context), transfer_stem(self.source_app, THIS_APP))
 
 
 class EXPORT_OT_to_application(Operator):
     bl_idname = "gs.export_to_application"
     bl_label = "Export"
-    bl_description = "Export FBX to another application"
+    bl_description = "Export the selection for another application on this machine"
+    bl_options = {'UNDO'}
 
     target_app: StringProperty(default="")
 
+    @classmethod
+    def description(cls, context, properties):
+        label = APP_LABELS.get(properties.target_app, "another application")
+        stem = transfer_stem(THIS_APP, properties.target_app)
+        return f"Export the selection for {label} to import on this machine ({stem}.fbx)"
+
     def execute(self, context):
-        gs_props = context.scene.gs_file_transfer_props
-        if not context.selected_objects:
-            self.report({'WARNING'}, "Please select objects to export!")
+        if self.target_app not in APP_LABELS:
+            self.report({'ERROR'}, "Invalid target application")
             return {'CANCELLED'}
-        if gs_props.export_mode == "INDIVIDUAL":
-            local_export_path = os.path.join(temp_dir, "fileTransferFbxIndividual\\")
-            clean_directory(local_export_path)
-            if not os.path.exists(local_export_path):
-                try:
-                    os.makedirs(local_export_path)
-                    print("Created directory: " + local_export_path)
-                except Exception:
-                    self.report({'ERROR'}, f"Failed to create directory: {local_export_path}")
-                    return {'CANCELLED'}
-            selected_objects = context.selected_objects.copy()
-            exported_count = 0
-            for obj in selected_objects:
-                bpy.ops.object.select_all(action='DESELECT')
-                obj.select_set(True)
-                context.view_layer.objects.active = obj
-                safe_obj_name = "".join(c for c in obj.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                export_file = os.path.join(local_export_path, f"{safe_obj_name}_blender_to_{self.target_app}.fbx")
-                if self.export_single_fbx(context, export_file):
-                    exported_count += 1
-                    print(f"Exported: {export_file}")
-                else:
-                    self.report({'WARNING'}, f"Failed to export {obj.name}")
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in selected_objects:
-                obj.select_set(True)
-            if selected_objects:
-                context.view_layer.objects.active = selected_objects[0]
-            self.report({'INFO'}, f"Successfully exported {exported_count} object(s) individually")
-            return {'FINISHED'}
-        else:
-            local_export_path = os.path.join(temp_dir, "fileTransferFbx\\")
-            if not os.path.exists(local_export_path):
-                try:
-                    os.makedirs(local_export_path)
-                    print("Created directory: " + local_export_path)
-                except Exception:
-                    self.report({'ERROR'}, f"Failed to create directory: {local_export_path}")
-                    return {'CANCELLED'}
-            if self.target_app == "maya":
-                export_file = os.path.join(local_export_path, "blender_to_maya.fbx")
-            elif self.target_app == "max":
-                export_file = os.path.join(local_export_path, "blender_to_max.fbx")
-            else:
-                self.report({'ERROR'}, "Invalid target application")
-                return {'CANCELLED'}
-            if self.export_single_fbx(context, export_file):
-                self.report({'INFO'}, f"Successfully exported to {export_file}")
-                return {'FINISHED'}
-            return {'CANCELLED'}
+        return run_export(self, context, _local_dir(context),
+                          transfer_stem(THIS_APP, self.target_app), self.target_app)
 
-    def export_single_fbx(self, context, export_file):
-        try:
-            print("Attempting to export to: " + export_file)
-            pre_process_export_objects(context)
-            export_fbx_with_settings(export_file, context)
+
+def _server_user_or_report(op, gs_props):
+    other = gs_props.server_user.strip()
+    if not other:
+        op.report({'ERROR'}, "Pick a user first")
+    return other
+
+
+class _NeedsServer:
+    """Mixin: the operator is unavailable until the share has been found reachable."""
+
+    @classmethod
+    def poll(cls, context):
+        if ServerStatus.online:
             return True
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to export to {export_file}: {str(e)}")
-            return False
+        cls.poll_message_set("Still checking the server" if ServerStatus.online is None
+                             else "Can't reach the server")
+        return False
 
 
-class IMPORT_OT_from_server(Operator):
+class IMPORT_OT_from_server(_NeedsServer, Operator):
     bl_idname = "gs.import_from_server"
     bl_label = "Import from Server"
-    bl_description = "Import FBX from server"
+    bl_description = "Import what the selected user sent you"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def description(cls, context, properties):
+        gs_props = context.scene.gs_file_transfer_props
+        other = gs_props.server_user or "the selected user"
+        return f"Import what {other} sent you from {APP_LABELS[gs_props.server_app]}"
 
     def execute(self, context):
-        scene = context.scene
-        gs_props = scene.gs_file_transfer_props
-        if len(scene.gs_person_list) <= 0:
-            populate_person_list(scene)
-            if len(scene.gs_person_list) <= 0:
-                self.report({'ERROR'}, "Failed to populate person list")
-                return {'CANCELLED'}
-        app1 = gs_props.server_target_app.lower()
-        app2 = "blender"
-        gs_folder = scene.gs_person_list[scene.gs_person_index].name
-        if gs_props.export_mode == "INDIVIDUAL":
-            server_path = "\\\\192.168.1.210\\Temp\\File_Transfer\\"
-            server_dir = server_path + gs_folder + "\\"
-            if not os.path.exists(server_dir):
-                self.report({'ERROR'}, f"Server directory does not exist: {server_dir}")
-                return {'CANCELLED'}
-            import_pattern = f"{gs_folder}_{app1}_to_{app2}_{username}"
-            fbx_files = [f for f in os.listdir(server_dir) if f.endswith('.fbx') and import_pattern in f]
-            if not fbx_files:
-                self.report({'ERROR'}, f"No {import_pattern} FBX files found in {server_dir}")
-                return {'CANCELLED'}
-            imported_count = 0
-            for fbx_file in fbx_files:
-                file_path = os.path.join(server_dir, fbx_file)
-                if self.import_single_fbx_server(context, file_path):
-                    imported_count += 1
-            self.report({'INFO'}, f"Successfully imported {imported_count} FBX file(s) from server")
-            return {'FINISHED'}
-        else:
-            server_path = "\\\\192.168.1.210\\Temp\\File_Transfer\\"
-            file_path = server_path + gs_folder + "\\" + gs_folder + "_" + app1 + "_to_" + app2 + "_" + username + ".fbx"
-            print("Attempting to import from server: " + file_path)
-            if os.path.exists(file_path):
-                if self.import_single_fbx_server(context, file_path):
-                    self.report({'INFO'}, f"Successfully imported from {file_path}")
-                    return {'FINISHED'}
-                return {'CANCELLED'}
-            self.report({'ERROR'}, f"File does not exist: {file_path}")
+        gs_props = context.scene.gs_file_transfer_props
+        other = _server_user_or_report(self, gs_props)
+        if not other:
             return {'CANCELLED'}
-
-    def import_single_fbx_server(self, context, file_path):
-        try:
-            print("Attempting to import from server: " + file_path)
-            objects_before_import = set(bpy.context.scene.objects)
-            import_fbx_with_settings(file_path, context)
-            objects_after_import = set(bpy.context.scene.objects)
-            imported_objects = list(objects_after_import - objects_before_import)
-            post_process_imported_objects(imported_objects, context)
-            return True
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to import from server {file_path}: {str(e)}")
-            return False
+        # <sender>_<app>_to_blender_<me>.fbx, sitting in the sender's folder
+        stem = f"{other}_{transfer_stem(gs_props.server_app, THIS_APP)}_{username}"
+        return run_import(self, context, os.path.join(SERVER_DIR, other), stem)
 
 
-class EXPORT_OT_to_server(Operator):
+class EXPORT_OT_to_server(_NeedsServer, Operator):
     bl_idname = "gs.export_to_server"
     bl_label = "Export to Server"
-    bl_description = "Export FBX to server"
+    bl_description = "Send the selection to the selected user"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def description(cls, context, properties):
+        gs_props = context.scene.gs_file_transfer_props
+        other = gs_props.server_user or "the selected user"
+        return f"Send the selection to {other}, to import in {APP_LABELS[gs_props.server_app]}"
 
     def execute(self, context):
-        scene = context.scene
-        gs_props = scene.gs_file_transfer_props
-        if len(scene.gs_person_list) <= 0:
-            populate_person_list(scene)
-            if len(scene.gs_person_list) <= 0:
-                self.report({'ERROR'}, "Failed to populate person list")
-                return {'CANCELLED'}
-        if not context.selected_objects:
-            self.report({'WARNING'}, "Please select objects to export!")
+        gs_props = context.scene.gs_file_transfer_props
+        other = _server_user_or_report(self, gs_props)
+        if not other:
             return {'CANCELLED'}
-        app1 = "blender"
-        app2 = gs_props.server_target_app.lower()
-        gs_folder = scene.gs_person_list[scene.gs_person_index].name
-        if gs_props.export_mode == "INDIVIDUAL":
-            server_path = "\\\\192.168.1.210\\Temp\\File_Transfer\\"
-            server_dir = server_path + username + "\\"
-            if not os.path.exists(server_dir):
-                try:
-                    os.makedirs(server_dir)
-                except Exception:
-                    self.report({'ERROR'}, f"Failed to create directory: {server_dir}")
-                    return {'CANCELLED'}
-            selected_objects = context.selected_objects.copy()
-            exported_count = 0
-            for obj in selected_objects:
-                bpy.ops.object.select_all(action='DESELECT')
-                obj.select_set(True)
-                context.view_layer.objects.active = obj
-                safe_obj_name = "".join(c for c in obj.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                file_path = server_dir + safe_obj_name + "_" + username + "_" + app1 + "_to_" + app2 + "_" + gs_folder + ".fbx"
-                if self.export_single_fbx_server(context, file_path):
-                    exported_count += 1
-                    print(f"Exported to server: {file_path}")
-                else:
-                    self.report({'WARNING'}, f"Failed to export {obj.name} to server")
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in selected_objects:
-                obj.select_set(True)
-            if selected_objects:
-                context.view_layer.objects.active = selected_objects[0]
-            self.report({'INFO'}, f"Successfully exported {exported_count} object(s) individually to server")
-            return {'FINISHED'}
-        else:
-            server_path = "\\\\192.168.1.210\\Temp\\File_Transfer\\"
-            file_path = server_path + username + "\\" + username + "_" + app1 + "_to_" + app2 + "_" + gs_folder + ".fbx"
-            print("Attempting to export to server: " + file_path)
-            dir_path = os.path.dirname(file_path)
-            if not os.path.exists(dir_path):
-                try:
-                    os.makedirs(dir_path)
-                except Exception:
-                    self.report({'ERROR'}, f"Failed to create directory: {dir_path}")
-                    return {'CANCELLED'}
-            if self.export_single_fbx_server(context, file_path):
-                self.report({'INFO'}, f"Successfully exported to {file_path}")
-                return {'FINISHED'}
-            return {'CANCELLED'}
-
-    def export_single_fbx_server(self, context, file_path):
-        try:
-            pre_process_export_objects(context)
-            export_fbx_with_settings(file_path, context)
-            return True
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to export to server {file_path}: {str(e)}")
-            return False
+        target_app = gs_props.server_app
+        # <me>_blender_to_<app>_<receiver>.fbx, sitting in my own folder
+        stem = f"{username}_{transfer_stem(THIS_APP, target_app)}_{other}"
+        return run_export(self, context, os.path.join(SERVER_DIR, username), stem, target_app)
 
 
 # ---------------------------------------------------------------------------
@@ -529,40 +717,72 @@ class EXPORT_OT_to_server(Operator):
 # ---------------------------------------------------------------------------
 class GSFileTransferProperties(bpy.types.PropertyGroup):
     export_mode: EnumProperty(
-        name="Export Mode",
+        name="Mode",
         items=[
-            ("ALL", "All", "Export all selected objects as one FBX file"),
-            ("INDIVIDUAL", "Individual", "Export each selected object as separate FBX files"),
+            ("MERGE", "Merge", "Transfer all selected objects as one FBX file"),
+            ("INDIVIDUAL", "Individual", "Transfer each selected object as its own FBX file"),
         ],
-        default="ALL",
+        default="MERGE",
     )
+
+    # --- Import ---
     clear_normals: BoolProperty(
-        name="Clear Normal",
-        description="Clear all normal data and sharp edges from imported FBX files",
+        name="Clear Normal Data",
+        description="Strip custom normals and sharp edges from imported meshes, "
+                    "leaving plain smooth shading",
         default=False,
     )
-    auto_smooth_angle: FloatProperty(
-        name="Auto Smooth",
-        description="Auto smooth angle for imported FBX files (in degrees)",
-        default=180.0,
-        min=0.0,
-        max=180.0,
-        step=1.0,
-        precision=1,
+    merge_materials: BoolProperty(
+        name="Merge Materials",
+        description="When the import duplicates a material because its name is taken "
+                    "(Material.001, Material.002...), use the existing Material instead",
+        default=True,
     )
-    server_target_app: EnumProperty(
-        name="Target Software",
-        items=[
-            ("Blender", "Blender", ""),
-            ("Maya", "Maya", ""),
-            ("Max", "Max", ""),
-        ],
-        default="Maya",
+    set_auto_smooth: BoolProperty(
+        name="Set Auto Smooth",
+        description="Run Blender's Shade Auto Smooth on imported meshes. "
+                    "Off keeps the shading the FBX came with",
+        default=False,
+    )
+    smooth_angle: FloatProperty(
+        name="Angle",
+        description="Maximum angle between face normals that will be considered as smooth",
+        subtype='ANGLE',
+        default=math.radians(30.0),
+        min=0.0,
+        max=math.pi,
+    )
+
+    # --- Export ---
+    export_smooth_groups: BoolProperty(
+        name="Export Smoothing Groups",
+        description="When exporting to 3ds Max, turn your sharp edges into smoothing groups. "
+                    "In Max, tick 'Import Smoothing Groups'. Needs Blender 4.5 or newer",
+        default=True,
+    )
+
+    # --- Local / Server ---
+    local_app: EnumProperty(
+        name="Software",
+        description="The application on this machine you are transferring with",
+        items=APP_ITEMS,
+        default="maya",
+    )
+    server_app: EnumProperty(
+        name="Software",
+        description="The application the other artist is using",
+        items=APP_ITEMS,
+        default="maya",
+    )
+    server_user: StringProperty(
+        name="User",
+        description="The artist you are sending to or receiving from. Click and type to search",
+        default="",
     )
 
 
 # ---------------------------------------------------------------------------
-# Person list population + persistent handler
+# Server status + user list
 # ---------------------------------------------------------------------------
 def _normalize_user(raw):
     """Turn a raw CSV user value into a bare studio username.
@@ -584,103 +804,180 @@ def _normalize_user(raw):
     return name.strip()
 
 
-def populate_person_list(scene):
-    """Populate the person list from the auto-deployment CSV (Host, User columns)."""
-    scene.gs_person_list.clear()
-    server_path = "\\\\192.168.1.210\\Pipeline\\Library\\Data\\Data_Computer_Auto.csv"
-    try:
-        with open(server_path, 'r', newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile)
-            header_row = next(reader, None)
-            if header_row is None:
-                raise ValueError("CSV file is empty")
-            user_column_index = None
-            for i, header in enumerate(header_row):
-                if header.strip().lower() in ("user", "users"):
-                    user_column_index = i
-                    break
-            if user_column_index is None:
-                raise ValueError("No 'User' column found in CSV file")
-            seen = set()
-            for row in reader:
-                if len(row) <= user_column_index:
-                    continue
-                user_name = _normalize_user(row[user_column_index])
-                if user_name and user_name.lower() not in seen:
-                    seen.add(user_name.lower())
-                    item = scene.gs_person_list.add()
-                    item.name = user_name
-            print(f"Successfully loaded {len(scene.gs_person_list)} users from CSV")
-    except Exception as e:
-        print(f"Error reading user list from CSV: {e}")
+def _read_users(csv_path):
+    """Usernames from one deployment CSV: any column order, header 'User' (or 'Users')."""
+    # utf-8-sig: the Update CSV starts with a BOM.
+    with open(csv_path, 'r', newline='', encoding='utf-8-sig') as csvfile:
+        reader = csv.reader(csvfile)
+        header = next(reader, None)
+        if header is None:
+            raise ValueError("CSV file is empty")
+        column = next((i for i, name in enumerate(header) if name.strip().lower() in ("user", "users")), None)
+        if column is None:
+            raise ValueError("No 'User' column found in CSV file")
+        return [_normalize_user(row[column]) for row in reader if len(row) > column]
+
+
+def read_user_list():
+    """Every user from all USER_CSVS, de-duplicated and sorted. An unreadable file is skipped."""
+    users = {}
+    for path in USER_CSVS:
+        try:
+            for name in _read_users(path):
+                if name:
+                    users.setdefault(name.lower(), name)
+        except Exception as e:
+            print(f"Error reading user list from {path}: {e}")
+    names = sorted(users.values(), key=str.lower)
+    print(f"Loaded {len(names)} users from {len(USER_CSVS)} CSV files")
+    return names
+
+
+class ServerStatus:
+    """Whether the share is reachable, and the user list read from it.
+
+    The check runs on a worker thread: an unreachable UNC path can block for tens
+    of seconds, and Blender must not freeze while it does. The result is applied
+    on the main thread by a timer, because bpy data can't be touched from another
+    thread. ``online`` is None while a check is running.
+    """
+    online = None
+    users = []
+    _thread = None
+    _result = {}
+
+    @classmethod
+    def check(cls):
+        if cls._thread is not None and cls._thread.is_alive():
+            return
+        cls.online = None
+        cls._result = {}
+        cls._thread = threading.Thread(target=cls._probe, args=(cls._result,), daemon=True)
+        cls._thread.start()
+        if not bpy.app.timers.is_registered(_apply_server_check):
+            bpy.app.timers.register(_apply_server_check, first_interval=0.2, persistent=True)
+
+    @staticmethod
+    def _probe(result):
+        # Worker thread: file system only, never bpy.
+        result["online"] = os.path.isdir(SERVER_DIR)
+        result["users"] = read_user_list()
+
+
+def fill_user_lists():
+    """Copy the known users into the window manager list that the User search reads."""
+    for wm in bpy.data.window_managers:
+        people = wm.gs_person_list
+        people.clear()
+        for name in ServerStatus.users:
+            people.add().name = name
+
+
+def _redraw_view3d():
+    wm = bpy.context.window_manager
+    if wm is None:
+        return
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+
+def _apply_server_check():
+    if ServerStatus._thread.is_alive():
+        return 0.2
+    ServerStatus.online = ServerStatus._result.get("online", False)
+    ServerStatus.users = ServerStatus._result.get("users", [])
+    if not ServerStatus.online:
+        print(f"GS File Transfer: can't reach {SERVER_DIR}, Server section disabled")
+    fill_user_lists()
+    _redraw_view3d()
+    return None
 
 
 @bpy.app.handlers.persistent
-def load_handler(dummy):
-    for scene in bpy.data.scenes:
-        populate_person_list(scene)
+def load_handler(_dummy):
+    fill_user_lists()     # a newly opened file starts with an empty list
+    ServerStatus.check()  # and the server may have come (or gone) since
 
 
-def _populate_list_timer():
-    for scene in bpy.data.scenes:
-        if len(scene.gs_person_list) == 0:
-            populate_person_list(scene)
-    return None
+class GS_OT_check_server(Operator):
+    bl_idname = "gs.check_server"
+    bl_label = "Check Server"
+    bl_description = "Check the server connection again and reload the user list"
+
+    def execute(self, context):
+        ServerStatus.check()
+        return {'FINISHED'}
 
 
 # ---------------------------------------------------------------------------
 # Draw (called by the GS Pipeline menu framework under File I/O > GS File Transfer)
 # ---------------------------------------------------------------------------
+def _draw_settings(layout, gs_props):
+    box = layout.box()
+    mode_row = box.split(factor=0.3)
+    mode_row.label(text="Mode")
+    mode_row.row(align=True).prop(gs_props, "export_mode", expand=True)
+
+    columns = box.split(factor=0.5)
+    import_col = columns.column()
+    import_col.label(text="Import", icon='IMPORT')
+    import_col.prop(gs_props, "clear_normals")
+    import_col.prop(gs_props, "merge_materials")
+    import_col.prop(gs_props, "set_auto_smooth")
+    angle_row = import_col.row()
+    angle_row.enabled = gs_props.set_auto_smooth
+    angle_row.prop(gs_props, "smooth_angle")
+
+    export_col = columns.column()
+    export_col.label(text="Export", icon='EXPORT')
+    smoothing = export_col.row()
+    smoothing.enabled = fbx_supports_smoothing_groups()  # greyed out in Blender 3.6
+    smoothing.prop(gs_props, "export_smooth_groups")
+
+
+def _draw_transfer_buttons(layout, import_op, export_op):
+    row = layout.row()
+    row.scale_y = 1.3
+    imp = row.operator(import_op, text="Import", icon='IMPORT')
+    exp = row.operator(export_op, text="Export", icon='EXPORT')
+    return imp, exp
+
+
 def draw_file_transfer(layout, context):
     scene = context.scene
     gs_props = scene.gs_file_transfer_props
 
-    mode_box = layout.box()
-    mode_box.label(text="Mode")
-    mode_row = mode_box.row()
-    mode_row.prop(gs_props, "export_mode", expand=True)
+    _draw_settings(layout, gs_props)
 
-    options_row = mode_box.row()
-    split = options_row.split(factor=0.5)
-    split.prop(gs_props, "clear_normals")
-    auto_smooth_col = split.row()
-    auto_smooth_col.label(text="Auto Smooth:")
-    auto_smooth_col.prop(gs_props, "auto_smooth_angle", text="")
+    local = layout.box()
+    local.label(text="Local", icon='HOME')
+    local.prop(gs_props, "local_app")
+    imp, exp = _draw_transfer_buttons(local, "gs.import_from_application", "gs.export_to_application")
+    imp.source_app = gs_props.local_app
+    exp.target_app = gs_props.local_app
 
-    layout.separator()
+    server = layout.box()
+    header = server.row()
+    header.label(text="Server", icon='WORLD')
+    header.operator("gs.check_server", text="", icon='FILE_REFRESH', emboss=False)
+    online = ServerStatus.online
+    if online is None:
+        server.label(text="Checking the server...", icon='TIME')
+    elif not online:
+        server.label(text="Can't reach the server", icon='ERROR')
 
-    box = layout.box()
-    box.label(text="Local")
-    row = box.row()
-    col1 = row.column()
-    col1.label(text="Maya")
-    col1.operator("gs.import_from_application", text="Import").source_app = "maya"
-    col1.operator("gs.export_to_application", text="Export").target_app = "maya"
-    col2 = row.column()
-    col2.label(text="Max")
-    col2.operator("gs.import_from_application", text="Import").source_app = "max"
-    col2.operator("gs.export_to_application", text="Export").target_app = "max"
+    body = server.column()
+    body.enabled = bool(online)
+    people = context.window_manager.gs_person_list
+    body.prop_search(gs_props, "server_user", context.window_manager, "gs_person_list", icon='USER')
+    if online and len(people) == 0:
+        body.label(text="User list unavailable", icon='ERROR')
+    body.prop(gs_props, "server_app")
+    _draw_transfer_buttons(body, "gs.import_from_server", "gs.export_to_server")
 
-    server_box = layout.box()
-    server_box.label(text="Server")
-    app_row = server_box.row()
-    split = app_row.split(factor=0.5)
-    split.label(text="Target Software:")
-    split.prop(gs_props, "server_target_app", text="")
-    person_row = server_box.row()
-    person_row.template_list(
-        "GS_UL_PersonList", "server_person_list",
-        scene, "gs_person_list",
-        scene, "gs_person_index",
-        rows=8,
-        type='DEFAULT',
-    )
-    button_row = server_box.row()
-    button_row.operator("gs.import_from_server", text="Import")
-    button_row.operator("gs.export_to_server", text="Export")
-
-    user_row = layout.row()
-    user_row.label(text="Current User: " + username)
+    layout.label(text="Current User: " + username)
 
 
 # ---------------------------------------------------------------------------
@@ -696,11 +993,11 @@ GROUP = {
 
 CLASSES = (
     GS_PersonItem,
-    GS_UL_PersonList,
     IMPORT_OT_from_application,
     EXPORT_OT_to_application,
     IMPORT_OT_from_server,
     EXPORT_OT_to_server,
+    GS_OT_check_server,
     GSFileTransferProperties,
 )
 
@@ -709,22 +1006,22 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.gs_file_transfer_props = bpy.props.PointerProperty(type=GSFileTransferProperties)
-    bpy.types.Scene.gs_person_list = bpy.props.CollectionProperty(type=GS_PersonItem)
-    bpy.types.Scene.gs_person_index = bpy.props.IntProperty(default=0)
+    # Runtime-only (window manager data isn't saved), shared by every scene.
+    bpy.types.WindowManager.gs_person_list = bpy.props.CollectionProperty(type=GS_PersonItem)
     if load_handler not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(load_handler)
-    try:
-        bpy.app.timers.register(_populate_list_timer, first_interval=1.0)
-    except Exception:
-        pass
+    ServerStatus.check()
 
 
 def unregister():
     if load_handler in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(load_handler)
-    for attr in ("gs_person_list", "gs_person_index", "gs_file_transfer_props"):
-        if hasattr(bpy.types.Scene, attr):
-            delattr(bpy.types.Scene, attr)
+    if bpy.app.timers.is_registered(_apply_server_check):
+        bpy.app.timers.unregister(_apply_server_check)
+    if hasattr(bpy.types.WindowManager, "gs_person_list"):
+        del bpy.types.WindowManager.gs_person_list
+    if hasattr(bpy.types.Scene, "gs_file_transfer_props"):
+        del bpy.types.Scene.gs_file_transfer_props
     for cls in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(cls)

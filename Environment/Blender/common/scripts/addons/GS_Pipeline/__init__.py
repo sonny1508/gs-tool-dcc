@@ -1,8 +1,8 @@
 bl_info = {
     "name": "GS Pipeline",
     "author": "Glenda Studio",
-    "version": (1, 0),
-    "blender": (3, 6, 0),
+    "version": (1, 2),
+    "blender": (3, 6, 10),
     "location": "View3D > Sidebar > GS Pipeline",
     "description": "Glenda Studio production pipeline tools, organized by category > group > tab.",
     "category": "3D View",
