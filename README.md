@@ -76,6 +76,13 @@ Environment/
 - **3ds Max** — scripts/macros drop into the version's `ENU` tree; `startup/` scripts
   auto-run. API quirks and maintenance notes: [Docs/3dsMax_Maintenance.md](Docs/3dsMax_Maintenance.md).
 - **Blender** — addons live under the version `scripts/addons` and `common/scripts/addons`.
+  Each version's `scripts/startup/gs_pipeline` shim runs `common/scripts/gs_pipeline_core`
+  on launch, which also re-applies the extensions policy every time (4.2+): Allow Online
+  Access on, and the stock `blender_org` repo routed through `extension-proxy.local` when
+  that host answers, straight to extensions.blender.org when it doesn't (so off the studio
+  network it's stock Blender). `GS_EXTENSIONS_PROXY_URL` overrides the proxy; empty
+  disables it. Blender stores prefs in one `userpref.blend`, so this can't ship as a
+  config file.
 - **Substance Painter** — Painter auto-loads everything under its `python/plugins` folder
   on launch.
 

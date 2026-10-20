@@ -4,17 +4,21 @@ This module lives once under ``common/scripts`` and is loaded by the tiny
 per-version shim at ``<version>/scripts/startup/gs_pipeline/__init__.py``.
 
 Responsibilities, run ONCE per Blender launch (not per file open):
-  1. Register the common scripts folder as a named script directory so Blender
+  1. Enforce the extensions policy (4.2+, see ``extensions_policy``). This one
+     runs straight from ``register()``, before Blender loads any extension.
+  2. Register the common scripts folder as a named script directory so Blender
      discovers the shared addons under ``common/scripts/addons``.
-  2. Enable the GS pipeline addons that should be on by default.
-  3. Persist preferences only if something actually changed.
+  3. Enable the GS pipeline addons that should be on by default.
+  4. Persist preferences only if something actually changed.
 
-Works on Blender 3.6 and 4.x (the ``filepaths.script_directories`` collection
-exists in both).
+Works on Blender 3.6, 4.x and 5.x (the ``filepaths.script_directories``
+collection exists in all of them).
 """
 
 import os
 import bpy
+
+from . import extensions_policy
 
 # Stable label for the script directory we manage, so we can find/upsert it
 # without disturbing any directory an artist added themselves.
@@ -120,12 +124,22 @@ def _setup():
 def register():
     """Schedule setup to run once when the event loop is ready."""
     print("[GS Pipeline] Registering (scheduling one-shot setup).")
+    # Startup scripts register before Blender loads extensions, so repository
+    # fixes made here are in place before any extension is imported.
+    try:
+        extensions_policy.register()
+    except Exception as e:  # never let setup break Blender startup
+        print(f"[GS Pipeline] Failed to register extensions policy: {e}")
+
     # A one-shot timer runs once at launch with full context available, instead
-    # of a load_post handler that would re-run on every file open.
-    bpy.app.timers.register(_setup, first_interval=0.0)
+    # of a load_post handler that would re-run on every file open. Persistent,
+    # because loading a file drops other timers, and a .blend opened at launch
+    # (double-click) loads before the first timer tick.
+    bpy.app.timers.register(_setup, first_interval=0.0, persistent=True)
 
 
 def unregister():
     print("[GS Pipeline] Unregistering.")
+    extensions_policy.unregister()
     if bpy.app.timers.is_registered(_setup):
         bpy.app.timers.unregister(_setup)
