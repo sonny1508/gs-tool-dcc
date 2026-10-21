@@ -49,23 +49,55 @@ if (maxVersion())[1] >= 27000 then ( -- 2025+
 
 ```
 Environment/Autodesk/3dsMax/
+├── common/                      → %LOCALAPPDATA%\Autodesk\3dsMax\common\
+│   └── gstools/                 our tool code, one copy for every Max version
 └── <year> - 64bit/ENU/          → %LOCALAPPDATA%\Autodesk\3dsMax\<year> - 64bit\ENU\
     ├── scripts/startup/         auto-run at every Max launch (gs_menu_startup.ms lives here)
-    ├── scripts/gstools/         our tool code (MAXScript backends + Python/Qt UIs)
+    ├── scripts/gstools/         tool code not yet moved to common/
     ├── scripts/<vendor>/        third-party tools (NikScripts, PolySmoother)
     ├── usermacros/<folder>/     *.mcr macroScripts, all category:"GSTools"
     └── usericons/
 ```
 
-### One tree per version, kept in sync
+### Tool code in `common/`, thin macros per version
 
-Max reads each version's own folder; there is no shared folder that every version reads.
-So each version gets a full copy of the tree, and the shared files must stay
-**byte-identical across the version folders**. `gs_menu_startup.ms` is written to run
-correctly on every version, branching on `maxVersion()` itself.
+Max only reads its own version folder, so anything Max loads by itself has to sit in every
+version tree: `.mcr` macros, startup scripts, icons and compiled plugins. Tool code does not.
+A macro can load a script from anywhere, so the code lives once in `common/` and each
+version's `.mcr` is a thin wrapper that points at it:
+
+```maxscript
+-- #userScripts is ...\3dsMax\<year> - 64bit\ENU\scripts; three leaves up is ...\3dsMax
+local maxRoot = pathConfig.removePathLeaf (pathConfig.removePathLeaf (pathConfig.removePathLeaf (getDir #userScripts)))
+local p = pathConfig.appendPath maxRoot "common\\gstools\\review\\scene_checker\\scene_checker_ui.py"
+if doesFileExist p then python.ExecuteFile p
+```
+
+The user installer copies the whole `Environment\Autodesk\3dsMax` tree, so `common\` lands
+next to the version folders on every machine with no installer change.
+
+Code in `common/` runs on every Max version, so it has to clear all of their bars at once:
+
+- **Python 3.9 floor** (Max 2023). No `match`, and no `X | Y` unions outside annotations
+  (inside them they're fine only under `from __future__ import annotations`).
+- **No 3.12/3.13-removed stdlib modules** (Max 2027): `imp`, `distutils`, `cgi`, …
+- **Qt binding picked by Max version** ([§5](#5-python-and-qt-inside-max)).
+- **Never compiled plugins** (`.dlx`, `.dlo`, `.dll`): those are per-version by nature
+  ([§6](#6-compiled-and-encrypted-third-party-plugins)) and stay in the version trees.
+
+Moved so far: `review/scene_checker` and `normals/N00BY_Scripts` (Custom Normals Tool).
+Everything else under `scripts/gstools/` is still duplicated per version; move a tool when
+you are next working on it.
+
+### What still lives per version, kept in sync
+
+The `.mcr` wrappers, `gs_menu_startup.ms` and the icons still exist once per version and
+must stay **byte-identical across the version folders**. `gs_menu_startup.ms` is written to
+run correctly on every version, branching on `maxVersion()` itself.
 
 Workflow: edit the 2025 copy, then copy the changed file into the other version folders.
-Don't let a tree drift; per-version forks get out of sync quickly.
+Don't let a tree drift; per-version forks get out of sync quickly. Once a tool's code is in
+`common/`, its `.mcr` only changes if the entry-point path does.
 
 ### Deploying
 
@@ -91,6 +123,11 @@ for macros:
 
 When you rename or remove deployed files, also clean the share and tell people to delete
 the stale copies from their local folder.
+
+Moving a tool into `common/` leaves its old per-version copy on disk too (for example
+`<year> - 64bit\ENU\scripts\gstools\review\scene_checker\`). That one is harmless, since no
+macro points at it any more, but delete it when debugging so you aren't reading the wrong
+file.
 
 ---
 
@@ -166,10 +203,12 @@ has to clean up after previous launches:
 
 ### Adding a tool to the GSTools menu
 
-1. Write the `.mcr` under `usermacros/<folder>/` with `category:"GSTools"`.
-2. Add `#("MacroName", "<new guid>")` to the right folder in `gsMenuLayout` in
+1. Put the tool code under `common/gstools/<area>/<tool>/`.
+2. Write a thin `.mcr` under `usermacros/<folder>/` with `category:"GSTools"` that loads it
+   (see [§2](#tool-code-in-common-thin-macros-per-version)).
+3. Add `#("MacroName", "<new guid>")` to the right folder in `gsMenuLayout` in
    `scripts/startup/gs_menu_startup.ms`. A new folder also needs its own GUID.
-3. Copy the `.mcr` and `gs_menu_startup.ms` into every version folder.
+4. Copy the `.mcr` and `gs_menu_startup.ms` into every version folder.
 
 ### Dead end: patching the Qt menu bar from Python
 
@@ -220,13 +259,8 @@ global still exists in that version.
 
 A macro body should not depend on globals that a startup script defines, because macros and
 startup scripts load at different points during startup. Our macros resolve their own
-paths:
-
-```maxscript
-local root = (getDir #userScripts) + "\\gstools\\"
-local p = root + "review\\scene_checker\\scene_checker_ui.py"
-if doesFileExist p then python.ExecuteFile p
-```
+paths, from `getDir #userScripts` (the pattern is in
+[§2](#tool-code-in-common-thin-macros-per-version)).
 
 `_gstools_scripts_root` (set in `gs_menu_startup.ms`) is a convenience for code that runs
 after startup. It is not something macros can count on.
@@ -259,7 +293,7 @@ else:                                # Max 2023   → PySide2
 ```
 
 The reference implementation is `_qt_modules()` in
-`scripts/gstools/review/scene_checker/scene_checker_ui.py`. `hw3_tools_ui.py` still uses
+`common/gstools/review/scene_checker/scene_checker_ui.py`. `hw3_tools_ui.py` still uses
 the import-first shim and has the same latent bug.
 
 This is the opposite of the Maya rule (where the repo branches on the import); see
