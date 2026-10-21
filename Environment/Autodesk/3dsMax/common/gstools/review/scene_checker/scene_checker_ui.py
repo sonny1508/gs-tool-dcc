@@ -1,5 +1,5 @@
 """
-scene_checker_ui.py — GSTools Scene Checker for 3ds Max 2023 / 2025
+scene_checker_ui.py — GSTools Scene Checker for 3ds Max 2023+
 ============================================================
 UI:             PySide6 (Max 2025, Qt6) or PySide2 (Max 2023, Qt5) QDialog
 Max operations: scene_checker.ms backend, called via pymxs.runtime
@@ -85,11 +85,56 @@ def _to_str_list(result) -> list | None:
         return []
 
 
+def _scene_info() -> list:
+    """Return the INFO panel rows as [(label, value), ...]."""
+    flat = _to_str_list(_call_ms("SC_GetSceneInfo()")) or []
+    return list(zip(flat[0::2], flat[1::2]))
+
+
+# ── Scene callbacks (keep the INFO panel current) ─────────────────────────────
+
+_INFO_CALLBACK_ID = "GSSceneCheckerInfo"
+# Every Max event that can change what the INFO panel shows.
+_INFO_EVENTS = (
+    "unitsChange",
+    "filePostOpen",
+    "systemPostNew",
+    "systemPostReset",
+    "sceneNodeAdded",
+    "nodePostDelete",
+)
+_active_dialog = None
+
+
+def _on_scene_changed():
+    """Max callback (takes no arguments): refresh the open dialog's INFO panel."""
+    global _active_dialog
+    if _active_dialog is None:
+        return
+    try:
+        _active_dialog.schedule_info_refresh()
+    except RuntimeError:  # the C++ side was deleted without finished() firing
+        _active_dialog = None
+
+
+def _register_info_callbacks() -> None:
+    from pymxs import runtime as rt
+    _unregister_info_callbacks()
+    for event in _INFO_EVENTS:
+        rt.callbacks.addScript(rt.Name(event), _on_scene_changed,
+                               id=rt.Name(_INFO_CALLBACK_ID))
+
+
+def _unregister_info_callbacks() -> None:
+    from pymxs import runtime as rt
+    rt.callbacks.removeScripts(id=rt.Name(_INFO_CALLBACK_ID))
+
+
 # ── Dialog ────────────────────────────────────────────────────────────────────
 
 def show() -> None:
     """Open (or re-open) the Scene Checker dialog."""
-    global _ms_loaded
+    global _ms_loaded, _active_dialog
     _ms_loaded = False  # always reload scene_checker.ms so edits take effect
     QtWidgets, _, _ = _qt_modules()
     try:
@@ -109,6 +154,8 @@ def show() -> None:
 
     DialogClass = _get_dialog_class()
     dlg = DialogClass(parent)
+    _active_dialog = dlg
+    _register_info_callbacks()
     dlg.show()
 
 
@@ -129,12 +176,23 @@ def _get_dialog_class():
         def __init__(self, parent=None):
             super(_SceneCheckerDialog, self).__init__(parent)
             self.setObjectName("Scene Checker UI")
-            self.setWindowTitle("Scene Checker v1.2")
+            self.setWindowTitle("Scene Checker v1.25")
             self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
             self.resize(420, 380)
 
             self._current_check_type = ""
+            self._info_values = {}  # INFO row label -> value QLabel
             self._build_ui()
+
+            # Scene events arrive in bursts (a merge fires sceneNodeAdded once per
+            # node), so they only restart this timer and the panel refreshes once.
+            self._info_timer = QtCore.QTimer(self)
+            self._info_timer.setSingleShot(True)
+            self._info_timer.setInterval(100)
+            self._info_timer.timeout.connect(self._refresh_info)
+            # finished fires for the close button, Esc and close() alike.
+            self.finished.connect(self._on_finished)
+            self._refresh_info()
 
         # ── Layout ────────────────────────────────────────────────────────────
         def _build_ui(self):
@@ -167,14 +225,17 @@ def _get_dialog_class():
             obj_l.addWidget(self._btn("Reset Pivot", self._on_reset_pivot))
             left.addWidget(obj)
 
-            sel = QtWidgets.QGroupBox("SELECT")
-            sel_l = QtWidgets.QVBoxLayout(sel)
+            left.addStretch()
+
+            # INFO sits below the stretch so it stays pinned to the bottom.
+            info = QtWidgets.QGroupBox("INFO")
+            info_l = QtWidgets.QVBoxLayout(info)
+            self._info_form = QtWidgets.QFormLayout()
+            info_l.addLayout(self._info_form)
             self._btn_select_error = self._btn("Select Error", self._on_select_error)
             self._btn_select_error.setEnabled(False)
-            sel_l.addWidget(self._btn_select_error)
-            left.addWidget(sel)
-
-            left.addStretch()
+            info_l.addWidget(self._btn_select_error)
+            left.addWidget(info)
 
             # Right side — results list
             self._lbx_results = QtWidgets.QListWidget()
@@ -188,6 +249,27 @@ def _get_dialog_class():
             b.setMinimumWidth(160)
             b.clicked.connect(callback)
             return b
+
+        # ── INFO panel ────────────────────────────────────────────────────────
+        def schedule_info_refresh(self):
+            self._info_timer.start()  # restarts if already pending
+
+        def _refresh_info(self):
+            """Rebuild the INFO rows from the backend; rows are created on first sight."""
+            for name, value in _scene_info():
+                lbl = self._info_values.get(name)
+                if lbl is None:
+                    lbl = QtWidgets.QLabel()
+                    self._info_form.addRow(name + ":", lbl)
+                    self._info_values[name] = lbl
+                lbl.setText(value)
+
+        def _on_finished(self, _result):
+            global _active_dialog
+            self._info_timer.stop()
+            _unregister_info_callbacks()
+            if _active_dialog is self:
+                _active_dialog = None
 
         # ── Results plumbing ──────────────────────────────────────────────────
         def _set_results(self, check_type, items, select_enabled):

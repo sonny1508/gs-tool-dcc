@@ -863,3 +863,31 @@ fn SC_SelectByName obj_name =
 	)
 	return false
 )
+
+-- ── Scene info (INFO panel) ──────────────────────────────────────────────────
+fn SC_unitLabel unit_name =
+(
+	case unit_name of
+	(
+		#inches: "in"
+		#feet: "ft"
+		#miles: "mi"
+		#millimeters: "mm"
+		#centimeters: "cm"
+		#meters: "m"
+		#kilometers: "km"
+		default: unit_name as string
+	)
+)
+
+-- Returns a flat #(label, value, label, value, ...) array. The UI builds one
+-- row per pair in this order, so adding a row only needs a change here.
+fn SC_GetSceneInfo =
+(
+	local system_unit = "1 unit = " + (units.SystemScale as string) + " " + (SC_unitLabel units.SystemType)
+
+	return #(
+		"System Unit", system_unit,
+		"Geometry", (geometry.count as string)
+	)
+)
