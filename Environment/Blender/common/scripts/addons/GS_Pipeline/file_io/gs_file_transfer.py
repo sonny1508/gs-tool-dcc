@@ -83,7 +83,7 @@ class FBXSettings:
         'apply_scale_options': 'FBX_SCALE_ALL',
         'use_space_transform': True,
         'bake_space_transform': False,
-        'object_types': {'MESH'},
+        'object_types': {'MESH', 'EMPTY'},  # empties carry the hierarchy; narrowed to meshes by Mesh Only
         'use_mesh_modifiers': True,
         'use_mesh_modifiers_render': True,
         'mesh_smooth_type': 'OFF',  # switched to 'SMOOTH_GROUP' for 3ds Max when enabled
@@ -445,7 +445,10 @@ def export_fbx_with_settings(filepath, context, target_app):
     """Export the selection for ``target_app``. Returns how many sharp edges were filled in."""
     gs_props = context.scene.gs_file_transfer_props
     settings = dict(FBXSettings.EXPORT)
-    smoothing_groups = (target_app == "max" and gs_props.export_smooth_groups
+    if gs_props.export_mesh_only:
+        # Selected empties are skipped and meshes under them come out in world space.
+        settings['object_types'] = {'MESH'}
+    smoothing_groups =(target_app == "max" and gs_props.export_smooth_groups
                         and fbx_supports_smoothing_groups())
     if smoothing_groups:
         settings['mesh_smooth_type'] = 'SMOOTH_GROUP'
@@ -538,12 +541,13 @@ def _export_one(op, context, path, target_app):
 
 
 def run_export(op, context, directory, stem, target_app):
-    """Export the selection as '<stem>.fbx' (All) or one '<object>_<stem>.fbx' per object (Individual)."""
+    """Export the selection as '<stem>.fbx' (All) or one '<object>_<stem>.fbx' per mesh (Individual)."""
     gs_props = context.scene.gs_file_transfer_props
     ensure_object_mode(context)
     selected = list(context.selected_objects)
-    if not selected:
-        op.report({'WARNING'}, "Please select objects to export!")
+    meshes = [obj for obj in selected if obj.type == 'MESH']
+    if not meshes:
+        op.report({'WARNING'}, "Please select meshes to export!")
         return {'CANCELLED'}
     try:
         os.makedirs(directory, exist_ok=True)
@@ -564,7 +568,9 @@ def run_export(op, context, directory, stem, target_app):
         active = context.view_layer.objects.active
         exported, filled = 0, 0
         try:
-            for obj in selected:
+            # Meshes only: a hierarchy can't span separate files, and a file
+            # holding a lone empty would only clutter the receiver's scene.
+            for obj in meshes:
                 select_only(context, [obj])
                 path = os.path.join(directory, f"{safe_file_name(obj.name)}_{stem}.fbx")
                 result = _export_one(op, context, path, target_app)
@@ -754,6 +760,12 @@ class GSFileTransferProperties(bpy.types.PropertyGroup):
     )
 
     # --- Export ---
+    export_mesh_only: BoolProperty(
+        name="Mesh Only",
+        description="Export only the selected meshes, leaving out the empties (nulls) that "
+                    "hold the hierarchy. Meshes keep their position in the world",
+        default=False,
+    )
     export_smooth_groups: BoolProperty(
         name="Export Smoothing Groups",
         description="When exporting to 3ds Max, turn your sharp edges into smoothing groups. "
@@ -932,6 +944,7 @@ def _draw_settings(layout, gs_props):
 
     export_col = columns.column()
     export_col.label(text="Export", icon='EXPORT')
+    export_col.prop(gs_props, "export_mesh_only")
     smoothing = export_col.row()
     smoothing.enabled = fbx_supports_smoothing_groups()  # greyed out in Blender 3.6
     smoothing.prop(gs_props, "export_smooth_groups")
