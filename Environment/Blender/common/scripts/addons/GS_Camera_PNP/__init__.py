@@ -14,8 +14,9 @@ import sys
 import importlib
 
 # Force add OpenCV path to the BEGINNING of sys.path
-username = os.environ['USERNAME']
-opencv_path = f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python39\\Lib\\site-packages"
+# USERPROFILE, not USERNAME: the profile folder can be "<user>.<DOMAIN>" when a folder already existed at first logon
+user_profile = os.environ['USERPROFILE']
+opencv_path = os.path.join(user_profile, "AppData", "Local", "Programs", "Python", "Python39", "Lib", "site-packages")
 
 # Remove any existing instances of this path and add it to the beginning
 if opencv_path in sys.path:
