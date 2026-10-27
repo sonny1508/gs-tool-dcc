@@ -47,7 +47,7 @@ FBX_SETTINGS = {
     # Server locations
     'server_path': r'\\192.168.1.210\Temp\File_Transfer',
     'library_path': r'\\192.168.1.210\Pipeline\Library\Data',
-    'csv_filename': 'Data_Computer_Auto.csv',
+    'csv_filename': 'Data_Computer_Update.csv',
     'csv_user_column': 'User',
 
     'local_temp_subfolder': 'fileTransferFbx',

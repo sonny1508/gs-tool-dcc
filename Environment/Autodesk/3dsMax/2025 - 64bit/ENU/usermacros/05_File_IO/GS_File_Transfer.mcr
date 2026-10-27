@@ -48,7 +48,7 @@ buttonText:"GS File Transfer"
 	
 	-- Generate user list from CSV file
 	local gsFolderList = #()
-	local csvPath = "\\\\192.168.1.210\\Pipeline\\Library\\Data\\Data_Users.csv"
+	local csvPath = "\\\\192.168.1.210\\Pipeline\\Library\\Data\\Data_Computer_Update.csv"
 
 	try
 	(
