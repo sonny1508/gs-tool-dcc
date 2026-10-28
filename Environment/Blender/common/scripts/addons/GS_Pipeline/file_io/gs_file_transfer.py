@@ -26,6 +26,14 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from bpy.types import Operator
 
+from ..common import (
+    ensure_object_mode,
+    legacy_auto_smooth,
+    redraw_view3d,
+    select_only,
+    set_auto_smooth,
+)
+
 # ===== GLOBAL FBX SETTINGS CONFIGURATION =====
 username = getpass.getuser()
 temp_dir = tempfile.gettempdir()
@@ -145,19 +153,6 @@ def individual_files(directory, stem):
     return [os.path.join(directory, name) for name in names if name.lower().endswith(suffix)]
 
 
-def select_only(context, objects):
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in objects:
-        obj.select_set(True)
-    if objects:
-        context.view_layer.objects.active = objects[0]
-
-
-def ensure_object_mode(context):
-    if context.mode != 'OBJECT' and context.view_layer.objects.active is not None:
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-
 def calculate_import_scale(context):
     if not FBXSettings.SCALE['use_auto_scale']:
         return FBXSettings.SCALE['manual_import_scale']
@@ -187,22 +182,6 @@ def clear_normals_from_objects(context, objects):
         bpy.ops.object.shade_smooth()
 
 
-def _legacy_auto_smooth():
-    """True on Blender 3.6, where auto smooth is a mesh setting (4.1+ replaced it with a modifier)."""
-    return "use_auto_smooth" in bpy.types.Mesh.bl_rna.properties
-
-
-def set_auto_smooth(context, objects, angle):
-    """Blender's own Object > Shade Auto Smooth, so the result matches the menu entry exactly."""
-    select_only(context, objects)
-    if _legacy_auto_smooth():
-        # 3.6: Shade Auto Smooth is Shade Smooth with the mesh's auto smooth turned on.
-        bpy.ops.object.shade_smooth(use_auto_smooth=True, auto_smooth_angle=angle)
-    else:
-        # 4.1+: adds (or updates) the "Smooth by Angle" modifier.
-        bpy.ops.object.shade_auto_smooth(angle=angle)
-
-
 def keep_imported_normals(objects):
     """Blender 3.6 only: stop auto smooth's angle from re-splitting the imported normals.
 
@@ -211,7 +190,7 @@ def keep_imported_normals(objects):
     At 180 deg shading is left to the imported normals and sharp edges, which is
     what 4.1+ does when no Smooth by Angle modifier is added.
     """
-    if not _legacy_auto_smooth():
+    if not legacy_auto_smooth():
         return
     for obj in objects:
         if obj.data.use_auto_smooth:
@@ -885,16 +864,6 @@ def fill_user_lists():
             people.add().name = name
 
 
-def _redraw_view3d():
-    wm = bpy.context.window_manager
-    if wm is None:
-        return
-    for window in wm.windows:
-        for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
-
-
 def _apply_server_check():
     if ServerStatus._thread.is_alive():
         return 0.2
@@ -903,7 +872,7 @@ def _apply_server_check():
     if not ServerStatus.online:
         print(f"GS File Transfer: can't reach {SERVER_DIR}, Server section disabled")
     fill_user_lists()
-    _redraw_view3d()
+    redraw_view3d()
     return None
 
 

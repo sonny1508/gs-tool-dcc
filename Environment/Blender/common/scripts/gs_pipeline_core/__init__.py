@@ -28,7 +28,6 @@ MANAGED_DIR_NAME = "GSTools_Common"
 # 3.6-vs-4.x divergence even though the current set is uniform across versions.
 COMMON_AUTO_ENABLE = [
     "GS_Pipeline",
-    "GS_Asset_Validation",
     "GS_Texture_Validator",
     "s4_env_tools",
     "s4_vehicle_tools",
@@ -36,9 +35,11 @@ COMMON_AUTO_ENABLE = [
 
 # Addons that were merged elsewhere and must be force-disabled on launch so they
 # don't double-register operators/properties that now live in GS_Pipeline.
+# Deploys are additive, so their folders can linger on artist machines.
 COMMON_FORCE_DISABLE = [
     "S4_Veh_Validator",
     "S4_Env_Validator",
+    "GS_Asset_Validation",  # now GS Pipeline > Review > Asset Validation
 ]
 
 

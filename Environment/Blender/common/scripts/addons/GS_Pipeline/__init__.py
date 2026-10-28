@@ -1,7 +1,7 @@
 bl_info = {
     "name": "GS Pipeline",
     "author": "Glenda Studio",
-    "version": (1, 2),
+    "version": (1, 3),
     "blender": (3, 6, 10),
     "location": "View3D > Sidebar > GS Pipeline",
     "description": "Glenda Studio production pipeline tools, organized by category > group > tab.",
@@ -12,13 +12,14 @@ import bpy
 
 from . import common  # noqa: F401  (shared helpers, imported by tool modules)
 from . import projects
+from . import review
 from . import file_io
 
 print("Initializing GS Pipeline")
 
 # Ordered top-level categories. Each exposes a CATEGORY descriptor:
 #   {"id", "label", "groups": [{"id", "label", "tabs": [{"label","draw"}, ...]}, ...]}
-CATEGORY_MODULES = (projects, file_io)
+CATEGORY_MODULES = (projects, review, file_io)
 CATEGORIES = [m.CATEGORY for m in CATEGORY_MODULES]
 
 # Category shown when the panel first appears. Changes only which one is active
@@ -47,30 +48,43 @@ def _get_tab(group, tab_value):
 
 
 # ----------------------------------------------------------------------------
-# Dynamic EnumProperty item callbacks (category > group > sub-tab)
+# EnumProperty items (category > group > sub-tab)
 # ----------------------------------------------------------------------------
 # The category list is fixed at import time, so it can be a static enum -- which
 # is what lets it carry a `default`. Group/sub-tab stay dynamic: they depend on
-# the current selection one level up.
+# the current selection one level up. Their items are still built once here,
+# because Blender doesn't copy the strings a dynamic enum callback returns: a
+# list made fresh on every call can be freed while the UI still shows it.
 CATEGORY_ITEMS = [(c["id"], c["label"], f"{c['label']} tools") for c in CATEGORIES]
+
+_NO_ITEMS = [("NONE", "None", "")]
+_GROUP_ITEMS = {
+    c["id"]: [(g["id"], g["label"], g["label"]) for g in c["groups"]] or _NO_ITEMS
+    for c in CATEGORIES
+}
+_TAB_ITEMS = {
+    (c["id"], g["id"]): [(t["label"].upper(), t["label"], t["label"]) for t in g["tabs"]] or _NO_ITEMS
+    for c in CATEGORIES
+    for g in c["groups"]
+}
 
 
 def _group_items(self, context):
     category = _get_category(getattr(context.window_manager, "gs_category", ""))
-    if not category or not category["groups"]:
-        return [("NONE", "None", "")]
-    return [(g["id"], g["label"], g["label"]) for g in category["groups"]]
+    if not category:
+        return _NO_ITEMS
+    return _GROUP_ITEMS[category["id"]]
 
 
 def _subtab_items(self, context):
     wm = context.window_manager
     category = _get_category(getattr(wm, "gs_category", ""))
     if not category:
-        return [("NONE", "None", "")]
+        return _NO_ITEMS
     group = _get_group(category, getattr(wm, "gs_group", ""))
-    if not group or not group["tabs"]:
-        return [("NONE", "None", "")]
-    return [(t["label"].upper(), t["label"], t["label"]) for t in group["tabs"]]
+    if not group:
+        return _NO_ITEMS
+    return _TAB_ITEMS[(category["id"], group["id"])]
 
 
 def _register_wm_props():
@@ -105,6 +119,9 @@ def _unregister_wm_props():
 # ----------------------------------------------------------------------------
 # Main panel: category bar > group bar > sub-tab bar > active tool UI
 # ----------------------------------------------------------------------------
+# Blender has no API for a minimum sidebar width (Region.width is read-only in
+# 3.6 - 5.2), so tabs lay themselves out for the width they get instead; see
+# common.is_wide().
 class GS_PT_Pipeline(bpy.types.Panel):
     bl_label = "GS Pipeline"
     bl_idname = "GS_PT_Pipeline"
@@ -123,7 +140,7 @@ class GS_PT_Pipeline(bpy.types.Panel):
         if category is None:
             return
 
-        # --- Level 2: group bar (only when the category has >1 group) ---
+        # --- Level 2: group bar (only when the category has >1 group, e.g. one per project) ---
         if len(category["groups"]) > 1:
             layout.prop(wm, "gs_group", expand=True)
         group = _get_group(category, wm.gs_group)
