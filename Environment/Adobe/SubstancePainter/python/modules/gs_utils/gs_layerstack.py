@@ -228,96 +228,159 @@ class MaskManager:
         pure_white = colormanagement.Color(1.0, 1.0, 1.0)
         my_fill_effect_mask.set_source(channeltype=None, source=pure_white)
 
+PBR_VALIDATOR = "GS_PBR_Validator"
+"""Shelf name of the PBR validator filter. Each project's range is a preset inside this one sbsar."""
+
+LEGACY_PBR_VALIDATORS = ["GS_PBR_Validator_R6", "GS_PBR_Validator_HW3", "GS_PBR_Validator_MGP25"]
+"""Old one-sbsar-per-project validators. They carry no presets; kept so Remove still cleans them up."""
+
+
+def iter_layers(nodes):
+    """Yield every layer in `nodes`, descending into groups."""
+    for node in nodes:
+        yield node
+        if node.get_type() == layerstack.NodeType.GroupLayer:
+            yield from iter_layers(node.sub_layers())
+
+
+def iter_pbr_validator_filters(stacks):
+    """Yield every GS_PBR_Validator filter effect in `stacks`, matched by its sbsar rather than the
+    layer name, so renamed layers and validators nested in groups are found too."""
+    for stack in stacks:
+        for layer in iter_layers(layerstack.get_root_layer_nodes(stack)):
+            for effect in layer.content_effects():
+                if effect.get_type() != layerstack.NodeType.FilterEffect:
+                    continue
+                source = effect.get_source()
+                if source and PBR_VALIDATOR in source.resource_id.name:
+                    yield effect
+
+
+def all_project_stacks():
+    """Return every stack of every texture set in the open project."""
+    return [stack for ts in textureset.all_texture_sets() for stack in ts.all_stacks()]
+
+
 class FilterManager:
 
     def __init__(self, layer_manager):
         self.layer_manager = layer_manager
 
+    @staticmethod
+    def _find_pbr_validator_resource():
+        """Return the GS_PBR_Validator shelf resource, or None.
+
+        The `n:` query matches by substring, so it also returns the legacy per-project sbsars;
+        taking the first hit picked whichever the shelf listed first. Match the exact name.
+        """
+        for filter_resource in resource.search(f"s:yourassets u:filter n:{PBR_VALIDATOR}"):
+            if filter_resource.gui_name() == PBR_VALIDATOR:
+                return filter_resource
+        logging.error(f"{PBR_VALIDATOR} filter not found in Your Assets")
+        return None
+
+    @staticmethod
+    def _setup_pbr_validator_layer(layer, filter_resource):
+        """Turn a paint layer into a validator: Passthrough on every channel, filter in its content."""
+        for channel in layer.active_channels:
+            layer.set_blending_mode(layerstack.BlendingMode.Passthrough, channel)
+
+        insert_position = layerstack.InsertPosition.inside_node(layer, layerstack.NodeStack.Content)
+        layerstack.insert_filter_effect(insert_position, filter_resource.identifier())
+
     def new_gs_pbr_validator(self):
         """Adds a new paint layer with Passthrough blending mode and GS_PBR_Validator filter effect to its content."""
-        # Create a new paint layer
-        new_layer = self.layer_manager.add_layer(layer_type='paint', layer_name="GS_PBR_Validator")
-        
+        filter_resource = self._find_pbr_validator_resource()
+        if filter_resource is None:
+            return
+
+        new_layer = self.layer_manager.add_layer(layer_type='paint', layer_name=PBR_VALIDATOR)
         if new_layer and self.layer_manager.current_stack:
-            # Set PassThrough blending mode for each channel
-            passthrough_blending = layerstack.BlendingMode.Passthrough  # Use the enum directly
-            
-            # Apply the blending mode to each active channel
-            for channel in new_layer.active_channels:
-                new_layer.set_blending_mode(passthrough_blending, channel)
-                
-            # Get the filter resource
-            filter_resource = resource.search("s:yourassets u:filter n:GS_PBR_Validator")[0]
-            
-            # Create insertion position for the content of the new layer (not its mask)
-            insert_position = layerstack.InsertPosition.inside_node(new_layer, layerstack.NodeStack.Content)
-            
-            # Insert the filter effect
-            layerstack.insert_filter_effect(insert_position, filter_resource.identifier())
+            self._setup_pbr_validator_layer(new_layer, filter_resource)
 
-    def batch_gs_pbr_validator(self, validator_type="GS_PBR_Validator"):
-        """Adds a new paint layer with Passthrough blending mode and specified PBR validator filter effect to all texture sets.
-        
-        Args:
-            validator_type (str): The type of validator to use. Options: "GS_PBR_Validator", "GS_PBR_Validator_HW3", "GS_PBR_Validator_MGP25"
+    def batch_gs_pbr_validator(self):
+        """Adds a GS_PBR_Validator layer on top of every texture set that does not have one yet.
+
+        The filter comes in with its default values; pick the project range afterwards with
+        apply_pbr_validator_preset. Texture sets that already have a validator are skipped, so
+        running this again after adding texture sets only fills the gaps.
         """
-        # Get all texture sets in the project
-        all_texture_sets = textureset.all_texture_sets()
-        
-        # Process each texture set
-        for ts in all_texture_sets:
-            # Get the default stack for this texture set
-            stack = ts.get_stack()
-            
-            # Set this stack as active so we can work with it
-            textureset.set_active_stack(stack)
-            
-            # Update the layer manager with the current stack
-            self.layer_manager.current_stack = stack
-            
-            # Create a new paint layer at the very top of the stack
-            new_layer = self.layer_manager.add_layer(
-                layer_type='paint', 
-                layer_name=validator_type, 
-                layer_position="On Top"  # This ensures it's at the top, outside any folder
-            )
-            
-            if new_layer:
-                # Set Passthrough blending mode for each channel
-                passthrough_blending = layerstack.BlendingMode.Passthrough
-                
-                # Apply the blending mode to each active channel
-                for channel in new_layer.active_channels:
-                    new_layer.set_blending_mode(passthrough_blending, channel)
-                    
-                # Get the filter resource - use the validator_type to find the correct filter
-                filter_resource = resource.search(f"s:yourassets u:filter n:{validator_type}")[0]
-                
-                # Create insertion position for the content of the new layer
-                insert_position = layerstack.InsertPosition.inside_node(new_layer, layerstack.NodeStack.Content)
-                
-                # Insert the filter effect
-                layerstack.insert_filter_effect(insert_position, filter_resource.identifier())
-            
-            logging.info(f"Added {validator_type} to texture set: {ts.name}")
+        if not project.is_open():
+            logging.warning("No project open")
+            return
 
-    def batch_gs_pbr_validator_r6(self):
-        """Adds GS_PBR_Validator_R3 filter layer to all texture sets in the project."""
-        self.batch_gs_pbr_validator("GS_PBR_Validator_R6")
+        filter_resource = self._find_pbr_validator_resource()
+        if filter_resource is None:
+            return
 
-    def batch_gs_pbr_validator_hw3(self):
-        """Adds GS_PBR_Validator_HW3 filter layer to all texture sets in the project."""
-        self.batch_gs_pbr_validator("GS_PBR_Validator_HW3")
+        added = 0
+        # One undo entry for the whole batch. Nothing in here may change the selection:
+        # set_selected_nodes raises inside a ScopedModification.
+        with layerstack.ScopedModification(f"Add {PBR_VALIDATOR}"):
+            for ts in textureset.all_texture_sets():
+                stack = ts.get_stack()
+                if next(iter_pbr_validator_filters([stack]), None):
+                    logging.info(f"{PBR_VALIDATOR} already on texture set: {ts.name}")
+                    continue
 
-    def batch_gs_pbr_validator_mgp25(self):
-        """Adds GS_PBR_Validator_MGP25 filter layer to all texture sets in the project."""
-        self.batch_gs_pbr_validator("GS_PBR_Validator_MGP25")
+                # from_textureset_stack puts it at the very top, outside any folder
+                insert_position = layerstack.InsertPosition.from_textureset_stack(stack)
+                new_layer = layerstack.insert_paint(insert_position)
+                new_layer.set_name(PBR_VALIDATOR)
+                new_layer.active_channels = set(stack.all_channels())
+                self._setup_pbr_validator_layer(new_layer, filter_resource)
+
+                added += 1
+                logging.info(f"Added {PBR_VALIDATOR} to texture set: {ts.name}")
+
+        logging.info(f"Added {PBR_VALIDATOR} to {added} texture set(s)")
+
+    def pbr_validator_presets(self):
+        """Return the preset names of the validator in the project, or [] if there is none.
+
+        Read from the filter itself, so a preset added to the sbsar in Designer shows up here
+        without touching this tool.
+        """
+        if not project.is_open():
+            return []
+
+        for effect in iter_pbr_validator_filters(all_project_stacks()):
+            presets = effect.get_source().get_preset_list()
+            if presets:
+                return presets
+        return []
+
+    def apply_pbr_validator_preset(self, preset_name):
+        """Applies `preset_name` to every GS_PBR_Validator filter in the project."""
+        if not project.is_open():
+            logging.warning("No project open")
+            return
+
+        validators = list(iter_pbr_validator_filters(all_project_stacks()))
+        if not validators:
+            logging.warning(f"No {PBR_VALIDATOR} in the project. Add it to the texture sets first.")
+            return
+
+        applied = 0
+        with layerstack.ScopedModification(f"{PBR_VALIDATOR} preset: {preset_name}"):
+            for effect in validators:
+                source = effect.get_source()
+                # apply_preset silently does nothing on an unknown name, so check first
+                if preset_name in source.get_preset_list():
+                    source.apply_preset(preset_name)
+                    applied += 1
+                else:
+                    logging.warning(
+                        f"{effect.get_texture_set().name}: {source.resource_id.name} has no "
+                        f"'{preset_name}' preset. Remove the PBR Validator and add it again.")
+
+        logging.info(f"Applied PBR Validator preset '{preset_name}' to {applied}/{len(validators)} validator(s)")
 
     def remove_gs_pbr_validator(self):
         """Removes all PBR validator layers from all texture sets."""
         # Define all validator layer names to remove
-        validator_names = ["GS_PBR_Validator", "GS_PBR_Validator_R6","GS_PBR_Validator_HW3", "GS_PBR_Validator_MGP25"]
-        
+        validator_names = [PBR_VALIDATOR] + LEGACY_PBR_VALIDATORS
+
         # Get all texture sets in the project
         all_texture_sets = textureset.all_texture_sets()
         

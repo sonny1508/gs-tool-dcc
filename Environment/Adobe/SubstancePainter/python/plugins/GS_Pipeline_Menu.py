@@ -20,23 +20,33 @@ def new_gs_pbr_validator():
     filter_manager = gs_layerstack.FilterManager(layer_manager)
     filter_manager.new_gs_pbr_validator()
 
-def batch_gs_pbr_validator_r6():
-    """Create GS_PBR_Validator_R6 filter layer on all texture sets in the project."""
+def batch_gs_pbr_validator():
+    """Add the default GS_PBR_Validator layer to every texture set that does not have one."""
     layer_manager = gs_layerstack.LayerManager()
     filter_manager = gs_layerstack.FilterManager(layer_manager)
-    filter_manager.batch_gs_pbr_validator_r6()
+    filter_manager.batch_gs_pbr_validator()
 
-def batch_gs_pbr_validator_hw3():
-    """Create GS_PBR_Validator_HW3 filter layer on all texture sets in the project."""
+def apply_pbr_validator_preset(preset_name):
+    """Apply a project preset to every GS_PBR_Validator in the project."""
     layer_manager = gs_layerstack.LayerManager()
     filter_manager = gs_layerstack.FilterManager(layer_manager)
-    filter_manager.batch_gs_pbr_validator_hw3()
+    filter_manager.apply_pbr_validator_preset(preset_name)
 
-def batch_gs_pbr_validator_mgp25():
-    """Create GS_PBR_Validator_MGP25 filter layer on all texture sets in the project."""
+def populate_pbr_preset_menu(menu):
+    """Refill the preset submenu with the presets of the validator in the open project."""
+    menu.clear()
     layer_manager = gs_layerstack.LayerManager()
     filter_manager = gs_layerstack.FilterManager(layer_manager)
-    filter_manager.batch_gs_pbr_validator_mgp25()
+    presets = filter_manager.pbr_validator_presets()
+
+    if not presets:
+        hint = menu.addAction("Add the PBR Validator first")
+        hint.setEnabled(False)
+        return
+
+    for preset_name in presets:
+        action = menu.addAction(preset_name)
+        action.triggered.connect(lambda checked=False, name=preset_name: apply_pbr_validator_preset(name))
 
 def remove_gs_pbr_validator():
     """Remove GS_PBR_Validator filter layers from all texture sets in the project."""
@@ -140,12 +150,15 @@ def create_menu():
     ui.add_menu(gs_utilities_menu)
     plugin_menus_widgets.append(gs_utilities_menu)
 
-    # Define actions, shortcuts, and separators
+    # Preset submenu, refilled from the sbsar each time it opens so new presets need no code change
+    pbr_preset_menu = QtWidgets.QMenu("Set PBR Validator Preset", gs_utilities_menu)
+    pbr_preset_menu.aboutToShow.connect(lambda: populate_pbr_preset_menu(pbr_preset_menu))
+
+    # Define actions, submenus, shortcuts, and separators
     actions_with_separators = [
         ("New Paint Layer with GS_PBR_Validator Filter Effect", new_gs_pbr_validator, "Ctrl+P"),
-        ("Validate PBR for all Texture Sets Ride6 (0.15 - 0.73)", batch_gs_pbr_validator_r6, None),
-        ("Validate PBR for all Texture Sets Hotwheels3 (0.15 - 0.80)", batch_gs_pbr_validator_hw3, None),
-        ("Validate PBR for all Texture Sets MotoGP25 (0.12 - 0.81)", batch_gs_pbr_validator_mgp25, None),
+        ("Add PBR Validator to all Texture Sets", batch_gs_pbr_validator, None),
+        pbr_preset_menu,
         ("Remove PBR Validator from all Texture Sets", remove_gs_pbr_validator, None),
         None,  # Separator
         ("New Fill Layer with Base Color", new_fill_layer_base, "Ctrl+F"),
@@ -170,6 +183,8 @@ def create_menu():
     for item in actions_with_separators:
         if item is None:
             gs_utilities_menu.addSeparator()
+        elif isinstance(item, QtWidgets.QMenu):
+            gs_utilities_menu.addMenu(item)
         else:
             text, func, shortcut = item
             action = QtGui.QAction(text, gs_utilities_menu)
