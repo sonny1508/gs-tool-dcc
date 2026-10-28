@@ -83,17 +83,17 @@ the work. Do not open a sweeping PyMEL-removal campaign unasked.
 Current offenders (`grep -rl pymel Environment/Autodesk/Maya --include=*.py`):
 
 ```
-GSPipeline/01_Modeling/Speed_Workflow/Speed_Workflow_UI.py
-GSPipeline/01_Modeling/Vertex_Painter_UI.py
-GSPipeline/05_Projects/GSW/gsw_vehicle_tools/uv_atlas.py
-GSPipeline/05_Projects/HW3/HW3_Asset_Validation_UI.py
-GSPipeline/05_Projects/MGP25/Mgp25_Asset_Checker_UI.py
-GSPipeline/05_Projects/MGP25/Mgp25_Custom_Parts_Rigger_UI.py
-GSPipeline/05_Projects/MGP25/Mgp25_Ultimate_Bike_Riggator_UI.py
-GSPipeline/05_Projects/MGP26/MGP26_Asset_Checker_UI.py
-GSPipeline/05_Projects/MGP26/MGP26_Ultimate_Bike_Riggator_UI.py
-GSPipeline/05_Projects/R6/R6_Asset_Validation_UI.py
-GSPipeline/05_Projects/SCR1/Scr1_Asset_Validation_UI.py
+GSPipeline/Modeling/Speed_Workflow/Speed_Workflow_UI.py
+GSPipeline/Modeling/Vertex_Painter_UI.py
+GSPipeline/Projects/GSW/gsw_vehicle_tools/uv_atlas.py
+GSPipeline/Projects/HW3/HW3_Asset_Validation_UI.py
+GSPipeline/Projects/MGP25/Mgp25_Asset_Checker_UI.py
+GSPipeline/Projects/MGP25/Mgp25_Custom_Parts_Rigger_UI.py
+GSPipeline/Projects/MGP25/Mgp25_Ultimate_Bike_Riggator_UI.py
+GSPipeline/Projects/MGP26/MGP26_Asset_Checker_UI.py
+GSPipeline/Projects/MGP26/MGP26_Ultimate_Bike_Riggator_UI.py
+GSPipeline/Projects/R6/R6_Asset_Validation_UI.py
+GSPipeline/Projects/SCR1/Scr1_Asset_Validation_UI.py
 GSPipeline/_core/gs_fbx.py
 GSTools/common/scripts/tools/baking/rename.py
 GSTools/common/scripts/tools/modeling/set_length_edge.py
@@ -164,9 +164,18 @@ re-run. For a tighter loop, point Maya's script paths straight at the working co
 ## 4. Conventions worth knowing
 
 - **Where things live.** `GSTools/` = artist tools (shelves, modeling/UV/rigging utilities).
-  `GSPipeline/` = pipeline menu and project tools, numbered by department stage
-  (`01_Modeling`, `03_Files_IO`, `04_Review`, `05_Projects/<PROJECT>`). Shared helpers go in
-  `_core/` or `common/`, never copy-pasted between tools.
+  `GSPipeline/` = pipeline menu and project tools, one folder per department stage
+  (`Modeling`, `Normals`, `UV`, `Files_IO`, `Review`, `Projects/<PROJECT>`); the menu order
+  and numbering come from `tool_config.py`. Shared helpers go in `_core/` or `common/`,
+  never copy-pasted between tools.
+- **UI.** Windows follow [Docs/Maya_UI_Guidelines.md](Docs/Maya_UI_Guidelines.md): Maya's
+  own palette plus the studio scheme from `GSPipeline/_core/gs_style.py` (studio red /
+  orange primary buttons, three log colours; never hard-code a hex code), settings grouped
+  into category boxes, not one long
+  column; fixed-size windows unless the content really uses the room; results in a short
+  log rather than pop-ups. All window text is for artists: the result and what to do next,
+  never timings, mesh counts or per-item lists. Bring an imported tool in line before it
+  goes on the menu.
 - **Version-agnostic by default.** Tool code lives in the version-less `scripts/` tree and is
   shared by every Maya version; only `Maya.env` and `prefs` are per-version. Keep it that
   way — don't fork a tool per Maya version to dodge a compatibility problem, fix the

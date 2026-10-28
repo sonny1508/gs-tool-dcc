@@ -39,6 +39,7 @@ if _CORE not in sys.path:
     sys.path.append(_CORE)
 
 import gs_lod  # noqa: E402  (must follow the sys.path setup)
+import gs_style  # noqa: E402
 
 OBJECT_NAME = "GSLODCheckerWindow"
 
@@ -87,7 +88,7 @@ def _clear_layout(layout):
 
 class LODCheckerWindow(QtWidgets.QDialog):
 
-    LOG_COLOURS = {"ok": "#7ec87e", "warn": "#e0b64c", "error": "#e06c6c"}
+    LOG_COLOURS = gs_style.LOG_COLOURS
 
     def __init__(self, parent=None):
         super(LODCheckerWindow, self).__init__(parent or _maya_main_window())
@@ -149,8 +150,7 @@ class LODCheckerWindow(QtWidgets.QDialog):
         # Everything below works on the picked group.
         self.reset_button = QtWidgets.QPushButton("RESET")
         self.reset_button.setFixedHeight(30)
-        self.reset_button.setStyleSheet(
-            "QPushButton { background-color: #6b0914; color: white; font-weight: bold; }")
+        gs_style.style_button(self.reset_button, gs_style.STUDIO_RED)
         self.reset_button.setToolTip("Put the picked LOD group back the way it was when picked.")
         self.reset_button.clicked.connect(self._on_reset)
         root.addWidget(self.reset_button)
@@ -195,8 +195,7 @@ class LODCheckerWindow(QtWidgets.QDialog):
 
         self.switch_button = QtWidgets.QPushButton("SWITCH")
         self.switch_button.setFixedHeight(40)
-        self.switch_button.setStyleSheet(
-            "QPushButton { background-color: #f6921e; color: white; font-weight: bold; }")
+        gs_style.style_button(self.switch_button, gs_style.STUDIO_ORANGE)
         self.switch_button.clicked.connect(self._on_switch)
         root.addWidget(self.switch_button)
 

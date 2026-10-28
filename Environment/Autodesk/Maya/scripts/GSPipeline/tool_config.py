@@ -67,6 +67,9 @@ TOOLS = [
             {"name": "MGP26 Asset Checker",          "script": "Projects/MGP26/Mgp26_Asset_Checker_UI.py"},
             {"name": "MGP26 Ultimate Bike Riggator", "script": "Projects/MGP26/Mgp26_Ultimate_Bike_Riggator_UI.py"},
         ]),
+        ("MGP27", [
+            {"name": "MGP27 Kerb Height Checker", "script": "Projects/MGP27/MGP27_Kerb_Height_Checker_UI.py"},
+        ]),
         ("R6", [
             {"name": "R6 Asset Validation", "script": "Projects/R6/R6_Asset_Validation_UI.py", "icon": "R6_Asset_Validation_Icon.png"},
         ]),
