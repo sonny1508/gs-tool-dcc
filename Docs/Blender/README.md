@@ -109,9 +109,9 @@ machine. That is harmless only while:
   `foo.py` is a trap). Pick new names when you move code.
 
 Leftovers on artists' machines right now, all unimported and harmless: from the 2026-10
-GS Pipeline restructure, `projects/hw3_tools.py`, `projects/mgp27_tools.py` and
-`file_io/gs_file_transfer.py`; the old standalone `GS_Asset_Validation` add-on (force-disabled
-at launch).
+GS Pipeline restructure, `projects/hw3_tools.py`, `projects/mgp27_tools.py`,
+`file_io/gs_file_transfer.py` and `projects/hw3/modelling.py` (renamed `modeling.py`); the
+old standalone `GS_Asset_Validation` add-on (force-disabled at launch).
 
 ---
 

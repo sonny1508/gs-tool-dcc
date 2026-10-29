@@ -2,7 +2,7 @@
 
     Category   File I/O, Review, Projects        a package under GS_Pipeline
       Group    GS File Transfer, HW3, MGP27...   a tool or project (a module or package)
-        Tab    Materials, Modelling...           one screen of it: a draw function
+        Tab    Materials, Modeling...            one screen of it: a draw function
 
 The panel is a category bar, a group bar and a tab bar over the active tab; a
 bar shows only when it has more than one entry. Only the active tab's draw
@@ -53,11 +53,22 @@ def _tab_id(tab):
     return tab.label.upper()
 
 
-def _active(wm):
-    """(category, group, tab) the bars point at, falling back to the first of each."""
+def _active_group(wm):
+    """(category, group) the bars point at, falling back to the first of each.
+
+    Reads gs_category and gs_group, never gs_subtab: reading a dynamic enum runs
+    its items callback, so _tab_enum_items (which calls this) reading gs_subtab
+    would call itself without end.
+    """
     category = _categories.get(wm.gs_category) or next(iter(_categories.values()))
     groups = category.groups
     group = next((g for g in groups if g.id == wm.gs_group), groups[0] if groups else None)
+    return category, group
+
+
+def _active(wm):
+    """(category, group, tab) the bars point at. Never call it from an items callback."""
+    category, group = _active_group(wm)
     if group is None:
         return category, None, None
     tab = next((t for t in group.tabs if _tab_id(t) == wm.gs_subtab),
@@ -70,7 +81,7 @@ def _group_enum_items(wm, context):
 
 
 def _tab_enum_items(wm, context):
-    category, group, _ = _active(wm)
+    category, group = _active_group(wm)
     if group is None:
         return _NO_ITEMS
     return _tab_items[(category.id, group.id)]

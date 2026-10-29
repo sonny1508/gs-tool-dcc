@@ -1,4 +1,4 @@
-"""HW3 Modelling tab: source-module FBX in and out, and the building-scene sync."""
+"""HW3 Modeling tab: source-module FBX in and out, and the building-scene sync."""
 from __future__ import annotations
 
 import os
@@ -169,9 +169,9 @@ class GS_OT_HW3_ExportSelected(Operator):
 
 
 # ============================================================================
-# Draw (the panel calls it under Projects > HW3 > Modelling)
+# Draw (the panel calls it under Projects > HW3 > Modeling)
 # ============================================================================
-def draw_modelling(layout, context):
+def draw_modeling(layout, context):
     props = _props(context)
 
     box = layout.box()
@@ -199,7 +199,7 @@ def draw_modelling(layout, context):
     row.operator("gs_pipeline.hw3_export_selected", text="Export Selected")
 
 
-TAB = Tab("Modelling", draw_modelling)
+TAB = Tab("Modeling", draw_modeling)
 
 CLASSES = (
     GS_OT_HW3_RefreshFBX,

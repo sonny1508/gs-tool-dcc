@@ -44,7 +44,7 @@ GS_Pipeline/
     ├── hw3/
     │   ├── __init__.py      GROUP (one Tab per tool module), register
     │   ├── materials.py     Materials tab
-    │   ├── modelling.py     Modelling tab
+    │   ├── modeling.py      Modeling tab
     │   ├── props.py         lists and fields both tabs share (on the scene)
     │   └── payloads.py      pipeline folders, reading the JSON / FBX payloads
     └── mgp27/
@@ -78,6 +78,10 @@ Category(id, label, modules)      # a top-level category; modules each have GROU
   above). The item lists are built once in `panel.register()` and kept in module
   globals. Blender doesn't copy the strings an enum items callback returns, so a list
   made fresh on every call can be freed while the UI still shows it.
+- **An items callback must never read its own enum.** Reading a dynamic enum runs its
+  callback, so that loops forever and freezes Blender with no error. `_tab_enum_items`
+  uses `_active_group()` (category and group only); only `draw` uses `_active()`, which
+  also reads the tab. This shipped once and froze 4.5 on HW3's tab bar (see API_Notes.md).
 - A tab id is its label upper-cased, so two tabs of one group can't share a label.
 - Category bar order is `CATEGORIES` in the add-on's `__init__.py`; the category shown on
   launch is `DEFAULT_CATEGORY` (`"FILE_IO"`).
@@ -251,7 +255,7 @@ or Individual (one file per mesh).
 
 Port of Maya's `HW3_Tools.py`. **Materials** assigns Unreal material-instance JSON or
 texture data to the active material as a Principled BSDF network, with Maya's
-place2dTexture repeat / offset maths on a Mapping node. **Modelling** handles source-module
+place2dTexture repeat / offset maths on a Mapping node. **Modeling** handles source-module
 FBX in and out and the building-scene sync.
 
 - Payload folders (`payloads.py`): `%TEMP%\GSApplication\unreal-engine\{mat-ins,textures}`

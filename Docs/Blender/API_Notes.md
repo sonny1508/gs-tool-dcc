@@ -81,6 +81,15 @@ big buttons.
 strings a dynamic `items` callback returns. Build the lists once and keep them referenced
 (module globals); never return a list made fresh on each call.
 
+**Never read a dynamic enum inside its own items callback** [running]. Reading a
+dynamic enum (`wm.gs_subtab`) runs its `items` callback to turn the stored number into an
+identifier. So a callback that reads its own enum, even through a helper, calls itself
+without end. In 4.5 that **froze Blender outright with nothing in the console** the moment
+the tab bar showed (GS Pipeline's HW3 Modeling tab, 2026-10-29). A callback may read
+*other* enums, as long as they never read back into it: `gs_subtab`'s items read
+`gs_category` and `gs_group` only (`panel._active_group`). `Docs/Blender/checks/import_check.py`
+now catches this.
+
 **Lambdas in deferred annotations** [running]. With `from __future__ import annotations`,
 `get=lambda self: ...` inside a PropertyGroup annotation raises `NameError` when called:
 Blender evaluates the annotation where module names don't reach the lambda body. Pass
