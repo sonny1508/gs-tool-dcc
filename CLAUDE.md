@@ -7,6 +7,10 @@ things that are *not* visible from the code: **which Maya versions actually matt
 For what the repo *is* and how it deploys, see [README.md](README.md) and
 [Deploy/README.md](Deploy/README.md).
 
+> **Blender** work (`Environment/Blender/`) has its own version matrix (3.6 / 4.5 / 5.2) and
+> add-on architecture: read [Docs/Blender/README.md](Docs/Blender/README.md) first. The
+> verification rule in section 3 applies to Blender too: don't launch Blender to test.
+
 ---
 
 ## 1. The studio runs Maya 2022 and Maya 2026. Only those two.
