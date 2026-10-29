@@ -4,7 +4,15 @@ from __future__ import annotations
 import bpy
 
 from ... import common
-from ._shared import Tool, ValidationError, plural, restore_selection, save_selection, selected_meshes
+from ._shared import (
+    Tool,
+    ValidationError,
+    clear_custom_normals,
+    plural,
+    restore_selection,
+    save_selection,
+    selected_meshes,
+)
 
 TITLE = "Cleanup"
 ICON = 'TRASH'
@@ -37,6 +45,21 @@ def vertex_groups(context):
     if not removed:
         return "ok", "No vertex groups found."
     return "ok", "Removed {}.".format(plural(removed, "vertex group"))
+
+
+def custom_normals_data(context):
+    """Clear Custom Split Normals Data from the selected meshes (the counterpart
+    of Normals > Check Custom Normals Data)."""
+    meshes = selected_meshes(context)
+    saved = save_selection(context)
+    common.ensure_object_mode(context)
+    try:
+        cleared = clear_custom_normals(context, meshes)
+    finally:
+        restore_selection(context, saved)
+    if not cleared:
+        return "ok", "No custom split normals found."
+    return "ok", "Cleared custom split normals from {}.".format(plural(cleared, "mesh", "meshes"))
 
 
 def unused_materials(context):
@@ -92,6 +115,8 @@ TOOLS = (
          "Delete all vertex colors of the selected meshes", vertex_colors),
     Tool("vertex_groups", "Vertex Groups",
          "Delete all vertex groups of the selected meshes", vertex_groups),
+    Tool("clear_custom_normals", "Custom Normals Data",
+         "Clear Custom Split Normals Data from the selected meshes", custom_normals_data),
     Tool("unused_materials", "Unused Materials",
          "Delete material slots no face of the selected meshes uses", unused_materials),
     Tool("cameras", "Cameras", "Delete every camera in the file", cameras),

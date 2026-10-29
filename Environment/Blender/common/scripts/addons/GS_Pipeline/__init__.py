@@ -1,181 +1,40 @@
 bl_info = {
     "name": "GS Pipeline",
     "author": "Glenda Studio",
-    "version": (1, 3),
+    "version": (1, 4),
     "blender": (3, 6, 10),
     "location": "View3D > Sidebar > GS Pipeline",
     "description": "Glenda Studio production pipeline tools, organized by category > group > tab.",
     "category": "3D View",
 }
 
-import bpy
+# Layout (see panel.py for how the sidebar is put together):
+#
+#   panel.py        the sidebar panel; Category / Group / Tab descriptors
+#   common.py       helpers every tool shares (scene, log, preferences, registration)
+#   file_io/        File I/O category: file_transfer/
+#   review/         Review category: asset_validation/
+#   projects/       Projects category: one package per project (hw3/, mgp27/)
 
-from . import common  # noqa: F401  (shared helpers, imported by tool modules)
-from . import projects
-from . import review
-from . import file_io
+from . import common, panel
+from . import file_io, projects, review
 
-print("Initializing GS Pipeline")
+# Category bar order.
+CATEGORIES = (projects.CATEGORY, review.CATEGORY, file_io.CATEGORY)
 
-# Ordered top-level categories. Each exposes a CATEGORY descriptor:
-#   {"id", "label", "groups": [{"id", "label", "tabs": [{"label","draw"}, ...]}, ...]}
-CATEGORY_MODULES = (projects, review, file_io)
-CATEGORIES = [m.CATEGORY for m in CATEGORY_MODULES]
-
-# Category shown when the panel first appears. Changes only which one is active
-# on startup -- the bar order still follows CATEGORY_MODULES above.
-DEFAULT_CATEGORY_ID = "FILE_IO"
-
-
-# ----------------------------------------------------------------------------
-# Descriptor lookup helpers
-# ----------------------------------------------------------------------------
-def _get_category(cat_id):
-    return next((c for c in CATEGORIES if c["id"] == cat_id), CATEGORIES[0] if CATEGORIES else None)
-
-
-def _get_group(category, group_id):
-    groups = category["groups"]
-    return next((g for g in groups if g["id"] == group_id), groups[0] if groups else None)
-
-
-def _get_tab(group, tab_value):
-    tabs = group["tabs"]
-    return next(
-        (t for t in tabs if t["label"].upper() == tab_value),
-        tabs[0] if tabs else None,
-    )
-
-
-# ----------------------------------------------------------------------------
-# EnumProperty items (category > group > sub-tab)
-# ----------------------------------------------------------------------------
-# The category list is fixed at import time, so it can be a static enum -- which
-# is what lets it carry a `default`. Group/sub-tab stay dynamic: they depend on
-# the current selection one level up. Their items are still built once here,
-# because Blender doesn't copy the strings a dynamic enum callback returns: a
-# list made fresh on every call can be freed while the UI still shows it.
-CATEGORY_ITEMS = [(c["id"], c["label"], f"{c['label']} tools") for c in CATEGORIES]
-
-_NO_ITEMS = [("NONE", "None", "")]
-_GROUP_ITEMS = {
-    c["id"]: [(g["id"], g["label"], g["label"]) for g in c["groups"]] or _NO_ITEMS
-    for c in CATEGORIES
-}
-_TAB_ITEMS = {
-    (c["id"], g["id"]): [(t["label"].upper(), t["label"], t["label"]) for t in g["tabs"]] or _NO_ITEMS
-    for c in CATEGORIES
-    for g in c["groups"]
-}
-
-
-def _group_items(self, context):
-    category = _get_category(getattr(context.window_manager, "gs_category", ""))
-    if not category:
-        return _NO_ITEMS
-    return _GROUP_ITEMS[category["id"]]
-
-
-def _subtab_items(self, context):
-    wm = context.window_manager
-    category = _get_category(getattr(wm, "gs_category", ""))
-    if not category:
-        return _NO_ITEMS
-    group = _get_group(category, getattr(wm, "gs_group", ""))
-    if not group:
-        return _NO_ITEMS
-    return _TAB_ITEMS[(category["id"], group["id"])]
-
-
-def _register_wm_props():
-    category_ids = [item[0] for item in CATEGORY_ITEMS]
-    category_kwargs = {}
-    if DEFAULT_CATEGORY_ID in category_ids:
-        category_kwargs["default"] = DEFAULT_CATEGORY_ID
-    bpy.types.WindowManager.gs_category = bpy.props.EnumProperty(
-        name="Category",
-        description="Active GS Pipeline category",
-        items=CATEGORY_ITEMS,
-        **category_kwargs
-    )
-    bpy.types.WindowManager.gs_group = bpy.props.EnumProperty(
-        name="Group",
-        description="Active group within the category",
-        items=_group_items,
-    )
-    bpy.types.WindowManager.gs_subtab = bpy.props.EnumProperty(
-        name="Tab",
-        description="Active tool tab within the group",
-        items=_subtab_items,
-    )
-
-
-def _unregister_wm_props():
-    for attr in ("gs_category", "gs_group", "gs_subtab"):
-        if hasattr(bpy.types.WindowManager, attr):
-            delattr(bpy.types.WindowManager, attr)
-
-
-# ----------------------------------------------------------------------------
-# Main panel: category bar > group bar > sub-tab bar > active tool UI
-# ----------------------------------------------------------------------------
-# Blender has no API for a minimum sidebar width (Region.width is read-only in
-# 3.6 - 5.2), so tabs lay themselves out for the width they get instead; see
-# common.is_wide().
-class GS_PT_Pipeline(bpy.types.Panel):
-    bl_label = "GS Pipeline"
-    bl_idname = "GS_PT_Pipeline"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "GS Pipeline"
-
-    def draw(self, context):
-        layout = self.layout
-        wm = context.window_manager
-
-        # --- Level 1: category bar ---
-        if len(CATEGORIES) > 1:
-            layout.prop(wm, "gs_category", expand=True)
-        category = _get_category(wm.gs_category)
-        if category is None:
-            return
-
-        # --- Level 2: group bar (only when the category has >1 group, e.g. one per project) ---
-        if len(category["groups"]) > 1:
-            layout.prop(wm, "gs_group", expand=True)
-        group = _get_group(category, wm.gs_group)
-        if group is None:
-            return
-
-        # --- Level 3: sub-tab bar (only when the group has >1 tab) ---
-        if len(group["tabs"]) > 1:
-            layout.prop(wm, "gs_subtab", expand=True)
-        tab = _get_tab(group, getattr(wm, "gs_subtab", ""))
-        if tab is None:
-            return
-
-        # --- Content ---
-        box = layout.box()
-        tab["draw"](box, context)
+# Category shown when the panel first appears. Only which one is active on
+# startup; the bar keeps the order above.
+DEFAULT_CATEGORY = "FILE_IO"
 
 
 def register():
-    print("Registering GS Pipeline")
-    for module in CATEGORY_MODULES:
-        module.register()
-    _register_wm_props()
-    bpy.utils.register_class(GS_PT_Pipeline)
+    for category in CATEGORIES:
+        common.register_modules(category.modules)
+    panel.register(CATEGORIES, DEFAULT_CATEGORY)
     print("GS Pipeline registered")
 
 
 def unregister():
-    print("Unregistering GS Pipeline")
-    bpy.utils.unregister_class(GS_PT_Pipeline)
-    _unregister_wm_props()
-    for module in reversed(CATEGORY_MODULES):
-        module.unregister()
-    print("GS Pipeline unregistered")
-
-
-if __name__ == "__main__":
-    register()
+    panel.unregister()
+    for category in reversed(CATEGORIES):
+        common.unregister_modules(category.modules)

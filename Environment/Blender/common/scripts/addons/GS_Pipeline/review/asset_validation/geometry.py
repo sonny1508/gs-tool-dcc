@@ -1,4 +1,4 @@
-"""Asset Validation - Geometry checks. Each one selects what it finds."""
+"""Asset Validation - Geometry checks. Each one lists the meshes with the problem."""
 from __future__ import annotations
 
 import bmesh
@@ -7,16 +7,8 @@ import numpy as np
 from mathutils import Vector
 
 from ... import common
-from ._shared import (
-    Tool,
-    ValidationError,
-    clear_component_selection,
-    flagged,
-    plural,
-    restore_selection,
-    save_selection,
-    selected_meshes,
-)
+from ._shared import Tool, ValidationError, check, selected_meshes
+from .log import Found
 
 TITLE = "Geometry"
 ICON = 'MESH_DATA'
@@ -28,22 +20,22 @@ _DUPLICATE_DECIMALS = 4
 # ----------------------------------------------------------------------------
 # Duplicate vertices
 # ----------------------------------------------------------------------------
+@check
 def duplicate_vertices(context):
     """Vertices at the same world position as an earlier one, on any selected mesh."""
-    meshes = selected_meshes(context)
-    clear_component_selection()
+    found = Found("duplicate vertices", 'VERT')
     seen = set()
-    count = 0
-    for obj in meshes:
+    for obj in selected_meshes(context):
         matrix = obj.matrix_world
+        duplicates = []
         for vertex in obj.data.vertices:
             key = tuple(round(value, _DUPLICATE_DECIMALS) for value in matrix @ vertex.co)
             if key in seen:
-                vertex.select = True
-                count += 1
+                duplicates.append(vertex.index)
             else:
                 seen.add(key)
-    return flagged(count, ("duplicate vertex", "duplicate vertices"), 'VERT')
+        found.add(obj, duplicates)
+    return found
 
 
 # ----------------------------------------------------------------------------
@@ -130,104 +122,95 @@ def _faces_overlap(face1, face2):
     return any(_edges_cross(a, b, c, d) for a, b in edges1 for c, d in edges2)
 
 
+@check
 def meshes_overlap(context):
     """Faces of two different selected meshes that lie on top of each other."""
     meshes = selected_meshes(context, minimum=2)
     faces = [_world_faces(obj) for obj in meshes]
-    found = {}      # object -> {face index}
+    overlapping = [set() for _ in meshes]       # face indices, per mesh
     for a in range(len(meshes)):
         for b in range(a + 1, len(meshes)):
             for face1 in faces[a]:
                 for face2 in faces[b]:
                     if _faces_overlap(face1, face2):
-                        found.setdefault(meshes[a], set()).add(face1[0])
-                        found.setdefault(meshes[b], set()).add(face2[0])
+                        overlapping[a].add(face1[0])
+                        overlapping[b].add(face2[0])
 
-    clear_component_selection()
-    if not found:
-        return "ok", "No overlapping faces found between the selected meshes."
-    for obj, indices in found.items():
-        polygons = obj.data.polygons
-        for index in indices:
-            polygons[index].select = True
-    context.view_layer.objects.active = next(iter(found))
-    count = sum(len(indices) for indices in found.values())
-    return flagged(count, ("overlapping face", "overlapping faces"), 'FACE')
+    found = Found("faces overlapping another mesh", 'FACE',
+                  clean="No overlapping faces found between the selected meshes.")
+    for obj, indices in zip(meshes, overlapping):
+        found.add(obj, sorted(indices))
+    return found
 
 
 # ----------------------------------------------------------------------------
 # N-gons
 # ----------------------------------------------------------------------------
+@check
 def ngons(context):
-    """Faces with five or more vertices. Only the meshes that have them stay selected."""
-    meshes = selected_meshes(context)
-    saved = save_selection(context)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_mode(type='FACE')
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    count = 0
-    with_ngons = []
-    for obj in meshes:
-        found = 0
-        for polygon in obj.data.polygons:
-            polygon.select = len(polygon.vertices) > 4
-            found += polygon.select
-        if found:
-            count += found
-            with_ngons.append(obj)
-
-    if count:
-        common.select_only(context, with_ngons)
-        bpy.ops.object.mode_set(mode='EDIT')
-        return "warn", "{} - selected.".format(plural(count, "n-gon"))
-    restore_selection(context, saved)
-    return "ok", "No n-gons found."
+    """Faces with five or more vertices."""
+    found = Found("n-gons", 'FACE')
+    for obj in selected_meshes(context):
+        polygons = obj.data.polygons
+        sizes = np.empty(len(polygons), dtype=np.int32)
+        polygons.foreach_get("loop_total", sizes)
+        found.add(obj, np.flatnonzero(sizes > 4))
+    return found
 
 
 # ----------------------------------------------------------------------------
 # Loose geometry, zero-length edges
 # ----------------------------------------------------------------------------
-def _count_selected(meshes, elements):
-    """Selected verts / edges / faces over the meshes in Edit Mode."""
-    return sum(sum(1 for item in getattr(bmesh.from_edit_mesh(obj.data), elements) if item.select)
-               for obj in meshes)
+def _edge_vertices(mesh):
+    """[edge index] -> (vertex index, vertex index)."""
+    pairs = np.empty(len(mesh.edges) * 2, dtype=np.int32)
+    mesh.edges.foreach_get("vertices", pairs)
+    return pairs.reshape(-1, 2)
 
 
-def _select_loose(select_mode):
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type=select_mode)
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_loose(extend=False)
+def _unused(count, used):
+    """Indices in range(count) that ``used`` doesn't hold."""
+    flags = np.ones(count, dtype=bool)
+    flags[used] = False
+    return np.flatnonzero(flags)
 
 
+@check
 def loose_vertices(context):
-    meshes = selected_meshes(context)
-    _select_loose('VERT')
-    return flagged(_count_selected(meshes, "verts"), ("loose vertex", "loose vertices"), 'VERT')
+    """Vertices on no edge, as Blender's Select Loose finds them in vertex mode."""
+    found = Found("loose vertices", 'VERT')
+    for obj in selected_meshes(context):
+        mesh = obj.data
+        found.add(obj, _unused(len(mesh.vertices), _edge_vertices(mesh).ravel()))
+    return found
 
 
+@check
 def loose_edges(context):
-    meshes = selected_meshes(context)
-    _select_loose('EDGE')
-    return flagged(_count_selected(meshes, "edges"), ("loose edge", "loose edges"), 'EDGE')
+    """Edges on no face, as Blender's Select Loose finds them in edge mode."""
+    found = Found("loose edges", 'EDGE')
+    for obj in selected_meshes(context):
+        mesh = obj.data
+        loop_edges = np.empty(len(mesh.loops), dtype=np.int32)
+        mesh.loops.foreach_get("edge_index", loop_edges)
+        found.add(obj, _unused(len(mesh.edges), loop_edges))
+    return found
 
 
+@check
 def zero_length_edges(context):
-    meshes = selected_meshes(context)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    count = 0
-    for obj in meshes:
-        bm = bmesh.from_edit_mesh(obj.data)
-        for edge in bm.edges:
-            if edge.calc_length() == 0.0:
-                edge.select_set(True)
-                count += 1
-        bmesh.update_edit_mesh(obj.data)
-    return flagged(count, ("zero-length edge", "zero-length edges"), 'VERT')
+    """Edges whose two vertices sit at the same position. Found as their vertices,
+    which show where an edge with no length can't."""
+    found = Found("zero-length edges", 'VERT')
+    for obj in selected_meshes(context):
+        mesh = obj.data
+        positions = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", positions)
+        positions = positions.reshape(-1, 3)
+        edges = _edge_vertices(mesh)
+        zero = np.all(positions[edges[:, 0]] == positions[edges[:, 1]], axis=1)
+        found.add(obj, np.unique(edges[zero]))
+    return found
 
 
 # ----------------------------------------------------------------------------
@@ -266,33 +249,31 @@ def _is_concave(face):
     return False
 
 
+@check
 def concave_faces(context):
     """Concave and non-planar faces (triangles are always fine)."""
-    meshes = selected_meshes(context)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='FACE')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    concave = nonplanar = 0
-    for obj in meshes:
-        bm = bmesh.from_edit_mesh(obj.data)
+    found = Found("concave or non-planar faces", 'FACE')
+    for obj in selected_meshes(context):
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        bm.normal_update()
+        indices = []
+        concave = nonplanar = False
         for face in bm.faces:
             if len(face.verts) <= 3:
                 continue
             is_nonplanar = _is_nonplanar(face)
             is_concave = _is_concave(face)
             if is_concave or is_nonplanar:
-                face.select_set(True)
-                concave += is_concave
-                nonplanar += is_nonplanar
-        bmesh.update_edit_mesh(obj.data)
-
-    if not (concave or nonplanar):
-        bpy.ops.object.mode_set(mode='OBJECT')
-        return "ok", "No concave or non-planar faces found."
-    found = " and ".join(part for part in (
-        "{:,} concave".format(concave) if concave else "",
-        "{:,} non-planar".format(nonplanar) if nonplanar else "") if part)
-    return "warn", "{} {} - selected.".format(found, "face" if concave + nonplanar == 1 else "faces")
+                indices.append(face.index)
+                concave |= is_concave
+                nonplanar |= is_nonplanar
+        bm.free()
+        if indices:
+            kinds = " and ".join(kind for kind, has in (("concave", concave),
+                                                        ("non-planar", nonplanar)) if has)
+            found.add(obj, indices, kinds + " faces")
+    return found
 
 
 # ----------------------------------------------------------------------------
@@ -374,8 +355,8 @@ def _is_interior(dark, uvs):
     return patch.size > 0 and patch.mean() > _AO_DARK_SHARE
 
 
-def _select_interior_faces(context, obj):
-    """Bake AO on a throwaway UV map and select the faces that come out dark. Returns how many."""
+def _interior_faces(context, obj):
+    """Bake AO on a throwaway UV map; the indices of the faces that come out dark."""
     common.select_only(context, [obj])
     mesh = obj.data
     active_uv = mesh.uv_layers.active_index
@@ -397,17 +378,13 @@ def _select_interior_faces(context, obj):
                             width=_AO_RESOLUTION, height=_AO_RESOLUTION, margin=1)
         dark = _dark_pixels(image)
 
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='DESELECT')
-        bm = bmesh.from_edit_mesh(mesh)
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
         layer = bm.loops.layers.uv.get(_AO_UV)
-        count = 0
-        for face in bm.faces:
-            if _is_interior(dark, [loop[layer].uv for loop in face.loops]):
-                face.select_set(True)
-                count += 1
-        bmesh.update_edit_mesh(mesh)
-        return count
+        interior = [face.index for face in bm.faces
+                    if _is_interior(dark, [loop[layer].uv for loop in face.loops])]
+        bm.free()
+        return interior
     finally:
         common.ensure_object_mode(context)
         if saved is not _NOT_SWAPPED:
@@ -423,35 +400,26 @@ def _select_interior_faces(context, obj):
             mesh.uv_layers.active_index = active_uv
 
 
+@check
 def overlapping_faces(context):
     """Faces hidden inside the mesh (no light reaches them), found with a quick AO bake."""
     meshes = selected_meshes(context)
-    saved = save_selection(context)
-    common.ensure_object_mode(context)
     scene = context.scene
     engine = scene.render.engine
     if not hasattr(scene, "cycles"):
         raise ValidationError("Turn on the Cycles add-on first: this check bakes with it.")
     samples = scene.cycles.samples
 
-    found_on = []
-    count = 0
+    found = Found("interior faces", 'FACE')
     scene.render.engine = 'CYCLES'
     scene.cycles.samples = _AO_SAMPLES
     try:
         for obj in meshes:
-            found = _select_interior_faces(context, obj)
-            if found:
-                count += found
-                found_on.append(obj)
+            found.add(obj, _interior_faces(context, obj))
     finally:
         scene.render.engine = engine
         scene.cycles.samples = samples
-        restore_selection(context, saved)
-
-    if found_on:
-        context.view_layer.objects.active = found_on[0]
-    return flagged(count, ("interior face", "interior faces"), 'FACE')
+    return found
 
 
 TOOLS = (

@@ -1,4 +1,4 @@
-"""Asset Validation - Normals fixes."""
+"""Asset Validation - Normals checks and fixes."""
 from __future__ import annotations
 
 import math
@@ -6,7 +6,16 @@ import math
 import bpy
 
 from ... import common
-from ._shared import Tool, ValidationError, restore_selection, save_selection, selected_meshes
+from ._shared import (
+    Tool,
+    ValidationError,
+    check,
+    clear_custom_normals,
+    restore_selection,
+    save_selection,
+    selected_meshes,
+)
+from .log import Found
 
 TITLE = "Normals"
 ICON = 'NORMALS_FACE'
@@ -35,10 +44,7 @@ def smooth_shading(context):
     meshes = selected_meshes(context)
     saved = save_selection(context)
     common.ensure_object_mode(context)
-    for obj in meshes:
-        if obj.data.has_custom_normals:
-            context.view_layer.objects.active = obj
-            bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    clear_custom_normals(context, meshes)
     common.set_auto_smooth(context, meshes, _AUTO_SMOOTH_ANGLE)
     restore_selection(context, saved)
     return "ok", "Shaded smooth, auto smooth at 30°."
@@ -54,6 +60,16 @@ def face_orientation(context):
     return "info", "Face orientation {}.".format("shown" if overlay.show_face_orientation else "hidden")
 
 
+@check
+def custom_normals(context):
+    """Selected meshes with Custom Split Normals Data (Mesh properties > Geometry Data)."""
+    found = Found("custom split normals")
+    for obj in selected_meshes(context):
+        if obj.data.has_custom_normals:
+            found.add(obj)
+    return found
+
+
 TOOLS = (
     Tool("recalculate_normals", "Recalculate Normals",
          "Make the normals of the selected meshes point outside", recalculate_normals),
@@ -61,4 +77,6 @@ TOOLS = (
          "Clear custom normals and shade smooth with 30° auto smooth", smooth_shading),
     Tool("face_orientation", "Toggle Face Orientation",
          "Show or hide the Face Orientation overlay", face_orientation),
+    Tool("custom_normals", "Check Custom Normals Data",
+         "Find selected meshes with Custom Split Normals Data", custom_normals),
 )

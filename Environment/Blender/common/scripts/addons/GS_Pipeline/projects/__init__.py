@@ -1,33 +1,13 @@
-"""'Projects' category for GS Pipeline.
+"""'Projects' category for GS Pipeline: one package per project, shown in the
+group bar once there is more than one.
 
-One group per project; the panel shows a project bar once there is more than
-one. Each project module exposes a ``PROJECT`` descriptor::
-
-    {"id", "label", "tabs": [{"label", "draw"}, ...]}
-
-To add a new project, drop a module in this package and append it to ``MODULES``.
+To add a project, follow mgp27/: a package whose __init__.py has a GROUP (one
+Tab per tool module of the project) and register() / unregister(). Then add it
+to CATEGORY below, where it should sit in the bar.
 """
 from __future__ import annotations
 
-from . import hw3_tools
-from . import mgp27_tools
+from ..panel import Category
+from . import hw3, mgp27
 
-# Ordered list of project modules. Order defines the project (group) order.
-MODULES = (hw3_tools, mgp27_tools)
-
-# Category descriptor consumed by the top-level GS Pipeline menu framework.
-CATEGORY = {
-    "id": "PROJECTS",
-    "label": "Projects",
-    "groups": [m.PROJECT for m in MODULES],
-}
-
-
-def register():
-    for module in MODULES:
-        module.register()
-
-
-def unregister():
-    for module in reversed(MODULES):
-        module.unregister()
+CATEGORY = Category("PROJECTS", "Projects", (hw3, mgp27))

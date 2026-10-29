@@ -1,11 +1,12 @@
-"""Asset Validation - Symmetry checks across X. Each one selects what it finds."""
+"""Asset Validation - Symmetry checks across X. Each one lists the meshes that break it."""
 from __future__ import annotations
 
 import bmesh
 import bpy
 
 from ... import common
-from ._shared import Tool, flagged, selected_meshes
+from ._shared import Tool, check, selected_meshes
+from .log import Found
 
 TITLE = "Symmetry X"
 ICON = 'MOD_MIRROR'
@@ -18,54 +19,37 @@ def _rounded(position):
     return tuple(round(value, _SYMMETRY_DECIMALS) for value in position)
 
 
-def _mirrored_vertices(obj, bm):
-    """Indices of the vertices that have a partner mirrored across X.
+def _mirrored_vertices(obj, vertices):
+    """Indices of the ``vertices`` (of ``obj``) that have a partner mirrored across X.
 
     Sides are split on the object's local X; partners are matched on world
     position with X made positive.
     """
     matrix = obj.matrix_world
     positive = {}
-    for vert in bm.verts:
+    for vert in vertices:
         if vert.co.x >= 0:
             positive.setdefault(_rounded(matrix @ vert.co), []).append(vert.index)
-    mirrored = []
-    for vert in bm.verts:
+    mirrored = set()
+    for vert in vertices:
         if vert.co.x <= 0:
             position = matrix @ vert.co
             position.x = abs(position.x)
             partners = positive.get(_rounded(position))
             if partners:
-                mirrored.extend(partners + [vert.index])
+                mirrored.update(partners)
+                mirrored.add(vert.index)
     return mirrored
 
 
-def _one_at_a_time(context, meshes):
-    """Yield each mesh alone in Edit Mode; ends in Object Mode with ``meshes`` selected."""
-    for obj in meshes:
-        common.select_only(context, [obj])
-        bpy.ops.object.mode_set(mode='EDIT')
-        yield obj
-        bpy.ops.object.mode_set(mode='OBJECT')
-    common.select_only(context, meshes)
-
-
+@check
 def asymmetric_vertices(context):
-    meshes = selected_meshes(context)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    count = 0
-    for obj in _one_at_a_time(context, meshes):
-        bm = bmesh.from_edit_mesh(obj.data)
-        bm.verts.ensure_lookup_table()
-        for index in _mirrored_vertices(obj, bm):
-            bm.verts[index].select = True
-        bpy.ops.mesh.select_all(action='INVERT')
-        count += sum(1 for vert in bmesh.from_edit_mesh(obj.data).verts if vert.select)
-    return flagged(count, ("asymmetric vertex", "asymmetric vertices"), 'VERT')
+    found = Found("asymmetric vertices", 'VERT')
+    for obj in selected_meshes(context):
+        vertices = obj.data.vertices
+        mirrored = _mirrored_vertices(obj, vertices)
+        found.add(obj, [vert.index for vert in vertices if vert.index not in mirrored])
+    return found
 
 
 def _select_unmirrored_side(bm, mesh, on_side):
@@ -81,25 +65,28 @@ def _select_unmirrored_side(bm, mesh, on_side):
     bpy.ops.mesh.hide(unselected=False)
 
 
+@check
 def asymmetric_faces(context):
-    meshes = selected_meshes(context)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.object.mode_set(mode='OBJECT')
+    """Faces Blender's Select Mirror finds no partner for, on either side.
 
-    count = 0
-    for obj in _one_at_a_time(context, meshes):
+    Each side's unmirrored part is hidden in turn; revealing selects what was
+    hidden. The check puts the artist's hidden and selected faces back after.
+    """
+    found = Found("asymmetric faces", 'FACE')
+    for obj in selected_meshes(context):
         mesh = obj.data
-        bm = bmesh.from_edit_mesh(mesh)
-        before = sum(1 for face in bm.faces if face.select)
-        _select_unmirrored_side(bm, mesh, lambda x: x >= 0)
+        common.select_only(context, [obj])
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.reveal(select=False)       # so only what this hides is revealed below
+        bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        _select_unmirrored_side(bmesh.from_edit_mesh(mesh), mesh, lambda x: x >= 0)
         bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
         _select_unmirrored_side(bmesh.from_edit_mesh(mesh), mesh, lambda x: x <= 0)
         bpy.ops.mesh.reveal()
-        after = sum(1 for face in bmesh.from_edit_mesh(mesh).faces if face.select)
-        count += max(0, after - before)
-    return flagged(count, ("asymmetric face", "asymmetric faces"), 'FACE')
+        found.add(obj, [face.index for face in bmesh.from_edit_mesh(mesh).faces if face.select])
+        bpy.ops.object.mode_set(mode='OBJECT')
+    return found
 
 
 TOOLS = (

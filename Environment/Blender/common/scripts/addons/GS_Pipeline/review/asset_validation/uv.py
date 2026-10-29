@@ -5,12 +5,14 @@ import bmesh
 import bpy
 
 from ... import common
-from ._shared import Tool, flagged, plural, restore_selection, save_selection, selected_meshes
+from ._shared import Tool, check, plural, selected_meshes
+from .log import Found
 
 TITLE = "UV"
 ICON = 'UV'
 
 
+@check
 def self_penetrating_uvs(context):
     """Faces whose UVs overlap other faces of the same mesh (active UV map).
 
@@ -21,11 +23,9 @@ def self_penetrating_uvs(context):
     meshes = [obj for obj in selected_meshes(context) if obj.data.uv_layers]
     if not meshes:
         return "warn", "None of the selected meshes has UVs."
-    saved = save_selection(context)
+    found = Found("overlapping UVs", 'FACE')
     tool_settings = context.tool_settings
     sync = tool_settings.use_uv_select_sync
-    count = 0
-    common.ensure_object_mode(context)
     try:
         tool_settings.use_uv_select_sync = True
         for obj in meshes:
@@ -33,23 +33,22 @@ def self_penetrating_uvs(context):
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.mesh.select_all(action='DESELECT')
             bpy.ops.uv.select_overlap(extend=False)
-            count += sum(1 for face in bmesh.from_edit_mesh(obj.data).faces if face.select)
+            found.add(obj, [face.index for face in bmesh.from_edit_mesh(obj.data).faces
+                            if face.select])
             bpy.ops.object.mode_set(mode='OBJECT')
     finally:
         tool_settings.use_uv_select_sync = sync
-        restore_selection(context, saved)
-    return flagged(count, ("face with overlapping UVs", "faces with overlapping UVs"), 'FACE')
+    return found
 
 
+@check
 def missing_uvs(context):
-    """Selected meshes with no UV map. They're left selected."""
-    meshes = selected_meshes(context)
-    missing = [obj for obj in meshes if not obj.data.uv_layers]
-    common.ensure_object_mode(context)
-    if not missing:
-        return "ok", "All selected meshes have UVs."
-    common.select_only(context, missing)
-    return "warn", "{} with no UVs - selected.".format(plural(len(missing), "mesh", "meshes"))
+    """Selected meshes with no UV map."""
+    found = Found("no UVs", clean="All selected meshes have UVs.")
+    for obj in selected_meshes(context):
+        if not obj.data.uv_layers:
+            found.add(obj)
+    return found
 
 
 def sharp_edges_to_seams(context):
