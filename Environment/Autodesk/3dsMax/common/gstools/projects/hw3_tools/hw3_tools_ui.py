@@ -1,8 +1,13 @@
 """
-hw3_tools_ui.py — GSTools HW3 Tools for 3ds Max 2023
+hw3_tools_ui.py — GSTools HW3 Tools for 3ds Max 2023+
 ============================================================
-UI:            PySide2 QDialog (Python 3.9)
+UI:            PySide6 (Max 2025+) or PySide2 (Max 2023) QDialog, the binding
+               picked by gs_max.qt_modules()
 Max operations: pymxs.runtime (imported at call time — not at module load)
+
+One file for every Max version. HW3_Tools.mcr runs it (python.ExecuteFile), and
+the last line hands it to gs_max.launch() to run as a module of its own. Qt is
+imported at call time, so the module stays importable where no Qt binding exists.
 """
 from __future__ import annotations
 import json
@@ -10,8 +15,13 @@ import os
 import sys
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _THIS_DIR not in sys.path:
-    sys.path.insert(0, _THIS_DIR)
+
+# The shared GSTools helpers live in common\gstools\_core.
+_CORE = os.path.join(os.path.dirname(os.path.dirname(_THIS_DIR)), "_core")
+if _CORE not in sys.path:
+    sys.path.append(_CORE)
+
+import gs_max  # noqa: E402  (must follow the sys.path setup)
 
 temp_dir = os.environ["TEMP"]
 _UE_ROOT = os.path.join(temp_dir, "GSApplication", "unreal-engine")
@@ -240,7 +250,7 @@ _MS_PATH = os.path.join(_THIS_DIR, "hw3_tools.ms")
 
 
 def _ensure_ms() -> None:
-    """Load hw3_tools.ms once (idempotent)."""
+    """Load hw3_tools.ms once per launch (idempotent within it)."""
     global _ms_loaded
     if _ms_loaded:
         return
@@ -270,7 +280,7 @@ def _load_fbx_list() -> dict:
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
 def _hsep():
-    from PySide2 import QtWidgets
+    QtWidgets, _, _ = gs_max.qt_modules()
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
     line.setFrameShadow(QtWidgets.QFrame.Sunken)
@@ -281,18 +291,8 @@ def _hsep():
 
 def show() -> None:
     """Open (or re-open) the Hotwheel Tools dialog."""
-    global _ms_loaded
-    _ms_loaded = False  # always reload hw3_tools.ms so changes take effect
-    from PySide2 import QtWidgets
-    try:
-        import qtmax
-        parent = qtmax.GetQMaxMainWindow()
-    except Exception:
-        try:
-            import MaxPlus
-            parent = MaxPlus.GetQMaxMainWindow()
-        except Exception:
-            parent = None
+    QtWidgets, _, _ = gs_max.qt_modules()
+    parent = gs_max.main_window()
 
     for w in QtWidgets.QApplication.topLevelWidgets():
         if w.objectName() == "HW3 Tools UI":
@@ -315,7 +315,7 @@ def _get_dialog_class():
     if _HotwheelDialog is not None:
         return _HotwheelDialog
 
-    from PySide2 import QtWidgets, QtCore
+    QtWidgets, QtCore, _ = gs_max.qt_modules()
 
     class _HotwheelDialog(QtWidgets.QDialog):
         def __init__(self, parent=None):
@@ -371,7 +371,7 @@ def _get_dialog_class():
             self._build_modelling(mod_widget)
 
         def _build_left(self, outer):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             left = QtWidgets.QVBoxLayout()
             outer.addLayout(left, stretch=3)
 
@@ -472,7 +472,7 @@ def _get_dialog_class():
             self._btn_assign.clicked.connect(self._on_assign)
 
         def _build_right(self, outer):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             right = QtWidgets.QVBoxLayout()
             outer.addLayout(right, stretch=2)
 
@@ -496,7 +496,7 @@ def _get_dialog_class():
             self._mat_list.itemSelectionChanged.connect(self._refresh_assign_btn)
 
         def _build_modelling(self, parent_widget):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = gs_max.qt_modules()
 
             layout = QtWidgets.QVBoxLayout(parent_widget)
             layout.setContentsMargins(8, 8, 8, 8)
@@ -684,7 +684,6 @@ def _get_dialog_class():
             self._refresh_fbx()
 
         def _on_export_building_scene(self):
-            from PySide2 import QtWidgets
             from pymxs import runtime as rt
             _ensure_ms()
             result = rt.execute("HW_ExportBuildingScene()")
@@ -692,7 +691,7 @@ def _get_dialog_class():
                 pass  # MaxScript already showed messageBox on error
 
         def _on_detach(self):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = gs_max.qt_modules()
             dlg = QtWidgets.QDialog(self)
             dlg.setWindowTitle("Detach")
             dlg.setWindowFlags(dlg.windowFlags() | QtCore.Qt.Window)
@@ -712,7 +711,8 @@ def _get_dialog_class():
             row.addWidget(btn_clone)
             btn_elem.clicked.connect(lambda: (_call_ms("HW_Detach false"), dlg.accept()))
             btn_clone.clicked.connect(lambda: (_call_ms("HW_Detach true"),  dlg.accept()))
-            dlg.exec_()
+            # PySide6 renamed exec_() to exec(); Max 2023's PySide2 may only have exec_().
+            (dlg.exec if hasattr(dlg, "exec") else dlg.exec_)()
 
         def _refresh_fbx(self):
             self._fbx_paths = _load_fbx_list()
@@ -737,7 +737,7 @@ def _get_dialog_class():
             self._replacer_list.clear()
 
         def _on_clear_fbx(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             selected = self._fbx_list.selectedItems()
             if selected:
                 # Delete only selected FBX files
@@ -775,7 +775,7 @@ def _get_dialog_class():
             self._refresh_fbx()
 
         def _on_export_source_modules(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             from pymxs import runtime as rt
             _ensure_ms()
             mesh_root_ms = MESH_ROOT.replace("\\", "\\\\")
@@ -788,7 +788,7 @@ def _get_dialog_class():
                 )
 
         def _on_source_replace(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             from pymxs import runtime as rt
 
             n_rep = self._replacer_list.count()
@@ -845,7 +845,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _on_clear_mat(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             import shutil
             reply = QtWidgets.QMessageBox.question(
                 self, "Clear Material folder",
@@ -903,7 +903,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _on_clear_tex(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             import shutil
             reply = QtWidgets.QMessageBox.question(
                 self, "Clear Textures folder",
@@ -938,16 +938,16 @@ def _get_dialog_class():
 
         def _selected_mat_obj(self):
             """Return the mat object for the currently selected Max Material item."""
-            from PySide2.QtCore import Qt as _Qt
+            _, QtCore, _ = gs_max.qt_modules()
             if self._mat_list is None:
                 return None
             sel = self._mat_list.selectedItems()
             if not sel:
                 return None
-            return sel[0].data(_Qt.UserRole)
+            return sel[0].data(QtCore.Qt.UserRole)
 
         def _on_assign(self):
-            from PySide2 import QtWidgets
+            QtWidgets, _, _ = gs_max.qt_modules()
             mat = self._selected_mat_obj()
             if mat is None:
                 QtWidgets.QMessageBox.warning(
@@ -989,7 +989,7 @@ def _get_dialog_class():
             self._refresh_assign_btn()
 
         def _refresh_materials(self):
-            from PySide2 import QtWidgets, QtCore
+            QtWidgets, QtCore, _ = gs_max.qt_modules()
             self._mat_list.clear()
             for display_name, mat_obj in _list_scene_materials():
                 item = QtWidgets.QListWidgetItem(display_name)
@@ -1012,9 +1012,6 @@ def _get_dialog_class():
     return _HotwheelDialog
 
 
-# ── Execution: Show dialog when MacroScript calls ExecuteFile ────────────────
-# This is called by HW3_Tools.mcr via python.ExecuteFile
-try:
-    show()
-except Exception as e:
-    print(f"[HW3 Tools] Error showing dialog: {e}")
+# ── Execution: HW3_Tools.mcr runs this file with python.ExecuteFile ──────────
+if __name__ == "__main__":
+    gs_max.launch(__file__)

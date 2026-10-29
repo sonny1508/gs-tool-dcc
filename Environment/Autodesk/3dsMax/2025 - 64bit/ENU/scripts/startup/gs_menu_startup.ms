@@ -8,11 +8,6 @@
 --                     not exist there, which is what the "getMainMenuBar in
 --                     undefined" error on 2025 was.
 
--- Expose the GSTools scripts root as a single global so any tool macro can
--- derive its own deployed path from it (e.g. _gstools_scripts_root +
--- "projects\\hw3_tools\\hw3_tools_ui.py"). Tool-agnostic: no per-tool wiring here.
-global _gstools_scripts_root = (getDir #userScripts) + "\\gstools\\"
-
 -- Create a function to log messages
 fn logMessage msg =
 (
@@ -55,7 +50,8 @@ global gsMenuLayout = #(
     )),
     #("06_Projects", "6084fbec-b16e-4320-bd16-aeea4aa7aaae", #(
         #("HW3_File_Exporter",    "4e4816c3-5f8a-4b1f-a8f1-bf827dbfc254"),
-        #("HW3_Tools",            "92e142de-a615-4dfe-ad8f-bc059d40004b")
+        #("HW3_Tools",            "92e142de-a615-4dfe-ad8f-bc059d40004b"),
+        #("MGP27_Kerb_Height_Checker", "1f174d13-8f58-49c2-9210-5d94c8c7b019")
     ))
     -- Add more folders here as needed
 )

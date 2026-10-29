@@ -7,7 +7,7 @@ with __name__ == '__main__', which opens the window.
 
 Select the kerbs (and the track, if the foot of the kerb is on a separate
 mesh) and Check. Check selects the kerb-top vertices whose step is off spec;
-Fix Selected moves the selected vertices onto it.
+Fix Selection moves the selected vertices onto it.
 
 How a step is measured
 ----------------------
@@ -540,7 +540,7 @@ class KerbCheckerWindow(QtWidgets.QDialog):
         check_button.clicked.connect(self._on_check)
         action_row.addWidget(check_button, 1)
         fix_button = self._big_button(
-            "Fix Selected",
+            "Fix Selection",
             "Move the selected vertices onto the kerb height, as set by Mode.\n"
             "Ctrl+Z undoes it.")
         gs_style.style_button(fix_button, gs_style.STUDIO_ORANGE)

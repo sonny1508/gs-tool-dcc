@@ -1,13 +1,12 @@
 macroScript HW3_Tools
-Category:"GSTools"
-toolTip:"HW3 Tools"
+category:"GSTools"
+tooltip:"HW3 Tools"
 buttonText:"HW3 Tools"
 (
-    -- Derive this tool's deployed Python entry point. Resolve the scripts root
-    -- via getDir #userScripts directly so the macro never depends on a global
-    -- existing at its own compile time (load order vs. startup is not guaranteed).
-    local root = (getDir #userScripts) + "\\gstools\\"
-    local p = root + "projects\\hw3_tools\\hw3_tools_ui.py"
-    if doesFileExist p then python.ExecuteFile p
-    else messageBox ("HW3 Tools script not found:\n" + p) title:"HW3 Tools"
+	-- The tool lives in the version-less common tree; see Scene_Checker.mcr for
+	-- why the path is walked up from #userScripts.
+	local maxRoot = pathConfig.removePathLeaf (pathConfig.removePathLeaf (pathConfig.removePathLeaf (getDir #userScripts)))
+	local p = pathConfig.appendPath maxRoot "common\\gstools\\projects\\hw3_tools\\hw3_tools_ui.py"
+	if doesFileExist p then python.ExecuteFile p
+	else messageBox ("HW3 Tools script not found:\n" + p) title:"HW3 Tools"
 )

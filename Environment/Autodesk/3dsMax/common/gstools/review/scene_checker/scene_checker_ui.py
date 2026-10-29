@@ -1,24 +1,27 @@
 """
 scene_checker_ui.py — GSTools Scene Checker for 3ds Max 2023+
 ============================================================
-UI:             PySide6 (Max 2025, Qt6) or PySide2 (Max 2023, Qt5) QDialog
+UI:             PySide6 (Max 2025+) or PySide2 (Max 2023) QDialog, the binding
+                picked by gs_max.qt_modules()
 Max operations: scene_checker.ms backend, called via pymxs.runtime
 
-The Qt binding is resolved lazily via _qt_modules(): PySide6 is preferred (Max
-2025+, Python 3.11) and falls back to PySide2 (Max 2023, Python 3.9). Both expose
-the same widget/enum names used here, so this one file serves both Max versions.
-
-The .mcr macro only loads this file (python.ExecuteFile). All checking logic
-lives in scene_checker.ms beside this file; it is fileIn'd fresh on every launch,
-so both this UI and the backend can be edited without restarting 3ds Max.
+The .mcr macro runs this file (python.ExecuteFile), and the last line hands it to
+gs_max.launch() to run as a module of its own. All checking logic lives in
+scene_checker.ms beside this file; it is fileIn'd fresh on every launch, so both
+this UI and the backend can be edited without restarting 3ds Max.
 """
 from __future__ import annotations
 import os
 import sys
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _THIS_DIR not in sys.path:
-    sys.path.insert(0, _THIS_DIR)
+
+# The shared GSTools helpers live in common\gstools\_core.
+_CORE = os.path.join(os.path.dirname(os.path.dirname(_THIS_DIR)), "_core")
+if _CORE not in sys.path:
+    sys.path.append(_CORE)
+
+import gs_max  # noqa: E402  (must follow the sys.path setup)
 
 # MaxScript backend lives beside this file.
 _MS_PATH = os.path.join(_THIS_DIR, "scene_checker.ms")
@@ -42,33 +45,6 @@ def _call_ms(expr: str):
     _ensure_ms()
     from pymxs import runtime as rt
     return rt.execute(expr)
-
-
-# ── Qt binding shim (PySide6 for Max 2025, PySide2 for Max 2023) ──────────────
-
-def _qt_modules():
-    """Return (QtWidgets, QtCore, QtGui) for the Qt binding this Max version uses.
-
-    The binding MUST match the one 3ds Max itself runs: the parent window comes
-    from qtmax, and mixing bindings (e.g. a PySide2 QMainWindow into a PySide6
-    QDialog) crashes with "wrong argument types". So we choose by Max version,
-    not by "what happens to be importable" — a stray PySide6 can sit on sys.path
-    in a Max 2023 install even though its real Qt is PySide2.
-
-    3ds Max 2025+ ships Python 3.11 + PySide6/Qt6; 2024 and earlier ship an older
-    Python + PySide2/Qt5. Both expose the same widget/enum names used here.
-    """
-    if sys.version_info >= (3, 11):
-        try:
-            from PySide6 import QtWidgets, QtCore, QtGui
-        except ImportError:
-            from PySide2 import QtWidgets, QtCore, QtGui
-    else:
-        try:
-            from PySide2 import QtWidgets, QtCore, QtGui
-        except ImportError:
-            from PySide6 import QtWidgets, QtCore, QtGui
-    return QtWidgets, QtCore, QtGui
 
 
 def _to_str_list(result) -> list | None:
@@ -134,18 +110,9 @@ def _unregister_info_callbacks() -> None:
 
 def show() -> None:
     """Open (or re-open) the Scene Checker dialog."""
-    global _ms_loaded, _active_dialog
-    _ms_loaded = False  # always reload scene_checker.ms so edits take effect
-    QtWidgets, _, _ = _qt_modules()
-    try:
-        import qtmax
-        parent = qtmax.GetQMaxMainWindow()
-    except Exception:
-        try:
-            import MaxPlus
-            parent = MaxPlus.GetQMaxMainWindow()
-        except Exception:
-            parent = None
+    global _active_dialog
+    QtWidgets, _, _ = gs_max.qt_modules()
+    parent = gs_max.main_window()
 
     for w in QtWidgets.QApplication.topLevelWidgets():
         if w.objectName() == "Scene Checker UI":
@@ -170,7 +137,7 @@ def _get_dialog_class():
     if _SceneCheckerDialog is not None:
         return _SceneCheckerDialog
 
-    QtWidgets, QtCore, _ = _qt_modules()
+    QtWidgets, QtCore, _ = gs_max.qt_modules()
 
     class _SceneCheckerDialog(QtWidgets.QDialog):
         def __init__(self, parent=None):
@@ -340,8 +307,6 @@ def _get_dialog_class():
     return _SceneCheckerDialog
 
 
-# ── Execution: show the dialog when the MacroScript calls ExecuteFile ─────────
-try:
-    show()
-except Exception as e:
-    print(f"[Scene Checker] Error showing dialog: {e}")
+# ── Execution: Scene_Checker.mcr runs this file with python.ExecuteFile ──────
+if __name__ == "__main__":
+    gs_max.launch(__file__)

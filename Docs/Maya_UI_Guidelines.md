@@ -121,7 +121,7 @@ Lay the window out top to bottom: **settings → actions → output**.
 │               [ ] Measure along the ground                       │
 └───────────────────────────────────────┼──────────────────────────┘
                                    middle of the window
-[       Check Selection       ] [        Fix Selected        ]
+[       Check Selection       ] [        Fix Selection       ]
 ┌ Log ────────────────────────────────────────────────────┐
 │ Checked 38 vertices, Z up.                                       │
 │ 38 too high - selected.                                          │
@@ -199,7 +199,7 @@ the `GSPIPELINE` environment variable that `Maya.env` sets.
 | Button          | Colour                     | Constant                 | Examples                  |
 | --------------- | -------------------------- | ------------------------ | ------------------------- |
 | first           | `#6b0914` studio red       | `gs_style.STUDIO_RED`    | Check Selection, RESET    |
-| second          | `#f6921e` studio orange    | `gs_style.STUDIO_ORANGE` | Fix Selected, SWITCH      |
+| second          | `#f6921e` studio orange    | `gs_style.STUDIO_ORANGE` | Fix Selection, SWITCH     |
 
 `gs_style.style_button(button, colour)` sets the fill and white bold text, and adds the
 hover, pressed and disabled looks. A window with one primary action uses studio red. Only

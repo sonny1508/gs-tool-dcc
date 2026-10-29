@@ -6,7 +6,7 @@ fixing below follow the Maya tool line for line; keep the two in step.
 
 Select the kerbs (and the track, if the foot of the kerb is on a separate
 mesh) and Check. Check selects the kerb-top vertices whose step is off spec;
-Fix Selected moves the selected vertices onto it.
+Fix Selection moves the selected vertices onto it.
 
 How a step is measured
 ----------------------
@@ -595,7 +595,7 @@ class GS_OT_MGP27_KerbCheck(Operator):
 
 class GS_OT_MGP27_KerbFix(Operator):
     bl_idname = "gs_pipeline.mgp27_kerb_fix"
-    bl_label = "Fix Selected"
+    bl_label = "Fix Selection"
     bl_description = "Move the selected vertices onto the kerb height, as set by Mode. Ctrl+Z undoes it"
     bl_options = {'UNDO'}
 
@@ -707,7 +707,7 @@ def draw_kerb_checker(layout, context):
     actions = layout.row() if roomy else layout.column()
     actions.scale_y = 1.6
     actions.operator("gs_pipeline.mgp27_kerb_check", text="Check Selection")
-    actions.operator("gs_pipeline.mgp27_kerb_fix", text="Fix Selected")
+    actions.operator("gs_pipeline.mgp27_kerb_fix", text="Fix Selection")
 
     LOG.draw(layout, context)
 

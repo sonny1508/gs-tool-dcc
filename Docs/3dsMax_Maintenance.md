@@ -53,7 +53,6 @@ Environment/Autodesk/3dsMax/
 │   └── gstools/                 our tool code, one copy for every Max version
 └── <year> - 64bit/ENU/          → %LOCALAPPDATA%\Autodesk\3dsMax\<year> - 64bit\ENU\
     ├── scripts/startup/         auto-run at every Max launch (gs_menu_startup.ms lives here)
-    ├── scripts/gstools/         tool code not yet moved to common/
     ├── scripts/<vendor>/        third-party tools (NikScripts, PolySmoother)
     ├── usermacros/<folder>/     *.mcr macroScripts, all category:"GSTools"
     └── usericons/
@@ -85,9 +84,40 @@ Code in `common/` runs on every Max version, so it has to clear all of their bar
 - **Never compiled plugins** (`.dlx`, `.dlo`, `.dll`): those are per-version by nature
   ([§6](#6-compiled-and-encrypted-third-party-plugins)) and stay in the version trees.
 
-Moved so far: `review/scene_checker` and `normals/N00BY_Scripts` (Custom Normals Tool).
-Everything else under `scripts/gstools/` is still duplicated per version; move a tool when
-you are next working on it.
+All our tool code is in `common/` now: `review/scene_checker`, `normals/N00BY_Scripts`
+(Custom Normals Tool), `projects/hw3_tools` and `projects/mgp27` (MGP27 Kerb Height
+Checker, macro in 2025+ only). The version folders no longer have a `scripts/gstools/`.
+New tools go straight into `common/`.
+
+### Python tools in `common/`
+
+Shared helpers live in `common/gstools/_core/`, and a tool reaches them by putting that
+folder on `sys.path`, the way Maya's GSPipeline tools reach their `_core`:
+
+- `gs_max.py`: `qt_modules()` (binding by Max version, [§5](#5-python-and-qt-inside-max)),
+  `main_window()`, `launch()`, `cm_per_unit()` / `scene_unit()`, and `pref_get()` /
+  `pref_set()`, which remember settings in `%LOCALAPPDATA%\Autodesk\3dsMax\gstools_prefs.json`
+  for every Max version at once.
+- `gs_style.py`: the studio colours. It's a copy of Maya's `_core/gs_style.py`, since the
+  two deploy separately, so keep the values in step.
+
+`python.ExecuteFile` runs a file in Max's `__main__`, **one namespace shared by every file
+run that way**. A window whose code runs there looks its functions up in `__main__` when
+a button is clicked, so a tool opened later can replace them with its own of the same name.
+Scene Checker and HW3 Tools both define `_call_ms`, `_ensure_ms`, `_ms_loaded` and
+`_MS_PATH`, so they did exactly that. Every Python tool in `common/` ends with:
+
+```python
+if __name__ == "__main__":
+    gs_max.launch(__file__)
+```
+
+`launch()` loads the file again as a module of its own and calls its `show()`, so the window
+keeps its own code. The module is loaded fresh on every launch, so a redeployed tool takes
+effect without restarting Max. MGP27 Kerb Height Checker
+(`common/gstools/projects/mgp27/`) is the reference: Python logic and window in
+`kerb_height_checker.py`, with the per-mesh bulk reads and writes in
+`kerb_height_checker.ms` so pymxs doesn't cross into MAXScript once per vertex.
 
 ### What still lives per version, kept in sync
 
@@ -203,7 +233,9 @@ has to clean up after previous launches:
 
 ### Adding a tool to the GSTools menu
 
-1. Put the tool code under `common/gstools/<area>/<tool>/`.
+1. Put the tool code under `common/gstools/<area>/<tool>/`. A Python tool uses the
+   `_core` helpers and ends with the launch line
+   (see [§2](#python-tools-in-common)).
 2. Write a thin `.mcr` under `usermacros/<folder>/` with `category:"GSTools"` that loads it
    (see [§2](#tool-code-in-common-thin-macros-per-version)).
 3. Add `#("MacroName", "<new guid>")` to the right folder in `gsMenuLayout` in
@@ -262,9 +294,6 @@ startup scripts load at different points during startup. Our macros resolve thei
 paths, from `getDir #userScripts` (the pattern is in
 [§2](#tool-code-in-common-thin-macros-per-version)).
 
-`_gstools_scripts_root` (set in `gs_menu_startup.ms`) is a convenience for code that runs
-after startup. It is not something macros can count on.
-
 ### Startup scripts run once
 
 Editing a deployed startup script has no effect until Max restarts, or until you `fileIn`
@@ -292,9 +321,9 @@ else:                                # Max 2023   → PySide2
     from PySide2 import QtWidgets, QtCore, QtGui
 ```
 
-The reference implementation is `_qt_modules()` in
-`common/gstools/review/scene_checker/scene_checker_ui.py`. `hw3_tools_ui.py` still uses
-the import-first shim and has the same latent bug.
+The shared implementation is `qt_modules()` in `common/gstools/_core/gs_max.py`, which
+returns `(QtWidgets, QtCore, QtGui)`. Every Python tool in `common/` gets its binding from
+it.
 
 This is the opposite of the Maya rule (where the repo branches on the import); see
 [CLAUDE.md](../CLAUDE.md).
