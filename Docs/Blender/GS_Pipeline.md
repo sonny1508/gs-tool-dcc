@@ -16,7 +16,7 @@ Blender 3.6, 4.5 and 5.2 (see [README.md](README.md)).
 4. [Recipes: adding things](#4-recipes-adding-things)
 5. [Where data lives](#5-where-data-lives)
 6. [Names that must not change](#6-names-that-must-not-change)
-7. [common.py](#7-commonpy)
+7. [common.py and object_log.py](#7-commonpy-and-object_logpy)
 8. [The tools](#8-the-tools)
 9. [Performance rules](#9-performance-rules)
 10. [UI conventions](#10-ui-conventions)
@@ -30,6 +30,7 @@ GS_Pipeline/
 ├── __init__.py              bl_info, category bar order, register / unregister
 ├── panel.py                 the sidebar panel + the Category / Group / Tab descriptors
 ├── common.py                helpers more than one tool uses (section 7)
+├── object_log.py            the Log with a list of objects that check-style tools share (section 7)
 ├── file_io/                 File I/O category
 │   └── file_transfer/       GS File Transfer
 │       ├── __init__.py      GROUP, register
@@ -41,6 +42,12 @@ GS_Pipeline/
 ├── review/                  Review category
 │   └── asset_validation/    see Asset_Validation.md
 └── projects/                Projects category: one package per project
+    ├── cm/
+    │   ├── __init__.py      GROUP (one tab), register
+    │   ├── vehicle.py       the tab: scope, LOD / custom part switching, Check Names, its Log
+    │   ├── variants.py      which LOD / part version each object is; hiding the rest
+    │   ├── name_check.py    the Check Names rules
+    │   └── names.py         the CM naming contract: LOD / part tokens, the essential names (no bpy)
     ├── hw3/
     │   ├── __init__.py      GROUP (one Tab per tool module), register
     │   ├── materials.py     Materials tab
@@ -179,8 +186,8 @@ A package whose `__init__.py` has `CATEGORY = Category(id, label, modules)`, add
 
 | Where                          | Lasts                                   | Use it for                                    | In use                                     |
 | ------------------------------ | --------------------------------------- | --------------------------------------------- | ------------------------------------------ |
-| `Scene` PointerProperty        | saved in the .blend                     | settings that belong to the file              | `gs_hw3`, `gs_file_transfer_props`         |
-| `WindowManager` properties     | this Blender session only, never saved  | UI state, lists rebuilt at runtime, spec values that must not quietly stick | `gs_category`, `gs_group`, `gs_subtab`, `gs_mgp27_kerb`, `gs_person_list`, `gs_av_log`, `gs_av_log_index` |
+| `Scene` PointerProperty        | saved in the .blend                     | settings that belong to the file              | `gs_hw3`, `gs_file_transfer_props`, `gs_cm` |
+| `WindowManager` properties     | this Blender session only, never saved  | UI state, lists rebuilt at runtime, spec values that must not quietly stick | `gs_category`, `gs_group`, `gs_subtab`, `gs_mgp27_kerb`, `gs_person_list`, `gs_av_log`, `gs_av_log_index`, `gs_cm_parts`, `gs_cm_log` |
 | `common.pref_get` / `pref_set` | across sessions (`gs_pipeline_prefs.json` in this Blender version's config folder) | an artist's own preferences; the counterpart of Maya optionVars | MGP27 up axis, measure along ground, fix mode |
 | module globals                 | this session                            | caches, data RNA can't hold (numpy arrays)    | Asset Validation `log._found`              |
 
@@ -191,8 +198,10 @@ row itself, such as a file path, so a click reads one item rather than rebuildin
 
 ## 6. Names that must not change
 
-- **Scene property names** (`gs_hw3`, `gs_file_transfer_props`) and their fields are
+- **Scene property names** (`gs_hw3`, `gs_file_transfer_props`, `gs_cm`) and their fields are
   saved in artists' .blend files.
+- **CM object names** (`projects/cm/names.py`) are the client's contract (spec v.3 and
+  their example car), not ours: the LOD / part tokens and the essential anchors.
 - **Operator ids** may be in artists' keymaps and quick favourites.
 - **GS File Transfer file names** (`<source>_to_<target>.fbx` and the per-object /
   per-user variants, built in `file_transfer/config.py` and `transfer.py` / `ui.py`) are a
@@ -204,7 +213,7 @@ Class names can change freely; nothing outside the add-on refers to them.
 
 ---
 
-## 7. common.py
+## 7. common.py and object_log.py
 
 | Helper                                   | What for                                                  |
 | ---------------------------------------- | --------------------------------------------------------- |
@@ -212,7 +221,7 @@ Class names can change freely; nothing outside the add-on refers to them.
 | `legacy_auto_smooth`, `set_auto_smooth`  | auto smooth, which works differently in 3.6 and 4.1+ (API_Notes.md) |
 | `merge_duplicate_materials`              | fold the `Name.001` copies an import made into the existing `Name` |
 | `redraw_view3d`, `is_wide`, `wait_cursor`| UI: redraw after state changed outside a draw; responsive layout; long actions |
-| `ToolLog`, `LOG_ICONS`                   | the short result log at the bottom of a tab               |
+| `ToolLog`, `LOG_ICONS`, `plural`         | the short result log at the bottom of a tab; "3 parts" in its lines |
 | `pref_get`, `pref_set`                   | remembered preferences (JSON, per Blender version)        |
 | `register_classes`, `unregister_classes`, `register_modules`, `unregister_modules` | registration |
 
@@ -221,6 +230,31 @@ Class names can change freely; nothing outside the add-on refers to them.
 the icon carries the level and error lines draw in the alert colour. Passing the operator
 to `add()` also reports the line to the status bar, warn / error as `{'WARNING'}`. An
 `{'ERROR'}` report would open a pop-up.
+
+### object_log.py
+
+A tool whose result is a list of objects (a check) uses `object_log.ObjectLog` rather than
+building its own: message lines (a `ToolLog`), a scrolling list with one row per problem,
+**Select Objects**, and "N objects in the log" under it. Clicking a row selects its
+object; a hidden one is made active and reported. Asset Validation and CM both use it.
+
+```python
+LOG = ObjectLog("cm", "Pick a Scope, then press Check Names.")   # list: WindowManager.gs_cm_log
+
+LOG.register() / LOG.unregister()        # with the tool's own classes
+LOG.clear(context)                       # messages and list, at the start of an action
+LOG.clear_messages()                     # messages only: an action that leaves the list alone
+LOG.add(message, level, op)              # a message line
+LOG.show(context, rows, op, clean)       # a check's result: (object name, text, level) rows
+LOG.draw(layout, context, columns)       # the Log box
+```
+
+A row with name `""` is a problem with no object to select (something missing); the count
+says "N missing". Each log makes its own operators, `gs_pipeline.<id>_select_objects` and
+`gs_pipeline.<id>_select_log_row`, so their ids stay what they were for Asset Validation.
+The row type and UIList are shared and registered once by the add-on, before the tools.
+A log that needs more subclasses it: Asset Validation's adds Select Errors (see
+Asset_Validation.md).
 
 ---
 
@@ -250,6 +284,37 @@ or Individual (one file per mesh).
 - Import post-processing: optional clear normals, merge duplicate materials, optional
   Shade Auto Smooth. On 3.6 the importer turns auto smooth on at 30°, which re-splits
   imported normals, so it is set to 180° to leave shading to the imported normals.
+
+### Projects > CM (`projects/cm/`)
+
+Client project Rev Match Racing (VR cars; spec and example car under
+`M:\cm\documentation\Vehicle`). One tab, three jobs on the objects in **Scope** (a
+collection and everything in it; empty = the whole scene):
+
+- **LOD**: All, LOD0, LOD1, LOD2: every CM car has exactly those (`names.LODS`); any
+  other number is a mistake, shown only under All and reported by Check Names. An
+  object's LOD is the `_LOD<n>` in its name (not always last:
+  `l_door_handle_LOD0_highlight`), else the nearest one above it. Objects with no LOD
+  anywhere above them are left alone. The buttons are an enum on the scene whose
+  `update` does the hiding, so the click's own undo step covers it.
+- **Custom Parts** (their versions are called Default and Part A, B...): a part is the
+  outermost `_part_<X>` object (`anchor_hood_part_B_LOD0`) and everything under it; it
+  swaps with the default object of the same name without `_part_<X>` and everything
+  under that, at the same LOD. Swapping whole subtrees, not mesh by mesh, is deliberate
+  (Sonny, 2026-10-29): a part's meshes need not match the default ones, and some parts
+  have no default version. A part with no version at the LOD on show shows the default
+  there. Which parts and letters exist differs per file, so the global buttons (every
+  part that has a letter) and the list (one part) are read from the scene. The list's
+  rows aren't selectable: its active index always reads -1 and ignores clicks.
+- **Check Names**: the essential anchors and wheel meshes (`names.ESSENTIAL_ANCHORS`,
+  drawn from the example car) under the right parents, and spelling on everything:
+  `_LOD<n>` in capitals, 0-2 and matching the objects above, part letters matching their
+  part, English letters / digits / `_` only (the example had a Cyrillic С), no `.001`.
+  Results go in the tab's `ObjectLog`, which LOD / part clicks don't clear.
+
+Hiding is Blender's eye (H / Alt+H) in the current view layer, chosen so artists can see
+and undo it. The choices are on the scene (`gs_cm`) and saved, like the hiding; the
+part buttons and list are re-read from the scene on file load, Reload and every click.
 
 ### Projects > HW3 (`projects/hw3/`)
 
@@ -310,6 +375,7 @@ DCC, [Docs/Maya_UI_Guidelines.md](../Maya_UI_Guidelines.md).
   `common.is_wide(context, px)` to put things side by side only when there is room. Each
   tool picks its own threshold (Asset Validation 400 px; MGP27 360 / 260 px).
 - Big actions: `row.scale_y = 1.3 ... 1.6`. No custom colours (not possible).
-- Results go in the tab's log (`common.ToolLog`, or Asset Validation's list), not pop-ups.
+- Results go in the tab's log (`common.ToolLog`, or `object_log.ObjectLog` when the result
+  is a list of objects), not pop-ups.
 - Greyed-out buttons explain why through `poll` + `cls.poll_message_set(...)`, which
   shows in the tooltip.

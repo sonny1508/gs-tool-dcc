@@ -25,7 +25,7 @@ Source: `GS_Pipeline/review/asset_validation/`. For the add-on around it, see
 asset_validation/
 ├── __init__.py    turns every Tool into an operator, runs it into the log, draws the tab
 ├── _shared.py     Tool, ValidationError, selection helpers, @check, clear_custom_normals
-├── log.py         Found (what a check returns), the Log list, Select Objects / Errors, row click
+├── log.py         Found (what a check returns); the Log: the add-on's ObjectLog plus Select Errors
 ├── geometry.py    one module per section of the tab, in tab order:
 ├── normals.py         each has TITLE, ICON and TOOLS
 ├── symmetry.py
@@ -139,29 +139,30 @@ Normals Data.
 
 ## 5. The Log
 
-`log.py` owns everything about the Log at the bottom of the tab:
+The Log at the bottom of the tab is the add-on's shared `object_log.ObjectLog` (see
+GS_Pipeline.md section 7); `log.py` subclasses it as `ValidationLog` (`log.LOG`) to add
+Select Errors.
 
 - **Message lines** (a `common.ToolLog`) above **a scrolling list**: a `UIList`
-  (`GS_UL_AV_Log`) over `WindowManager.gs_av_log`, 8 rows before it scrolls. The artist
+  (`GS_UL_ObjectLog`) over `WindowManager.gs_av_log`, 8 rows before it scrolls. The artist
   can drag it taller and filter it by name, and hovering a row shows its full text, which
   matters in a narrow sidebar. Under the list are **Select Objects** / **Select Errors**,
   then the count, "50 objects in the log".
 - **Rows hold object names, not objects.** The log outlives undo, which frees Python
   references to objects. A renamed or deleted object is reported, not crashed on.
-- **`_found`** (module global) keeps the last `Found`: per object, the element indices
-  (numpy) and how many of that element the mesh had. Select Errors skips, with a
-  warning, a mesh whose element count changed since the check, because its indices no
-  longer mean anything.
+- **`LOG.found`** keeps the last `Found`: per object, the element indices (numpy) and how
+  many of that element the mesh had. Select Errors skips, with a warning, a mesh whose
+  element count changed since the check, because its indices no longer mean anything.
 - **Select Objects** selects every listed object (Object Mode). **Select Errors** selects the
   found elements on them in Edit Mode, in the right select mode. Both grey out through
   `poll`, with the reason as the tooltip ("Run a check first.", "This check is about
   whole meshes: use Select Objects.").
-- **Clicking a row** selects that object. The list's active index
-  (`WindowManager.gs_av_log_index`) has an `update` callback that runs
-  `bpy.ops.gs_pipeline.av_select_log_row('EXEC_DEFAULT', True, index=i)`. It goes through
-  an operator, with `undo=True`, so the click is an undo step like an Outliner click and a
-  missing object shows in the status bar. Ctrl + mouse wheel over the list steps through
-  the rows.
+- **Clicking a row** selects that object; a hidden one is made active and reported. The
+  list's active index (`WindowManager.gs_av_log_index`) has an `update` callback that
+  runs `bpy.ops.gs_pipeline.av_select_log_row('EXEC_DEFAULT', True, index=i)`. It goes
+  through an operator, with `undo=True`, so the click is an undo step like an Outliner
+  click and a missing object shows in the status bar. Ctrl + mouse wheel over the list
+  steps through the rows.
 - Emptied at the start of every button press and when a file is opened (`load_post`).
 
 ---

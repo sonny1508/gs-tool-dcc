@@ -24,8 +24,7 @@ class ValidationError(Exception):
     """Something the artist can put right (usually the selection): logged without a traceback."""
 
 
-def plural(count, word, plural_word=None):
-    return "{:,} {}".format(count, word if count == 1 else plural_word or word + "s")
+plural = common.plural      # the section modules import it from here
 
 
 def selected_meshes(context, minimum=1):

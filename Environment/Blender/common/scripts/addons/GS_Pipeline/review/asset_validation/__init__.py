@@ -41,23 +41,23 @@ class _ToolOperator:
     bl_options = {'UNDO'}
 
     def execute(self, context):
-        log.clear(context)
+        log.LOG.clear(context)
         try:
             with common.wait_cursor(context):
                 result = self.run(context)
         except ValidationError as exc:
-            log.add(str(exc), "error", self)
+            log.LOG.add(str(exc), "error", self)
             return {'CANCELLED'}
         except Exception as exc:        # keep the panel alive, keep the traceback
             traceback.print_exc()
-            log.add("Something went wrong: {}. Details in the System Console.".format(exc),
-                    "error", self)
+            log.LOG.add("Something went wrong: {}. Details in the System Console.".format(exc),
+                        "error", self)
             return {'CANCELLED'}
         if isinstance(result, log.Found):
-            log.show(context, result, self)
+            log.LOG.show_found(context, result, self)
         else:
             level, message = result
-            log.add(message, level, self)
+            log.LOG.add(message, level, self)
         return {'FINISHED'}
 
 
@@ -88,7 +88,7 @@ def draw_asset_validation(layout, context):
         grid = box.grid_flow(row_major=True, columns=columns, even_columns=True, align=True)
         for tool in section.TOOLS:
             grid.operator(_idname(tool), text=tool.label)
-    log.draw(layout, context, columns)
+    log.LOG.draw(layout, context, columns)
 
 
 # ---------------------------------------------------------------------------

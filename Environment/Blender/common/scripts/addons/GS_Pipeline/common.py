@@ -143,6 +143,11 @@ _REPORT_TYPES = {"warn": {'WARNING'}, "error": {'WARNING'}}
 _CHAR_WIDTH = 6.5
 
 
+def plural(count, word, plural_word=None):
+    """'1 part', '3 parts' (or ``plural_word``), for log lines."""
+    return "{:,} {}".format(count, word if count == 1 else plural_word or word + "s")
+
+
 class ToolLog:
     """The few result lines a tool shows at the bottom of its tab.
 

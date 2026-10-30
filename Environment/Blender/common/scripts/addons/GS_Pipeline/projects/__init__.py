@@ -8,6 +8,6 @@ to CATEGORY below, where it should sit in the bar.
 from __future__ import annotations
 
 from ..panel import Category
-from . import hw3, mgp27
+from . import cm, hw3, mgp27
 
-CATEGORY = Category("PROJECTS", "Projects", (hw3, mgp27))
+CATEGORY = Category("PROJECTS", "Projects", (cm, hw3, mgp27))

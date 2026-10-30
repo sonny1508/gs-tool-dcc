@@ -12,11 +12,12 @@ bl_info = {
 #
 #   panel.py        the sidebar panel; Category / Group / Tab descriptors
 #   common.py       helpers every tool shares (scene, log, preferences, registration)
+#   object_log.py   the Log with a list of objects that check-style tools share
 #   file_io/        File I/O category: file_transfer/
 #   review/         Review category: asset_validation/
-#   projects/       Projects category: one package per project (hw3/, mgp27/)
+#   projects/       Projects category: one package per project (cm/, hw3/, mgp27/)
 
-from . import common, panel
+from . import common, object_log, panel
 from . import file_io, projects, review
 
 # Category bar order.
@@ -28,6 +29,7 @@ DEFAULT_CATEGORY = "FILE_IO"
 
 
 def register():
+    object_log.register()
     for category in CATEGORIES:
         common.register_modules(category.modules)
     panel.register(CATEGORIES, DEFAULT_CATEGORY)
@@ -38,3 +40,4 @@ def unregister():
     panel.unregister()
     for category in reversed(CATEGORIES):
         common.unregister_modules(category.modules)
+    object_log.unregister()

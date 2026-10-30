@@ -132,12 +132,8 @@ def _props(context) -> GS_MGP27_KerbProps:
 # ---------------------------------------------------------------------------
 # Operators
 # ---------------------------------------------------------------------------
-def _plural(count, word, plural=None):
-    return "{:,} {}".format(count, word if count == 1 else plural or word + "s")
-
-
 def _vertices(count):
-    return _plural(count, "vertex", "vertices")
+    return common.plural(count, "vertex", "vertices")
 
 
 def _run(op, context, function, *args):
