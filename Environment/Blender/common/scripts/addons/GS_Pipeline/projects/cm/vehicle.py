@@ -5,27 +5,33 @@
     LOD           All, LOD0, LOD1, LOD2
     Custom Parts  show the default or a custom version of each part that has
                   them: every part at once, or one at a time in the list
+    Animation     (Animation Check) LOD0 only: open the doors 0-90°
     Log           object_log.ObjectLog: what the last button did, what Check
                   Names found
 
 What counts as a LOD or a custom part, and what a part replaces, is in
-variants.py; the naming rules are in names.py and name_check.py.
+variants.py; the naming rules are in names.py and name_check.py; how the
+doors turn is in animation.py.
 
-The choices (Scope, LOD, each part's version) live on the scene, so they are
-saved with the file, like the hiding they cause. The custom parts differ from
-file to file, so the buttons and list for them are read from the scene when
-a file opens, on Reload and on every LOD / part click.
+The choices (Scope, LOD, each part's version, the door angle) live on the
+scene, so they are saved with the file, like the hiding and turning they
+cause. The custom parts differ from file to file, so the buttons and list for
+them are read from the scene when a file opens, on Reload and on every LOD /
+part click.
 """
 from __future__ import annotations
 
+import math
+
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, PointerProperty, StringProperty
+from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty, FloatVectorProperty,
+                       IntProperty, PointerProperty, StringProperty)
 from bpy.types import Operator, PropertyGroup, UIList
 
 from ... import common
 from ...object_log import ObjectLog
 from ...panel import Tab
-from . import name_check, names, variants
+from . import animation, name_check, names, variants
 
 # Property group on the scene, saved with the .blend.
 PROP = "gs_cm"
@@ -43,12 +49,18 @@ _ALL = "ALL"
 _LOD_ITEMS = [(_ALL, "All", "Show all LODs")] + [
     (str(lod), "LOD{}".format(lod), "Show LOD{} only".format(lod)) for lod in names.LODS]
 
+# The LOD choice the Animation Check works at.
+_DOOR_LOD = str(names.DOOR_LOD)
+
 
 def _on_scope(props, context):
     _read(context)
 
 
 def _on_lod(props, context):
+    # The doors open at LOD0 only: close them on the way out (their own update).
+    if props.lod != _DOOR_LOD and props.door_angle:
+        props.door_angle = 0.0
     # The button's own undo step (a scene property) takes in the hiding too.
     LOG.clear_messages()
     found = _read(context)
@@ -58,9 +70,30 @@ def _on_lod(props, context):
     _show(None, context, found)
 
 
+def _on_door_angle(props, context):
+    # Like the LOD, the slider's own undo step takes in the turning.
+    LOG.clear_messages()
+    closed = props.closed_doors
+    if props.door_angle and not len(closed):
+        animation.keep_closed(closed, variants.scope_objects(context, props.scope))
+        if not len(closed):
+            LOG.add("No doors found.", "error")
+            return
+    animation.turn_doors(closed, props.door_angle)
+    LOG.add("Doors open." if props.door_angle else "Doors closed.", "ok")
+
+
 class GS_CM_Choice(PropertyGroup):
     # name (every PropertyGroup has one): the part, as variants.Slot.key (anchor_hood)
     part: StringProperty()      # the custom part on show, "" for the default
+
+
+class GS_CM_ClosedDoor(PropertyGroup):
+    """A door anchor turned by the Animation Check, and its rotation before (animation.py)."""
+    door: PointerProperty(type=bpy.types.Object)    # follows a rename
+    side: IntProperty()                             # names.door_side: -1 left, 1 right
+    mode: StringProperty()                          # its rotation_mode
+    rotation: FloatVectorProperty(size=4)           # its rotation values in that mode
 
 
 class GS_CM_Props(PropertyGroup):
@@ -74,6 +107,13 @@ class GS_CM_Props(PropertyGroup):
     # Set once the panel has hidden anything in this file. Reload then puts
     # the choices back on what it finds; before that it only reads.
     applied: BoolProperty()
+    door_angle: FloatProperty(
+        name="Doors", description="Open the LOD0 doors",
+        subtype='ANGLE', min=0.0, max=math.radians(90.0), precision=0,
+        update=_on_door_angle,
+    )
+    # The doors' anchors while they are open, to close them exactly.
+    closed_doors: CollectionProperty(type=GS_CM_ClosedDoor)
 
 
 def _props(context) -> GS_CM_Props:
@@ -361,7 +401,8 @@ def draw_vehicle(layout, context):
     rows = wm.gs_cm_parts
     if len(rows):
         choices = _choices(props)
-        letters = sorted({part for r in rows for part in r.parts.split(",") if part})
+        in_scene = {part for r in rows for part in r.parts.split(",") if part}
+        letters = [letter for letter in names.PART_LETTERS if letter in in_scene]
         row = box.row(align=True)
         row.scale_y = 1.3
         _parts_button(row, rows, choices, variants.DEFAULT, "Default")
@@ -371,6 +412,14 @@ def draw_vehicle(layout, context):
                           rows=min(len(rows), _PART_ROWS), maxrows=_PART_ROWS)
     else:
         _greyed(box, "No custom parts found. Press Reload.")
+
+    box = _section(layout, "Animation Check", 'ANIM')
+    at_lod = props.lod == _DOOR_LOD
+    row = box.row()
+    row.enabled = at_lod
+    row.prop(props, "door_angle", slider=True)
+    if not at_lod:
+        _greyed(box, "LOD{} only".format(names.DOOR_LOD))
 
     LOG.draw(layout, context)
 
@@ -382,6 +431,7 @@ TAB = Tab("Vehicle", draw_vehicle)
 
 CLASSES = (
     GS_CM_Choice,
+    GS_CM_ClosedDoor,
     GS_CM_Props,
     GS_CM_PartRow,
     GS_UL_CM_Parts,

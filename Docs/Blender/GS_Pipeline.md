@@ -44,8 +44,9 @@ GS_Pipeline/
 └── projects/                Projects category: one package per project
     ├── cm/
     │   ├── __init__.py      GROUP (one tab), register
-    │   ├── vehicle.py       the tab: scope, LOD / custom part switching, Check Names, its Log
+    │   ├── vehicle.py       the tab: scope, LOD / custom part switching, Check Names, Animation Check, its Log
     │   ├── variants.py      which LOD / part version each object is; hiding the rest
+    │   ├── animation.py     Animation Check: turning the LOD0 doors open and closed
     │   ├── name_check.py    the Check Names rules
     │   └── names.py         the CM naming contract: LOD / part tokens, the essential names (no bpy)
     ├── hw3/
@@ -288,7 +289,7 @@ or Individual (one file per mesh).
 ### Projects > CM (`projects/cm/`)
 
 Client project Rev Match Racing (VR cars; spec and example car under
-`M:\cm\documentation\Vehicle`). One tab, three jobs on the objects in **Scope** (a
+`M:\cm\documentation\Vehicle`). One tab, four jobs on the objects in **Scope** (a
 collection and everything in it; empty = the whole scene):
 
 - **LOD**: All, LOD0, LOD1, LOD2: every CM car has exactly those (`names.LODS`); any
@@ -303,14 +304,28 @@ collection and everything in it; empty = the whole scene):
   under that, at the same LOD. Swapping whole subtrees, not mesh by mesh, is deliberate
   (Sonny, 2026-10-29): a part's meshes need not match the default ones, and some parts
   have no default version. A part with no version at the LOD on show shows the default
-  there. Which parts and letters exist differs per file, so the global buttons (every
-  part that has a letter) and the list (one part) are read from the scene. The list's
-  rows aren't selectable: its active index always reads -1 and ignores clicks.
+  there. Part letters are A to E (`names.PART_LETTERS`, confirmed with the client
+  2026-10-31); a car may stop earlier, so the global buttons (one per letter some part
+  has) and the list (one part) are read from the scene. A `_part_` token with any other
+  letter isn't a part: it shows like any object and Check Names reports it. A lowercase
+  `_part_a` still switches as A, as `_lod1` does for LODs. The list's rows aren't
+  selectable: its active index always reads -1 and ignores clicks.
 - **Check Names**: the essential anchors and wheel meshes (`names.ESSENTIAL_ANCHORS`,
   drawn from the example car) under the right parents, and spelling on everything:
-  `_LOD<n>` in capitals, 0-2 and matching the objects above, part letters matching their
-  part, English letters / digits / `_` only (the example had a Cyrillic С), no `.001`.
-  Results go in the tab's `ObjectLog`, which LOD / part clicks don't clear.
+  `_LOD<n>` in capitals, 0-2 and matching the objects above, part letters A-E matching
+  their part, English letters / digits / `_` only (the example had a Cyrillic С), no
+  `.001`. Results go in the tab's `ObjectLog`, which LOD / part clicks don't clear.
+- **Animation Check** (LOD0 only, greyed otherwise; more checks may join the doors): a
+  Doors slider, 0-90°, turns the door anchors (`names.DOORS`: exterior and interior,
+  pivoted at the same hinge, and their custom parts) about **world Z through their own
+  origin**, left doors -angle, right doors +angle (the car faces -X). Their rotation
+  isn't applied and varies, so the turn is worked out in each anchor's parent space and
+  written to its rotation channel only, in its own rotation mode. The rotation each
+  anchor had before opening is kept on the scene (`gs_cm.closed_doors`, an Object
+  pointer per anchor, so a rename doesn't lose it); every angle is turned from there,
+  and 0° writes it back exactly, so dragging never drifts. Leaving LOD0 closes the
+  doors. The angle is saved with the file: a file saved with the doors open is
+  delivered open.
 
 Hiding is Blender's eye (H / Alt+H) in the current view layer, chosen so artists can see
 and undo it. The choices are on the scene (`gs_cm`) and saved, like the hiding; the

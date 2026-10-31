@@ -5,9 +5,9 @@ Two kinds of finding, errors first:
   * Essentials: the anchors and wheel meshes every CM car needs
     (names.ESSENTIAL_ANCHORS, names.WHEELS), each under the right parent.
   * Spelling, on every object, custom parts included: a _LOD number in
-    capitals, 0 to 2, that matches the objects above it, the same part
-    letter as the part it sits in, English letters, digits and _ only, no
-    Blender .001.
+    capitals, 0 to 2, that matches the objects above it, a part letter A to
+    E, the same as the part it sits in, English letters, digits and _ only,
+    no Blender .001.
 
 Custom parts differ from car to car, so beyond spelling they aren't checked
 against a list.
@@ -131,10 +131,10 @@ def _spelling(obj, lod_memo, part_memo):
         if lod not in names.LODS or (expected is not None and lod != expected):
             yield Problem(name, "{} has wrong LOD number.".format(name), "warn")
 
-    part = names.part_of(name)
-    if part is not None:
+    if names.part_written(name) is not None:
         if names.part_misspelled(name):
             yield Problem(name, "{} has misspelled part name.".format(name), "warn")
+        part = names.part_of(name)
         expected = _expected(obj, names.part_of, part_memo)
-        if expected is not None and part != expected:
+        if names.part_letter_wrong(name) or (part and expected and part != expected):
             yield Problem(name, "{} has wrong part letter.".format(name), "warn")

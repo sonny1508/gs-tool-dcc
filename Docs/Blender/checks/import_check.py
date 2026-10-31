@@ -62,7 +62,7 @@ module("bpy", types=bpy_types, props=bpy_props, utils=utils, ops=Any(), data=Any
        context=Any(), path=Any(),
        app=types.SimpleNamespace(handlers=handlers, timers=timers, version=(4, 5, 0)))
 module("bmesh")
-module("mathutils", Vector=type("Vector", (), {}), Matrix=type("Matrix", (), {}))
+module("mathutils", **{name: type(name, (), {}) for name in ("Euler", "Matrix", "Quaternion", "Vector")})
 
 
 def owned_props():

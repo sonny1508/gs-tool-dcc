@@ -13,7 +13,8 @@ car production v.3") and their example car (AudiR8_Example_optimized.blend):
 
 Every CM car has LOD0, LOD1 and LOD2; any other number is a mistake. The LOD
 token isn't always last (l_door_handle_LOD0_highlight, l_sunvisor_LOD0_a): it
-is _LOD<n> followed by the end of the name, "_" or ".".
+is _LOD<n> followed by the end of the name, "_" or ".". Custom parts are
+lettered A to E at most; a car may stop earlier (A to C).
 """
 from __future__ import annotations
 
@@ -22,12 +23,15 @@ import re
 # The LODs a CM car has.
 LODS = (0, 1, 2)
 
+# The custom part letters a CM car can have, in button order.
+PART_LETTERS = ("A", "B", "C", "D", "E")
+
 # _LOD0, _LOD0_highlight, _LOD0.001. Any case, so a stray "_lod1" still
 # switches; Check Names asks for capitals.
 _LOD = re.compile(r"_(LOD)(\d+)(?=$|[_.])", re.IGNORECASE)
 
-# _part_A. Any letters, so a look-alike from another alphabet (a Cyrillic С)
-# still groups, and Check Names reports it. Never "_part_LOD0".
+# _part_A, read loosely (any case, any letters) so Check Names can report a
+# bad one; switching takes A to E only (part_of). Never "_part_LOD0".
 _PART = re.compile(r"_(part)_(?!LOD\d)([^_.]+)(?=$|[_.])", re.IGNORECASE)
 
 # Blender's rename-on-collision suffix: .001, .002...
@@ -40,10 +44,19 @@ def lod_of(name):
     return int(matches[-1][1]) if matches else None
 
 
-def part_of(name):
-    """The custom part letter in ``name`` (A in anchor_hood_part_A_LOD0), or None."""
+def part_written(name):
+    """The custom part token's letter as written in ``name`` (a in anchor_hood_part_a_LOD0), or None."""
     match = _PART.search(name)
     return match.group(2) if match else None
+
+
+def part_of(name):
+    """The custom part letter in ``name``, A to E in capitals (A for anchor_hood_part_a_LOD0),
+    or None, also for a letter outside A to E."""
+    part = part_written(name)
+    if part is None or not part.isascii() or part.upper() not in PART_LETTERS:
+        return None
+    return part.upper()
 
 
 def default_name(part_name):
@@ -107,9 +120,40 @@ def part_misspelled(name):
     match = _PART.search(name)
     if match is None or not match.group(2).isascii():
         return None
-    if match.group(1) != "part" or not match.group(2).isupper():
+    if match.group(1) != "part" or match.group(2) != match.group(2).upper():
         return match.group(0)
     return None
+
+
+def part_letter_wrong(name):
+    """True when ``name`` has a part token whose letter isn't A to E ('_part_F', '_part_1').
+
+    A letter from another alphabet is left to bad_characters().
+    """
+    part = part_written(name)
+    return part is not None and part.isascii() and part_of(name) is None
+
+
+# ----------------------------------------------------------------------------
+# Doors (Animation Check)
+# ----------------------------------------------------------------------------
+# The LOD the doors open at, and the anchors each door turns on (exterior and
+# interior, pivots at the same hinge) with the way they turn about world Z to
+# open: the car faces -X, so its left side is -Y and a left door turns -90°.
+DOOR_LOD = 0
+DOORS = {
+    "anchor_l_door_exterior": -1,
+    "anchor_l_door": -1,
+    "anchor_r_door_exterior": 1,
+    "anchor_r_door": 1,
+}
+_DOOR_NAMES = {with_lod(anchor, DOOR_LOD): side for anchor, side in DOORS.items()}
+
+
+def door_side(name):
+    """-1 for a left door anchor at DOOR_LOD (anchor_l_door_LOD0, or a custom part of
+    one), 1 for a right one, else None."""
+    return _DOOR_NAMES.get(_PART.sub("", name, count=1))
 
 
 # ----------------------------------------------------------------------------

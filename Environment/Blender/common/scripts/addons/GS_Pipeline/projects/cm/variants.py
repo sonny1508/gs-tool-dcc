@@ -7,8 +7,10 @@ every click, so a renamed object counts as soon as the panel is used again:
     above it: l_paddle under anchor_l_paddle_LOD0 is LOD0. An object with no
     LOD anywhere above it is left as it is. One with a LOD other than 0-2
     (a typo) shows only under All.
-  * A custom part is the outermost object with _part_<X> in its name
-    (anchor_hood_part_B_LOD0) and everything under it. It replaces the
+  * A custom part is the outermost object with _part_<X> in its name, X
+    being A to E (anchor_hood_part_B_LOD0), and everything under it. Any
+    other letter isn't a part: it shows like any object, and Check Names
+    reports it. A custom part replaces the
     default object of the same name without _part_<X> (anchor_hood_LOD0) and
     everything under that, at the same LOD. So a part's meshes don't have to
     match the default ones (hood part C is carbon only). A part with no
@@ -66,7 +68,7 @@ def scope_objects(context, collection, view_layer_only=True):
 
 
 def _part_root(obj):
-    """The outermost object, from ``obj`` up, with _part_<X> in its name; None if there is none."""
+    """The outermost object, from ``obj`` up, with _part_<A to E> in its name; None if there is none."""
     root = None
     while obj is not None:
         if names.part_of(obj.name) is not None:

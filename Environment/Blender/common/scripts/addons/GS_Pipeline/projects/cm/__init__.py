@@ -2,8 +2,9 @@
 One tab:
 
     vehicle.py      the tab: Scope, LOD and Custom Parts switching, Check Names,
-                    and its Log (the add-on's object_log.ObjectLog)
+                    Animation Check, and its Log (the add-on's object_log.ObjectLog)
     variants.py     which LOD / part version each object is; hiding the rest
+    animation.py    Animation Check: turning the LOD0 doors open and closed
     name_check.py   the Check Names rules
     names.py        the CM naming contract: LOD / part tokens, the essential names
 """
