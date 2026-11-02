@@ -71,6 +71,10 @@ mcCommandsList = {
         'label': 'Hard Edges',
         'category': 'topology',
     },
+    "lockedNormals": {
+        'label': 'Locked Normals',
+        'category': 'topology',
+    },
     "lamina": {
         'label': 'Lamina',
         'category': 'topology',  
@@ -125,16 +129,23 @@ mcCommandsList = {
         'label': 'Center Pivots',
         'category': 'Actions',
         'isAction': True,
+        # This puts the pivot at the object's centre, and the check wants it at the
+        # world origin, so the two can't both pass
+        'clashes': ('uncenteredPivots',),
     },
     "fixLaminaFaces": {
         'label': 'Fix Lamina Faces',
         'category': 'Actions',
         'isAction': True,
     },
-    "reverseNormals": {
-        'label': 'Reverse Normals',
+    "cleanup": {
+        'label': 'Cleanup',
         'category': 'Actions',
         'isAction': True,
+        'isGlobal': True,
+        'tooltip': ("Tidies the whole scene, ignoring your selection: namespaces, custom "
+                    "attributes, empty layers and sets, unused nodes and mesh display.\n"
+                    "Also bakes history on every mesh. Deformers stay."),
     },
     "deleteHistory": {
         'label': 'History',

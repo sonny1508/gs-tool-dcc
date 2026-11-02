@@ -26,6 +26,10 @@ LOG_COLOURS = {"ok": "#7ec87e", "warn": "#e0b64c", "error": "#e06c6c"}
 _DISABLED_BASE = "#444444"
 _DISABLED_TEXT = "#8a8a8a"
 
+# A scroll bar that reads against Maya's greys, whose own is easy to miss.
+SCROLL_TRACK = "#2b2b2b"
+SCROLL_HANDLE = "#a0a0a0"
+
 
 def _channels(colour):
     return [int(colour[i:i + 2], 16) for i in (1, 3, 5)]
@@ -60,3 +64,23 @@ def style_button(button, colour):
     """Fill a QPushButton with a studio colour. Returns the button."""
     button.setStyleSheet(button_style(colour))
     return button
+
+
+def scrollbar_style():
+    """Style sheet for a vertical QScrollBar that artists can't miss."""
+    return (
+        "QScrollBar:vertical {{ background: {track}; width: 16px; margin: 0; }}"
+        "QScrollBar::handle:vertical {{ background: {handle}; min-height: 40px;"
+        " margin: 2px; border-radius: 3px; }}"
+        "QScrollBar::handle:vertical:hover {{ background: {hover}; }}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical"
+        " {{ height: 0; border: none; background: none; }}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}"
+    ).format(track=SCROLL_TRACK, handle=SCROLL_HANDLE,
+             hover=mix(SCROLL_HANDLE, "#ffffff", 0.3))
+
+
+def style_scrollbar(scroll_bar):
+    """Make a vertical QScrollBar stand out. Returns the scroll bar."""
+    scroll_bar.setStyleSheet(scrollbar_style())
+    return scroll_bar

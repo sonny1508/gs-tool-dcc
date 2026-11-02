@@ -206,6 +206,9 @@ hover, pressed and disabled looks. A window with one primary action uses studio 
 primary actions are coloured; secondary buttons keep Maya's grey. In a `maya.cmds` window
 use `backgroundColor=gs_style.rgb(gs_style.STUDIO_RED)`.
 
+**A list artists have to scroll to see all of** gets a scroll bar they can't miss, since
+Maya's own blends into the greys: `gs_style.style_scrollbar(area.verticalScrollBar())`.
+
 **Log and status text** uses these three colours, from `gs_style.LOG_COLOURS`:
 
 | Level | Colour    | Use                                                    |
@@ -231,7 +234,7 @@ def log(self, message, level="info"):
 **Don't** use:
 
 - hex codes or RGB values typed into the tool, instead of taken from `gs_style`
-- `setStyleSheet` on anything other than a primary button through `gs_style`
+- `setStyleSheet` on anything other than a primary button or scroll bar through `gs_style`
 - `backgroundColor=` on anything other than a primary `cmds.button`
 - a `THEME` dict or a dark theme of the tool's own
 - per-category or per-section colours
@@ -348,7 +351,6 @@ you're already working on it. Vendored third-party code (NitroPoly, `Qt.py`) is 
 | Edge Sensei | Coloured buttons throughout |
 | Speed Workflow | Coloured `cmds` buttons, one colour per section |
 | MGP25 / MGP26 Ultimate Bike Riggator | Coloured `cmds` buttons |
-| Model Checker | Category colours, coloured action labels and Revert button |
 | HW3 Tools | Red / green / blue `cmds` buttons |
 | LOD Checker | ALL CAPS button labels (RESET, SWITCH). Its button colours are the studio scheme. |
 | GS File Export | Resizable, though nothing in it needs the room |
