@@ -209,6 +209,11 @@ use `backgroundColor=gs_style.rgb(gs_style.STUDIO_RED)`.
 **A list artists have to scroll to see all of** gets a scroll bar they can't miss, since
 Maya's own blends into the greys: `gs_style.style_scrollbar(area.verticalScrollBar())`.
 
+**A section header sitting directly over buttons**, where a group box won't do, goes darker
+than the window while the buttons stay lighter, so it reads as a title and not one more
+button: `gs_style.style_section_header(header)`. The buttons keep Maya's grey, and the
+rows under it are set in from its edges, the way a group box would hold them.
+
 **Log and status text** uses these three colours, from `gs_style.LOG_COLOURS`:
 
 | Level | Colour    | Use                                                    |
@@ -234,7 +239,7 @@ def log(self, message, level="info"):
 **Don't** use:
 
 - hex codes or RGB values typed into the tool, instead of taken from `gs_style`
-- `setStyleSheet` on anything other than a primary button or scroll bar through `gs_style`
+- `setStyleSheet` on anything other than a primary button, section header or scroll bar through `gs_style`
 - `backgroundColor=` on anything other than a primary `cmds.button`
 - a `THEME` dict or a dark theme of the tool's own
 - per-category or per-section colours

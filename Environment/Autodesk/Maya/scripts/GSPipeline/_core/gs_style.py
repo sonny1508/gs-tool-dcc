@@ -30,6 +30,10 @@ _DISABLED_TEXT = "#8a8a8a"
 SCROLL_TRACK = "#2b2b2b"
 SCROLL_HANDLE = "#a0a0a0"
 
+# A section's header: darker than Maya's window grey (#444444), where its buttons
+# are lighter (#5d5d5d), so that a header never reads as one more button.
+SECTION_HEADER = "#383838"
+
 
 def _channels(colour):
     return [int(colour[i:i + 2], 16) for i in (1, 3, 5)]
@@ -64,6 +68,28 @@ def style_button(button, colour):
     """Fill a QPushButton with a studio colour. Returns the button."""
     button.setStyleSheet(button_style(colour))
     return button
+
+
+def section_header_style():
+    """Style sheet for a section's header, a QPushButton and any QToolButton beside it.
+
+    It reads as a title. The hover and pressed looks are there for a header that
+    can also be clicked; one that can't should ignore the mouse.
+    """
+    return (
+        "QPushButton, QToolButton {{ background-color: {base}; border: none; }}"
+        "QPushButton {{ text-align: left; padding: 3px 8px; }}"
+        "QPushButton:hover, QToolButton:hover {{ background-color: {hover}; }}"
+        "QPushButton:pressed, QToolButton:pressed {{ background-color: {pressed}; }}"
+    ).format(base=SECTION_HEADER,
+             hover=mix(SECTION_HEADER, "#ffffff", 0.15),
+             pressed=mix(SECTION_HEADER, "#000000", 0.2))
+
+
+def style_section_header(widget):
+    """Make a button into part of a section's header. Returns the widget."""
+    widget.setStyleSheet(section_header_style())
+    return widget
 
 
 def scrollbar_style():

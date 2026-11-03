@@ -129,9 +129,6 @@ mcCommandsList = {
         'label': 'Center Pivots',
         'category': 'Actions',
         'isAction': True,
-        # This puts the pivot at the object's centre, and the check wants it at the
-        # world origin, so the two can't both pass
-        'clashes': ('uncenteredPivots',),
     },
     "fixLaminaFaces": {
         'label': 'Fix Lamina Faces',
@@ -176,7 +173,7 @@ mcCommandsList = {
         'isGlobal': True,
     },
     "deleteInputDataNodes": {
-        'label': 'Delete Input Data Node',
+        'label': 'Input Data Nodes',
         'category': 'Delete',
         'isAction': True,
     }

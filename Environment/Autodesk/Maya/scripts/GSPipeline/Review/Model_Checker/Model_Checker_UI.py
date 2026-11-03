@@ -92,17 +92,18 @@ class UI(QtWidgets.QMainWindow):
     commandLabel = {}
     commandCheckBox = {}
     commandRunButton = {}
+    commandSelectButton = {}
     # How many columns each category's rows split into, to save height
     rowColumns = 2
     # The log always gets this much; on a short screen the sections scroll instead
     logHeight = 280
+    actionButtonHeight = 20
     # Allowance for the title bar when capping the window to the screen
     windowChrome = 40
 
     # Categories whose commands change the scene rather than report on it
     actionCategories = ('Actions', 'Delete')
     LOG_COLOURS = gs_style.LOG_COLOURS
-    actionStatus = {'changed': 'ok', 'error': 'error'}
 
     # What a check's result type means inside a mesh: how to name one, and the
     # selection mask that shows it. A "nodes" result has nothing inside to select.
@@ -159,12 +160,10 @@ class UI(QtWidgets.QMainWindow):
 
         # Revert points at one undo chunk, and only the most recent one
         self.revertChunk = None
-        self.revertCommands = []
+        self.revertCommand = None
         # This tool's own selections since then, which Revert can step back over
         self.revertSelects = []
         self.actionCounter = 0
-        self.chunkDepth = 0
-        self.currentChunk = None
 
         # Maya announces nothing when its undo stack changes, so look while it matters
         self.revertTimer = QtCore.QTimer(self)
@@ -175,12 +174,13 @@ class UI(QtWidgets.QMainWindow):
         self.setCentralWidget(mainWidget)
         mainLayout = QtWidgets.QVBoxLayout(mainWidget)
         mainLayout.setContentsMargins(10, 10, 10, 10)
-        mainLayout.setSpacing(6)
+        mainLayout.setSpacing(8)
         self.measureChecksPanel()
-        self.sections = ContentScroll(self.buildSections())
+        self.sections = ContentScroll(self.buildChecks())
         mainLayout.addWidget(self.sections)
         mainLayout.addLayout(self.buildTickButtons())
         mainLayout.addWidget(self.buildRunButton())
+        mainLayout.addLayout(self.buildActions())
         mainLayout.addWidget(self.buildContextUI(), 1)
         self.pinSize()
         self.loadSettings()
@@ -288,7 +288,7 @@ class UI(QtWidgets.QMainWindow):
             
             # Refresh selection context if that's what was selected
             if uuid == "Selection":
-                selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
+                selectedNodes = self.selectionUuids()
                 self.contexts["Selection"]["nodes"] = self.selectHierachy(selectedNodes) if selectedNodes else []
             # Refresh Global context
             elif uuid == "Global":
@@ -366,7 +366,7 @@ class UI(QtWidgets.QMainWindow):
 
             # Initialize node counts 
             if context == "Selection":
-                selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
+                selectedNodes = self.selectionUuids()
                 self.contexts[context]['nodes'] = self.selectHierachy(selectedNodes) if selectedNodes else []
                 self.contexts[context]['nodesCount'] = len(self.contexts[context]['nodes'])
             else:
@@ -403,6 +403,10 @@ class UI(QtWidgets.QMainWindow):
         report.addWidget(self.consolidatedCheck)
         report.addWidget(splitter, 1)
         report.addLayout(self.buildLogButtons())
+        # With the report's own size hint out of it, the log asks for exactly this
+        # much, instead of drifting up to the hint whenever there is room
+        splitter.setSizePolicy(
+            splitter.sizePolicy().horizontalPolicy(), QtWidgets.QSizePolicy.Ignored)
         panel.setMinimumHeight(self.logHeight)
 
         # Set the Selection context as the current context by default
@@ -412,10 +416,8 @@ class UI(QtWidgets.QMainWindow):
         return panel
 
     def buildLogButtons(self):
-        """What can be done with the last run. Each greys out, saying why, when
-        there is nothing for it to do."""
-        self.selectErrorsButton = QtWidgets.QPushButton("Select Errors")
-        self.selectErrorsButton.clicked.connect(self.selectErrors)
+        """What can be done with the log as a whole. Each greys out, saying why,
+        when there is nothing for it to do."""
         self.selectObjectsButton = QtWidgets.QPushButton("Select Objects")
         self.selectObjectsButton.clicked.connect(self.selectObjects)
         self.revertButton = QtWidgets.QPushButton("Revert")
@@ -425,50 +427,71 @@ class UI(QtWidgets.QMainWindow):
         clearButton.clicked.connect(self.clearCurrentReport)
 
         layout = QtWidgets.QHBoxLayout()
-        layout.setSpacing(4)
-        layout.addWidget(self.selectErrorsButton)
+        layout.setSpacing(8)
         layout.addWidget(self.selectObjectsButton)
         layout.addWidget(self.revertButton)
         layout.addWidget(clearButton)
         return layout
 
-    def buildSections(self):
-        """Every category in reading order: the checks, then the actions."""
+    def buildChecks(self):
+        """The categories that report on the scene, which tick and Run on Selected work on."""
         content = QtWidgets.QWidget()
         categories = QtWidgets.QVBoxLayout(content)
         categories.setContentsMargins(4, 4, 4, 4)
         categories.setSpacing(4)
-        for category in self.getCategories(self.commandsList):
+        names = set(command['category'] for command in self.commandsList.values())
+        for category in sorted(names - set(self.actionCategories), key=str.lower):
             self.buildCategory(category, categories)
         categories.addStretch()
         return content
 
+    def buildActions(self):
+        """The categories that change the scene, one click each."""
+        categories = QtWidgets.QVBoxLayout()
+        categories.setSpacing(4)
+        for category in self.actionCategories:
+            self.buildCategory(category, categories)
+        return categories
+
     def buildCategory(self, category, parentLayout):
         self.categoryWidget[category] = QtWidgets.QWidget()
         self.categoryLayout[category] = QtWidgets.QGridLayout()
-        self.categoryLayout[category].setContentsMargins(0, 0, 0, 4)
-        self.categoryLayout[category].setHorizontalSpacing(12)
-        self.categoryLayout[category].setVerticalSpacing(2)
+        # Set in from the header, so that the rows read as inside its section
+        self.categoryLayout[category].setContentsMargins(8, 2, 8, 6)
+        self.categoryLayout[category].setHorizontalSpacing(16)
+        self.categoryLayout[category].setVerticalSpacing(4)
         self.categoryWidget[category].setLayout(self.categoryLayout[category])
         self.categoryHeader[category] = QtWidgets.QHBoxLayout()
-        self.categoryHeader[category].setSpacing(2)
+        self.categoryHeader[category].setSpacing(0)
 
+        isAction = category in self.actionCategories
         button = QtWidgets.QPushButton(category[0].upper() + category[1:])
-        button.setToolTip("Tick or untick everything in this category")
         font = button.font()
         font.setBold(True)
         button.setFont(font)
-        button.clicked.connect(lambda checked=False, cat=category: self.checkCategory(cat))
+        gs_style.style_section_header(button)
         self.categoryButton[category] = button
-
-        collapse = QtWidgets.QToolButton()
-        collapse.setArrowType(QtCore.Qt.DownArrow)
-        collapse.setToolTip("Fold this category away")
-        collapse.clicked.connect(lambda checked=False, cat=category: self.toggleUI(cat))
-        self.categoryCollapse[category] = collapse
-
         self.categoryHeader[category].addWidget(button)
-        self.categoryHeader[category].addWidget(collapse)
+
+        if isAction:
+            # Only a title, looking like the other headers: there is nothing to tick
+            # in here, and these sections are always in view, so they don't fold
+            button.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            button.setFocusPolicy(QtCore.Qt.NoFocus)
+        else:
+            button.setToolTip("Tick or untick everything in this category")
+            button.clicked.connect(lambda checked=False, cat=category: self.checkCategory(cat))
+
+            collapse = QtWidgets.QToolButton()
+            collapse.setArrowType(QtCore.Qt.DownArrow)
+            collapse.setToolTip("Fold this category away")
+            # As tall as the title beside it, so the two make one unbroken band
+            collapse.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
+            gs_style.style_section_header(collapse)
+            collapse.clicked.connect(lambda checked=False, cat=category: self.toggleUI(cat))
+            self.categoryCollapse[category] = collapse
+            self.categoryHeader[category].addWidget(collapse)
+
         parentLayout.addLayout(self.categoryHeader[category])
         parentLayout.addWidget(self.categoryWidget[category])
 
@@ -478,15 +501,25 @@ class UI(QtWidgets.QMainWindow):
                        if self.commandsList[name]['category'] == category)
         rowsPerColumn = (len(names) + self.rowColumns - 1) // self.rowColumns
         for index, name in enumerate(names):
-            self.buildCommandRow(name)
+            row = self.buildActionButton(name) if isAction else self.buildCheckRow(name)
             self.categoryLayout[category].addWidget(
-                self.commandWidget[name], index % rowsPerColumn, index // rowsPerColumn)
+                row, index % rowsPerColumn, index // rowsPerColumn)
         for column in range(self.rowColumns):
             self.categoryLayout[category].setColumnStretch(column, 1)
 
-    def buildCommandRow(self, name):
+    def buildActionButton(self, name):
+        button = QtWidgets.QPushButton(self.commandsList[name]['label'])
+        button.setFixedHeight(self.actionButtonHeight)
+        button.setToolTip(
+            self.commandsList[name].get('tooltip')
+            or ("Runs on the whole scene, ignoring your selection."
+                if self.commandsList[name].get('isGlobal', False)
+                else "Runs on your selection."))
+        button.clicked.connect(lambda checked=False, cmd=name: self.runAction(cmd))
+        return button
+
+    def buildCheckRow(self, name):
         label = self.commandsList[name]['label']
-        isAction = self.commandsList[name].get('isAction', False)
 
         self.commandWidget[name] = QtWidgets.QWidget()
         self.commandWidget[name].setMaximumHeight(40)
@@ -494,7 +527,7 @@ class UI(QtWidgets.QMainWindow):
 
         self.commandWidget[name].setLayout(self.commandLayout[name])
 
-        self.commandLayout[name].setSpacing(4)
+        self.commandLayout[name].setSpacing(6)
         self.commandLayout[name].setContentsMargins(0, 0, 0, 0)
         self.commandWidget[name].setStyleSheet(
             "padding: 0px; margin: 0px;")
@@ -504,40 +537,37 @@ class UI(QtWidgets.QMainWindow):
 
         self.commandCheckBox[name].setChecked(False)
         self.commandCheckBox[name].setMaximumWidth(20)
-        self.commandCheckBox[name].toggled.connect(self.updateClashes)
 
         self.commandRunButton[name] = QtWidgets.QPushButton("Run")
         self.commandRunButton[name].setMaximumWidth(40)
         self.commandRunButton[name].clicked.connect(
             lambda checked=False, cmd=name: self.oneOfs(cmd))
 
+        self.commandSelectButton[name] = QtWidgets.QPushButton("Select Errors")
+        self.commandSelectButton[name].setFixedWidth(self.selectWidth)
+        self.commandSelectButton[name].clicked.connect(
+            lambda checked=False, cmd=name: self.selectErrors(cmd))
+
         # The label takes the slack, so the buttons line up on the column's right edge
         self.commandLayout[name].addWidget(self.commandLabel[name], 1)
         self.commandLayout[name].addWidget(self.commandCheckBox[name])
         self.commandLayout[name].addWidget(self.commandRunButton[name])
-
-        if isAction:
-            self.commandRunButton[name].setToolTip(
-                self.commandsList[name].get('tooltip')
-                or ("Changes the whole scene, ignoring your selection"
-                    if self.commandsList[name].get('isGlobal', False)
-                    else "Changes the objects in the current context"))
+        self.commandLayout[name].addWidget(self.commandSelectButton[name])
+        return self.commandWidget[name]
 
     def buildTickButtons(self):
         layout = QtWidgets.QHBoxLayout()
-        layout.setSpacing(4)
+        layout.setSpacing(8)
 
         uncheckAllButton = QtWidgets.QPushButton("Uncheck All")
         uncheckAllButton.clicked.connect(self.uncheckAll)
         layout.addWidget(uncheckAllButton)
 
         invertCheckButton = QtWidgets.QPushButton("Invert")
-        invertCheckButton.setToolTip("Flips the checks. Actions stay as they are.")
         invertCheckButton.clicked.connect(self.invertCheck)
         layout.addWidget(invertCheckButton)
 
         checkAllButton = QtWidgets.QPushButton("Check All")
-        checkAllButton.setToolTip("Ticks all the checks. Actions stay as they are.")
         checkAllButton.clicked.connect(self.checkAll)
         layout.addWidget(checkAllButton)
         return layout
@@ -545,35 +575,25 @@ class UI(QtWidgets.QMainWindow):
     def buildRunButton(self):
         button = QtWidgets.QPushButton("Run on Selected")
         button.setToolTip(
-            "Runs everything ticked on your selection, or on the whole scene if "
-            "nothing is selected.\nActions go first, so the checks report on the result.")
+            "Runs the ticked checks on your selection, or on the whole scene if "
+            "nothing is selected.")
         button.setMinimumHeight(36)
         gs_style.style_button(button, gs_style.STUDIO_RED)
         button.clicked.connect(self.sanityCheckChecked)
         return button
 
-    def commandNames(self, actions):
-        """The commands in one column: the actions, or the checks."""
+    def checkNames(self):
+        """The commands with a row: those that report rather than change the scene."""
         return [name for name in self.commandsList
-                if self.commandsList[name].get('isAction', False) == actions]
+                if not self.commandsList[name].get('isAction', False)]
 
-    def updateClashes(self):
-        """Grey out any check that a ticked action could only make fail."""
-        blockedBy = {}
-        for name in self.commandNames(True):
-            if self.commandCheckBox[name].isChecked():
-                for check in self.commandsList[name].get('clashes', ()):
-                    blockedBy[check] = self.commandsList[name]['label']
-
-        for name in self.commandNames(False):
-            blocked = name in blockedBy
-            if blocked:
-                self.commandCheckBox[name].setChecked(False)
-                self.setRowStatus(name)
-            self.commandWidget[name].setEnabled(not blocked)
-            self.commandWidget[name].setToolTip(
-                "Off while {} is ticked, since that action would fail this check.".format(
-                    blockedBy[name]) if blocked else "")
+    def commandTitle(self, name):
+        """A command's name away from its section, where "History" alone could be
+        either the check or the delete."""
+        label = self.commandsList[name]['label']
+        if self.commandsList[name]['category'] == 'Delete':
+            return "Delete {}".format(label)
+        return label
 
     def setRowStatus(self, name, level=None):
         """Colour a row's label by result; no level means the default text colour."""
@@ -592,7 +612,8 @@ class UI(QtWidgets.QMainWindow):
         metrics = self.fontMetrics()
         self.labelWidth = max(
             self.textWidth(metrics, self.commandsList[name]['label'])
-            for name in self.commandsList) + 8
+            for name in self.checkNames()) + 8
+        self.selectWidth = self.textWidth(metrics, "Select Errors") + 24
 
     def currentScreen(self):
         return (QtWidgets.QApplication.screenAt(self.frameGeometry().center())
@@ -655,38 +676,11 @@ class UI(QtWidgets.QMainWindow):
         self.clearRevertPoint()
         super(UI, self).closeEvent(event)
 
-    def getCategories(self, commands):
-        # Extract all categories
-        allCategories = set()
-        for command in commands.values():
-            allCategories.add(command['category'])
-        
-        # Convert to list and sort alphabetically, but with special handling
-        categories = []
-        special_categories = []
-        
-        for cat in allCategories:
-            if cat in self.actionCategories:
-                special_categories.append(cat)
-            else:
-                categories.append(cat)
-        
-        # Sort each list
-        categories.sort(key=str.lower)
-        special_categories.sort(key=str.lower)
-        
-        # Append special categories at the end
-        categories.extend(special_categories)
-        
-        return categories
-
     def checkState(self, name):
         return self.commandCheckBox[name].checkState()
 
     def checkAll(self):
-        # Checks only: ticking the actions too would put Cleanup and every Delete
-        # one click away from running on the whole scene
-        for command in self.commandNames(False):
+        for command in self.checkNames():
             self.commandCheckBox[command].setChecked(True)
 
     def toggleUI(self, category):
@@ -700,11 +694,11 @@ class UI(QtWidgets.QMainWindow):
             self.keepOnScreen()
 
     def uncheckAll(self):
-        for name in self.commandsList:
+        for name in self.checkNames():
             self.commandCheckBox[name].setChecked(False)
 
     def invertCheck(self):
-        for name in self.commandNames(False):
+        for name in self.checkNames():
             self.commandCheckBox[name].setChecked(
                 not self.commandCheckBox[name].isChecked())
 
@@ -720,15 +714,14 @@ class UI(QtWidgets.QMainWindow):
         self.reportOutputUI.clear()
 
     def clearRowResults(self):
-        for command in self.commandsList.keys():
+        for command in self.checkNames():
             self.setRowStatus(command)
 
     def checkCategory(self, category):
         uncheckedCategoryButtons = []
         categoryButtons = []
         for name in self.commandsList.keys():
-            if (self.commandsList[name]['category'] == category
-                    and self.commandWidget[name].isEnabled()):
+            if self.commandsList[name]['category'] == category:
                 categoryButtons.append(name)
                 if self.commandCheckBox[name].isChecked():
                     uncheckedCategoryButtons.append(name)
@@ -746,73 +739,49 @@ class UI(QtWidgets.QMainWindow):
                 allUsuableNodes.append(uuid)
         return allUsuableNodes
     
+    def selectionUuids(self):
+        """The selected objects, counting a component as the object it is on, so
+        that Select Errors doesn't leave the next click with nothing selected."""
+        selected = cmds.ls(selection=True, objectsOnly=True, long=True)
+        if not selected:
+            return []
+        objects = set(cmds.ls(selected, transforms=True, long=True))
+        shapes = cmds.ls(selected, shapes=True, long=True)
+        if shapes:
+            objects.update(cmds.listRelatives(shapes, parent=True, fullPath=True) or [])
+        return cmds.ls(list(objects), uuid=True) if objects else []
+
     def oneOfs(self, command):
-        """Execute a single command when the Run button is clicked."""
-        # Check if the command exists
-        if command not in self.commandsList:
-            cmds.warning("Unknown command: {}".format(command))
-            return
-        
-        # Check if this is an action command
-        isAction = self.commandsList[command].get('isAction', False)
-        
-        # Check if this is a global command (operates on entire scene)
-        isGlobal = self.commandsList[command].get('isGlobal', False)
-        
-        # Determine which nodes to use based on context and isGlobal flag
-        if isGlobal:
-            # For global commands, always use all scene nodes
+        """Run one check on the current context. Only its own result changes, so
+        the other rows keep theirs, and their Select Errors."""
+        if self.currentContextUUID == "Selection":
+            # Get fresh selection
+            selectedNodes = self.selectionUuids()
+            if not selectedNodes:
+                cmds.warning("No objects selected")
+                return
+            # Update nodes for selection context
+            nodes = self.selectHierachy(selectedNodes)
+            self.contexts["Selection"]["nodes"] = nodes
+        elif self.currentContextUUID == "Global":
+            # Use all scene nodes
             nodes = self.filterGetAllNodes()
-            contextDesc = "ALL OBJECTS in the scene (global command)"
+            self.contexts["Global"]["nodes"] = nodes
         else:
-            # For normal commands, use the current context
-            if self.currentContextUUID == "Selection":
-                # Get fresh selection
-                selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
-                if not selectedNodes:
-                    cmds.warning("No objects selected")
-                    return
-                # Update nodes for selection context
-                nodes = self.selectHierachy(selectedNodes)
-                self.contexts["Selection"]["nodes"] = nodes
-                contextDesc = "the SELECTED objects"
-            elif self.currentContextUUID == "Global":
-                # Use all scene nodes
-                nodes = self.filterGetAllNodes()
-                self.contexts["Global"]["nodes"] = nodes
-                contextDesc = "ALL OBJECTS in the scene"
-            else:
-                # Custom context - use nodes from that context
-                nodes = self.contexts[self.currentContextUUID]['nodes']
-                # Verify nodes still exist
-                nodes = [node for node in nodes if cmds.ls(node, uuid=True)]
-                if not nodes:
-                    cmds.warning("No valid nodes found in context: {}".format(
-                        self.contexts[self.currentContextUUID]["name"]))
-                    return
-                contextDesc = "objects in context: {}".format(self.contexts[self.currentContextUUID]['name'])
-        
-        # Show confirmation for action commands
-        # if isAction:
-        #     msgBox = QtWidgets.QMessageBox()
-        #     msgBox.setIcon(QtWidgets.QMessageBox.Warning)
-        #     msgBox.setWindowTitle("Warning: Action will modify your scene")
-        #     msgBox.setText("The action '{}' will modify {} ({} objects). Continue?".format(
-        #         self.commandsList[command]['label'], 
-        #         contextDesc,
-        #         len(nodes)))
-        #     msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
-        #     returnValue = msgBox.exec_()
-        #     if returnValue != QtWidgets.QMessageBox.Ok:
-        #         return
-        
+            # Custom context - use nodes from that context
+            nodes = self.contexts[self.currentContextUUID]['nodes']
+            # Verify nodes still exist
+            nodes = [node for node in nodes if cmds.ls(node, uuid=True)]
+            if not nodes:
+                cmds.warning("No valid nodes found in context: {}".format(
+                    self.contexts[self.currentContextUUID]["name"]))
+                return
+
         try:
             # Run the command with the appropriate nodes
-            newDiagnostics = self.commandToRun([command], nodes)
+            newDiagnostics = self.runCommands([command], nodes)
             if command in newDiagnostics:
-                # The log only ever holds the last button press, so one row's
-                # Run is how to get at just that check's errors
-                self.contexts[self.currentContextUUID]['diagnostics'] = newDiagnostics
+                self.contexts[self.currentContextUUID]['diagnostics'].update(newDiagnostics)
                 # Update the report
                 self.createReport(self.currentContextUUID)
             else:
@@ -820,51 +789,43 @@ class UI(QtWidgets.QMainWindow):
         except Exception as e:
             cmds.warning("Error running command '{}': {}".format(command, str(e)))
 
-    def commandToRun(self, commands, nodes):
-        """Run the commands, bracketing scene changes in a single undo chunk.
+    def runAction(self, command):
+        """Change the scene, as one click and one undo chunk.
 
-        One chunk per run is what makes Revert possible: deletes cannot be
+        One chunk per click is what makes Revert possible: deletes cannot be
         rebuilt by hand, so we lean on Maya's undo stack instead.
         """
-        actions = [cmd for cmd in commands
-                   if self.commandsList.get(cmd, {}).get('isAction', False)]
-        checks = [cmd for cmd in commands if cmd not in actions]
-        if not actions:
-            return self.runCommands(checks, nodes)
+        # Always what is selected now, never the context of the last check: an
+        # unconfirmed change must not reach past what the artist is looking at
+        if self.commandsList[command].get('isGlobal', False):
+            nodes = self.filterGetAllNodes()
+        else:
+            selectedNodes = self.selectionUuids()
+            if not selectedNodes:
+                cmds.warning("Select the objects for {} first.".format(
+                    self.commandTitle(command)))
+                return
+            nodes = self.selectHierachy(selectedNodes)
 
-        chunkName = self.beginActionChunk()
+        self.actionCounter += 1
+        chunkName = "modelChecker_{}".format(self.actionCounter)
+        cmds.undoInfo(openChunk=True, chunkName=chunkName)
         try:
-            diagnostics = self.runCommands(actions, nodes)
+            newDiagnostics = self.runCommands([command], nodes)
         finally:
-            self.endActionChunk()
+            cmds.undoInfo(closeChunk=True)
 
         # An action that found nothing to do leaves the undo stack untouched, so
         # it neither gains a revert point nor destroys the one already there
-        changed = [cmd for cmd in actions
-                   if self.actionOutcome(diagnostics.get(cmd, {})) == 'changed']
-        if changed:
-            self.addRevertPoint(chunkName, changed)
+        if self.actionOutcome(newDiagnostics.get(command, {})) == 'changed':
+            self.addRevertPoint(chunkName, command)
 
-        # Actions first: a check needs to report on the scene they leave behind, and
-        # the component ids it hands to Select Error Nodes must still be valid
-        if checks:
-            diagnostics.update(self.runCommands(checks, nodes))
-        return diagnostics
-
-    def beginActionChunk(self):
-        """Open a named undo chunk, or join the one already open."""
-        self.chunkDepth += 1
-        if self.chunkDepth == 1:
-            self.actionCounter += 1
-            self.currentChunk = "modelChecker_{}".format(self.actionCounter)
-            cmds.undoInfo(openChunk=True, chunkName=self.currentChunk)
-        return self.currentChunk
-
-    def endActionChunk(self):
-        """Close the chunk once the outermost caller is done with it."""
-        self.chunkDepth = max(0, self.chunkDepth - 1)
-        if self.chunkDepth == 0:
-            cmds.undoInfo(closeChunk=True)
+        # The checks keep their results. Taken out first so that this one goes
+        # back in as the newest, which is the one the log shows on top
+        diagnostics = self.contexts[self.currentContextUUID]['diagnostics']
+        diagnostics.pop(command, None)
+        diagnostics.update(newDiagnostics)
+        self.createReport(self.currentContextUUID)
 
     def runCommands(self, commands, nodes):
         """Execute the given commands on the specified nodes."""
@@ -924,30 +885,6 @@ class UI(QtWidgets.QMainWindow):
         SLMesh.clear()
         return diagnostics
 
-    # def runAction(self, actionName):
-    #     """Run an action on selected objects or context nodes"""
-    #     # Store original selection
-    #     orig_selection = cmds.ls(selection=True)
-        
-    #     # Get nodes from context if needed
-    #     contextUUID = self.currentContextUUID
-    #     useContextNodes = (contextUUID != "Selection" and self.contexts[contextUUID]['nodes'])
-        
-    #     # Run the action
-    #     try:
-    #         if useContextNodes:
-    #             nodes = self.contexts[contextUUID]['nodes']
-    #             print(f"Running {actionName} on {len(nodes)} nodes from context '{self.contexts[contextUUID]['name']}'")
-    #             getattr(mcc, actionName)(nodes)
-    #         else:
-    #             print(f"Running {actionName} on current selection")
-    #             getattr(mcc, actionName)()
-    #     except Exception as e:
-    #         cmds.warning(f"Error running action '{actionName}': {str(e)}")
-        
-    #     # Restore selection
-    #     cmds.select(orig_selection, replace=True)
-
     def parseErrors(self, errors):
         uuids = errors.get('uuids', [])
         type = errors.get('type', '')
@@ -1002,11 +939,13 @@ class UI(QtWidgets.QMainWindow):
             self.reportOutputUI.setHtml(html)
             return
 
-        for error in sorted(self.commandsList.keys()):
-            if error not in diagnostics:
-                self.setRowStatus(error)
-                continue
-            
+        self.clearRowResults()
+        # The newest action goes on top, where the result of a click can't be missed
+        actions = [error for error in reversed(list(diagnostics))
+                   if self.commandsList[error].get('isAction', False)]
+        checks = sorted(error for error in diagnostics if error not in actions)
+
+        for error in actions + checks:
             # Check if this is an action command
             isAction = self.commandsList[error].get('isAction', False)
             entry = diagnostics[error]
@@ -1023,13 +962,11 @@ class UI(QtWidgets.QMainWindow):
                 failed = len(parsedErrors) != 0
             
             # Update UI based on success/failure
-            if isAction:
-                self.setRowStatus(error, self.actionStatus.get(outcome))
-            else:
+            if not isAction:
                 self.setRowStatus(error, 'error' if failed else 'ok')
 
-            label = self.commandsList[error]['label']
-            
+            label = self.commandTitle(error)
+
             if lastFailed != failed and lastFailed is not None or (failed is True and lastFailed is True):
                 html += "<br>"
             lastFailed = failed
@@ -1069,6 +1006,7 @@ class UI(QtWidgets.QMainWindow):
                         html += "&#9492;&#9472; {}<br>".format(node)
                         
         self.reportOutputUI.insertHtml(html)
+        self.reportOutputUI.moveCursor(QtGui.QTextCursor.Start)
 
     def changeConsolidated(self):
         self.createReport(self.currentContextUUID)
@@ -1085,7 +1023,7 @@ class UI(QtWidgets.QMainWindow):
         return list(hierachy)
 
     def sanityCheckChecked(self):
-        if cmds.ls(selection=True, typ="transform", long=True):
+        if self.selectionUuids():
             self.sanityCheck(["Selection"], True)
         else:
             self.sanityCheck(["Global"], True)
@@ -1113,67 +1051,57 @@ class UI(QtWidgets.QMainWindow):
         self.sanityCheck(contextsUuids, False)
 
     def sanityCheck(self, contextsUuids, refreshSelection=True):
-        checkedCommands = [name for name in self.commandsList
+        checkedCommands = [name for name in self.checkNames()
                            if self.commandCheckBox[name].isChecked()]
 
         if not checkedCommands:
-            cmds.warning("Tick at least one check or action first.")
+            cmds.warning("Tick at least one check first.")
             return
 
-        # Every context's actions belong to one chunk, so Revert undoes the
-        # whole run rather than just whichever context happened to be last
-        hasActions = any(self.commandsList[name].get('isAction', False)
-                         for name in checkedCommands)
-        if hasActions:
-            self.beginActionChunk()
-        try:
-            # Process each context
-            for contextUUID in contextsUuids:
-                # Always get fresh nodes for Selection context
-                if contextUUID == "Selection":
-                    if refreshSelection:
-                        selectedNodes = cmds.ls(selection=True, uuid=True, typ="transform")
-                        if not selectedNodes:
-                            cmds.warning("No objects selected")
-                            return
-                        nodes = self.selectHierachy(selectedNodes)
-                        # Update the selection context nodes
-                        self.contexts["Selection"]["nodes"] = nodes
-                    else:
-                        nodes = self.contexts[contextUUID]['nodes']
-                    
-                # Always get fresh nodes for Global context
-                elif contextUUID == "Global":
-                    if refreshSelection:
-                        nodes = self.filterGetAllNodes()
-                        # Update the global context nodes
-                        self.contexts["Global"]["nodes"] = nodes
-                    else:
-                        nodes = self.contexts[contextUUID]['nodes']
+        # Process each context
+        for contextUUID in contextsUuids:
+            # Always get fresh nodes for Selection context
+            if contextUUID == "Selection":
+                if refreshSelection:
+                    selectedNodes = self.selectionUuids()
+                    if not selectedNodes:
+                        cmds.warning("No objects selected")
+                        return
+                    nodes = self.selectHierachy(selectedNodes)
+                    # Update the selection context nodes
+                    self.contexts["Selection"]["nodes"] = nodes
                 else:
                     nodes = self.contexts[contextUUID]['nodes']
-            
-                # Ensure nodes still exist
-                nodes = [uuid for uuid in nodes if cmds.ls(uuid, uuid=True)]
 
-                if not nodes:
-                    cmds.warning("No nodes to check in context: {}".format(
-                        self.contexts[contextUUID]["name"]))
-                    continue
-            
-                # Update the UI to show we're running
-                row = self.contexts[contextUUID]['tableItem'].row()
-                self.contextTable.item(row, 3).setText("Running...")
-            
-                # Run commands and update results
-                diagnostics = self.commandToRun(checkedCommands, nodes)
-                self.contexts[contextUUID]['nodes'] = nodes
-                self.contexts[contextUUID]['diagnostics'] = diagnostics
-                self.currentContextUUID = contextUUID
-                self.setRowFromItem(self.contexts[contextUUID]['tableItem'])
-        finally:
-            if hasActions:
-                self.endActionChunk()
+            # Always get fresh nodes for Global context
+            elif contextUUID == "Global":
+                if refreshSelection:
+                    nodes = self.filterGetAllNodes()
+                    # Update the global context nodes
+                    self.contexts["Global"]["nodes"] = nodes
+                else:
+                    nodes = self.contexts[contextUUID]['nodes']
+            else:
+                nodes = self.contexts[contextUUID]['nodes']
+
+            # Ensure nodes still exist
+            nodes = [uuid for uuid in nodes if cmds.ls(uuid, uuid=True)]
+
+            if not nodes:
+                cmds.warning("No nodes to check in context: {}".format(
+                    self.contexts[contextUUID]["name"]))
+                continue
+
+            # Update the UI to show we're running
+            row = self.contexts[contextUUID]['tableItem'].row()
+            self.contextTable.item(row, 3).setText("Running...")
+
+            # Run commands and update results
+            diagnostics = self.runCommands(checkedCommands, nodes)
+            self.contexts[contextUUID]['nodes'] = nodes
+            self.contexts[contextUUID]['diagnostics'] = diagnostics
+            self.currentContextUUID = contextUUID
+            self.setRowFromItem(self.contexts[contextUUID]['tableItem'])
 
         # Show the report for the last context
         self.setRowFromUUID(self.currentContextUUID)
@@ -1186,27 +1114,32 @@ class UI(QtWidgets.QMainWindow):
                 and entry.get('uuids')]
 
     def updateSelectButtons(self):
-        """Select Objects needs any error, Select Errors one inside a mesh."""
+        """A row's Select Errors needs that check to have found something, Select
+        Objects any of them to have."""
         diagnostics = self.contexts[self.currentContextUUID]['diagnostics']
+        ranCheck = False
+        for name in self.checkNames():
+            entry = diagnostics.get(name)
+            button = self.commandSelectButton[name]
+            button.setEnabled(bool(entry and entry.get('uuids')))
+            if not entry:
+                button.setToolTip("Run this check first.")
+                continue
+            ranCheck = True
+            if not entry.get('uuids'):
+                button.setToolTip("Nothing to select.")
+            elif entry['type'] in self.componentFormats:
+                button.setToolTip("Selects what this check found inside the meshes.")
+            else:
+                button.setToolTip("Selects the objects this check found.")
+
         failed = self.failedChecks()
-        inMesh = any(entry['type'] in self.componentFormats for entry in failed)
-        ranCheck = any(not self.commandsList.get(name, {}).get('isAction', False)
-                       for name in diagnostics)
-        idle = "Nothing to select." if ranCheck else "Run a check first."
-
         self.selectObjectsButton.setEnabled(bool(failed))
-        self.selectObjectsButton.setToolTip(
-            "Selects every object with an error." if failed else idle)
-
-        self.selectErrorsButton.setEnabled(inMesh)
-        if inMesh:
-            self.selectErrorsButton.setToolTip(
-                "Selects the vertices, edges, faces and UVs the checks found.")
-        elif failed:
-            self.selectErrorsButton.setToolTip(
-                "These checks are about whole objects: use Select Objects.")
+        if failed:
+            self.selectObjectsButton.setToolTip("Selects every object with an error.")
         else:
-            self.selectErrorsButton.setToolTip(idle)
+            self.selectObjectsButton.setToolTip(
+                "Nothing to select." if ranCheck else "Run a check first.")
 
     def meshCounts(self, uuid):
         """How much a mesh had, which is what its component ids depend on."""
@@ -1217,6 +1150,9 @@ class UI(QtWidgets.QMainWindow):
         uuids = set()
         for entry in self.failedChecks():
             uuids.update(entry['uuids'])
+        self.selectNodes(uuids)
+
+    def selectNodes(self, uuids):
         objects = cmds.ls(list(uuids), long=True)
         if not objects:
             cmds.warning("The objects were deleted since the check.")
@@ -1224,29 +1160,33 @@ class UI(QtWidgets.QMainWindow):
         cmds.selectMode(object=True)
         self.selectAsUndoStep(objects)
 
-    def selectErrors(self):
+    def selectErrors(self, command):
+        """Select what one check found: inside the meshes where it can, or the
+        objects themselves where the result is about whole objects."""
+        entry = self.contexts[self.currentContextUUID]['diagnostics'].get(command)
+        if not entry or not entry.get('uuids'):
+            return
+        kind = entry['type']
+        if kind not in self.componentFormats:
+            self.selectNodes(entry['uuids'])
+            return
+
         components = []
-        masks = set()
         skipped = False
-        for entry in self.failedChecks():
-            kind = entry['type']
-            if kind not in self.componentFormats:
+        for uuid, ids in entry['uuids'].items():
+            # Ids only mean anything on the mesh as it was checked
+            name = cmds.ls(uuid)
+            if not name or self.meshCounts(uuid) != entry['counts'][uuid]:
+                skipped = True
                 continue
-            for uuid, ids in entry['uuids'].items():
-                # Ids only mean anything on the mesh as it was checked
-                name = cmds.ls(uuid)
-                if not name or self.meshCounts(uuid) != entry['counts'][uuid]:
-                    skipped = True
-                    continue
-                components.extend(name[0] + self.componentFormats[kind].format(i) for i in ids)
-                masks.add(self.componentMasks[kind])
+            components.extend(name[0] + self.componentFormats[kind].format(i) for i in ids)
 
         if not components:
             cmds.warning("The objects changed since the check. Run it again.")
             return
         cmds.selectMode(component=True)
         cmds.selectType(allComponents=False)
-        cmds.selectType(**{mask: True for mask in masks})
+        cmds.selectType(**{self.componentMasks[kind]: True})
         self.selectAsUndoStep(components)
         if skipped:
             cmds.warning("Some objects changed since the check. Run it again for those.")
@@ -1265,36 +1205,26 @@ class UI(QtWidgets.QMainWindow):
         if self.revertChunk:
             self.revertSelects.append(chunkName)
 
-    def addRevertPoint(self, chunkName, actions):
-        """Point Revert at the run that just finished.
-
-        A new chunk replaces the old revert point; the same chunk seen again
-        (one run spanning several contexts) adds to it.
-        """
-        if chunkName != self.revertChunk:
-            self.revertChunk = chunkName
-            self.revertCommands = []
-            self.revertSelects = []
-        for command in actions:
-            if command not in self.revertCommands:
-                self.revertCommands.append(command)
+    def addRevertPoint(self, chunkName, command):
+        """Point Revert at the action that just ran, in place of any before it."""
+        self.revertChunk = chunkName
+        self.revertCommand = command
+        self.revertSelects = []
         self.revertTimer.start()
         self.updateRevertButton()
 
     def clearRevertPoint(self, tooltip="Run an action first."):
         self.revertChunk = None
-        self.revertCommands = []
+        self.revertCommand = None
         self.revertSelects = []
         self.revertTimer.stop()
         self.updateRevertButton(tooltip)
 
     def updateRevertButton(self, tooltip="Run an action first."):
-        """Only the actions from the most recent run can be reverted."""
+        """Only the most recent action can be reverted."""
         self.revertButton.setEnabled(bool(self.revertChunk))
         if self.revertChunk:
-            labels = [self.commandsList[cmd]['label'] for cmd in self.revertCommands
-                      if cmd in self.commandsList]
-            tooltip = "Undoes the last run of: {}".format(", ".join(labels))
+            tooltip = "Undoes {}.".format(self.commandTitle(self.revertCommand))
         self.revertButton.setToolTip(tooltip)
 
     def checkRevertPoint(self):
@@ -1303,7 +1233,7 @@ class UI(QtWidgets.QMainWindow):
         Anything done in Maya since the run sits above its chunk, so undoing
         would quietly throw that away instead. Fail closed when unsure.
         """
-        if not self.revertChunk or self.chunkDepth:
+        if not self.revertChunk:
             return
         top = self.undoStackTop()
         if (not cmds.undoInfo(query=True, state=True)
@@ -1336,16 +1266,17 @@ class UI(QtWidgets.QMainWindow):
         if not self.revertChunk:
             return
 
-        reverted = list(self.revertCommands)
+        reverted = self.revertCommand
         while self.undoStackTop() in self.revertSelects:
             cmds.undo()
         cmds.undo()
         self.clearRevertPoint()
 
-        # The results described a scene state that no longer exists, and that
-        # goes for the checks as well, since they ran after the actions
+        # The action's line described a change that is gone. So may the checks,
+        # if they ran again after it, and a pass that no longer holds is the worst
+        # thing to leave up, so they go as well
         diagnostics = self.contexts[self.currentContextUUID]['diagnostics']
-        for cmd in reverted + self.commandNames(False):
+        for cmd in [reverted] + self.checkNames():
             diagnostics.pop(cmd, None)
         self.createReport(self.currentContextUUID)
     
@@ -1369,7 +1300,7 @@ class UI(QtWidgets.QMainWindow):
         settings = {}
         settings['consolidatedLog'] = self.consolidatedCheck.isChecked()
         settings['commands'] = {}
-        for name in self.commandsList:
+        for name in self.checkNames():
             settings['commands'][name] = self.commandCheckBox[name].isChecked()
         cmds.optionVar(sv=("modelCheckerSettings", json.dumps(settings)))
     
