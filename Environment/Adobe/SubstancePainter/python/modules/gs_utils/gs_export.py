@@ -8,7 +8,7 @@
 # Modules Import
 import os, time
 
-from substance_painter import export, textureset, resource, layerstack
+from substance_painter import export, textureset, resource, layerstack, logging
 from gs_utils import gs_layerstack, gs_project_info
 
 class TextureImporter:
@@ -55,11 +55,11 @@ class ChannelTypeExtractor:
         Returns:
             str: The extracted channel type.
         """
-        last_underscore_index = texture_path.rfind("_")
-        extension_index = texture_path.rfind(".png")
-        if last_underscore_index != -1 and extension_index != -1:
-            channel_type_string = texture_path[last_underscore_index + 1:extension_index]
-            channel_type_string = channel_type_string.split(".")[0]
+        file_name = os.path.basename(texture_path)
+        last_underscore_index = file_name.rfind("_")
+        if last_underscore_index != -1:
+            # Drops the extension (png or exr) and any .$udim
+            channel_type_string = file_name[last_underscore_index + 1:].split(".")[0]
             if channel_type_string == 'ambientOcclusion':
                 channel_type_string = 'AO'
             return channel_type_string
@@ -136,14 +136,34 @@ class TextureAssignmentManager:
         #self.resource_cleaner.delete_texture_files(texture_paths)                                #do not uncomment
 
 
+CHANNEL_EXPORT_FORMATS = {
+    "sRGB8": ("png", "8"),
+    "L8": ("png", "8"),
+    "RGB8": ("png", "8"),
+    "L16": ("png", "16"),
+    "RGB16": ("png", "16"),
+    "L16F": ("exr", "16f"),
+    "RGB16F": ("exr", "16f"),
+    "L32F": ("exr", "32f"),
+    "RGB32F": ("exr", "32f"),
+}
+"""File format and bit depth that hold each textureset.ChannelFormat without loss."""
+
+
 class ExportConfigGenerator:
     """
     Generates the export configuration for the active texture set.
+
+    With `faithful`, each channel is written at its own format and areas the layers do not cover stay
+    transparent, so the result can stand in for those layers. Otherwise: 8-bit PNG, padded everywhere.
+    `file_tag` goes in the file names, ahead of the channel name.
     """
 
-    def __init__(self, export_path, preset_name="Current channels Export"):
+    def __init__(self, export_path, preset_name="Current channels Export", faithful=False, file_tag=None):
         self.export_path = export_path
         self.preset_name = preset_name
+        self.faithful = faithful
+        self.file_tag = file_tag
 
     def generate_current_channels_maps_export(self):
         current_stack = textureset.get_active_stack()
@@ -155,16 +175,12 @@ class ExportConfigGenerator:
         if current_texture_set.has_uv_tiles():
             udim_suffix = '.$udim'
 
-        raw_channels_list = current_textureset_info["Channels"]
-        channels_names = [element.name for element in raw_channels_list]
-        channels_names = [
-            'ambientOcclusion' if element.name == 'AO' else element.name
-            for element in raw_channels_list
-        ]
-
         current_channels_info = []
 
-        for channel_name in channels_names:
+        for channel_type, channel in current_textureset_info["Channels"].items():
+            channel_name = 'ambientOcclusion' if channel_type.name == 'AO' else channel_type.name
+            file_format, bit_depth = CHANNEL_EXPORT_FORMATS[channel.format().name] if self.faithful else ('png', '8')
+
             channels_info = [
                 {
                     "destChannel": channel,
@@ -174,16 +190,17 @@ class ExportConfigGenerator:
                 } for channel in "RGBA"
             ]
 
-            current_filename = f'$mesh_$textureSet_{channel_name}'
+            file_tag = f'{self.file_tag}_' if self.file_tag else ''
+            current_filename = f'$mesh_$textureSet_{file_tag}{channel_name}'
             current_filename = current_filename + udim_suffix
 
             current_channels_info.append({
                 'fileName': current_filename,
                 'channels': channels_info,
                 'parameters': {
-                    'bitDepth': '8',
+                    'bitDepth': bit_depth,
                     'dithering': False,
-                    'fileFormat': 'png'
+                    'fileFormat': file_format
                 }
             })
 
@@ -198,6 +215,11 @@ class ExportConfigGenerator:
         texture_set_info_manager = gs_project_info.TextureSetInfo()
         current_textureset_info = texture_set_info_manager.fetch_texture_set_info_from_stack()
 
+        if self.faithful:
+            export_parameters = {"dithering": False, "paddingAlgorithm": "transparent", "dilationDistance": 1}
+        else:
+            export_parameters = {"dithering": True, "paddingAlgorithm": "infinite"}
+
         export_config = {
             "exportPath": self.export_path,
             "exportShaderParams": False,
@@ -205,7 +227,7 @@ class ExportConfigGenerator:
             "exportPresets": [current_channels_export_preset],
             "exportList": [{"rootPath": current_textureset_info["Name"]}],
             "exportParameters": [
-                {"parameters": {"dithering": True, "paddingAlgorithm": "infinite"}}
+                {"parameters": export_parameters}
             ],
             "uvTiles": current_textureset_info["UV Tiles coordinates"],
         }
@@ -235,31 +257,83 @@ class TextureExporter:
 
 ##### FUNCTIONS USING THE CLASSES #####
 
-def create_layer_from_stack():
-    """Generate a layer from the visible content in the stack."""
-    
-    # Generate the export configuration
+def bake_layers_to_fill(stack_manager, layers, layer_name):
+    """Bake `layers` into a new fill layer above them, then hide them.
+
+    Returns the new layer, or None if the export failed or was cancelled, leaving the stack as it was.
+    """
+
+    # Generate the export configuration. Every bake gets its own file names, so that importing one
+    # can never touch the textures of an earlier one.
     export_path = export.get_default_export_path()
-    config_generator = ExportConfigGenerator(export_path)
+    config_generator = ExportConfigGenerator(export_path, faithful=True, file_tag=str(time.time_ns()))
     export_config = config_generator.generate_export_config()
 
-    # Perform the export
+    # Perform the export with only these layers showing: export renders what is visible
     exporter = TextureExporter()
-    exported_textures = exporter.export_textures(export_config)
+    with gs_layerstack.isolated_layers(stack_manager.current_stack, layers):
+        exported_textures = exporter.export_textures(export_config)
+
+    # A cancelled export only wrote some of the channels
+    if not exported_textures or exported_textures.status == export.ExportStatus.Cancelled:
+        return None
 
     # Import the textures to a new layer
-    if exported_textures:
-        texture_manager = TextureAssignmentManager()
-        current_stack_manager = gs_layerstack.LayerManager()
+    texture_manager = TextureAssignmentManager()
 
-        new_layer = current_stack_manager.add_layer("fill", layer_position="On Top", layer_name="Stack layer")
-        new_layer.active_channels = set(new_layer.active_channels)
-        
-        for new_layer_channel in new_layer.active_channels:
-            normal_blending = layerstack.BlendingMode(2)
-            new_layer.set_blending_mode(normal_blending, new_layer_channel)
-        
-        texture_manager.import_and_assign_textures(new_layer, exported_textures)
+    # At root level: the export already includes the masks and opacity of any group around the
+    # layers, and inside that group they would apply a second time.
+    # The fill keeps its default blending: forcing Normal would make its height and normal replace
+    # what is below instead of adding to it.
+    above_layer = gs_layerstack.root_layer(layers[0])
+    new_layer = stack_manager.add_layer("fill", layer_name=layer_name, above_layer=above_layer)
+    texture_manager.import_and_assign_textures(new_layer, exported_textures)
+
+    with layerstack.ScopedModification(f"Hide baked layers: {layer_name}"):
+        for layer in layers:
+            layer.set_visible(False)
+
+    return new_layer
+
+
+def merge_selected_layers():
+    """Merge the selected layers into a new fill layer above them, then hide them."""
+
+    current_stack_manager = gs_layerstack.LayerManager()
+    selected_layers = current_stack_manager.selected_layers()
+    if not selected_layers:
+        logging.warning("Select the layers to merge first")
+        return
+
+    bake_layers_to_fill(current_stack_manager, selected_layers, "Merged layers")
+
+
+def flatten_selected_groups():
+    """Flatten each selected group into its own fill layer above it, then hide the group."""
+
+    current_stack_manager = gs_layerstack.LayerManager()
+    selected_groups = [
+        layer for layer in current_stack_manager.selected_layers()
+        if layer.get_type() == layerstack.NodeType.GroupLayer
+    ]
+    # A group inside another selected group is already part of that group's result
+    groups = [
+        group for group in selected_groups
+        if not any(parent in selected_groups for parent in gs_layerstack.iter_ancestors(group))
+    ]
+    if not groups:
+        logging.warning("Select the groups to flatten first")
+        return
+
+    # Bottom-up: groups nested in the same root group all land above it, and this keeps their order
+    flattened = 0
+    for group in reversed(groups):
+        if not bake_layers_to_fill(current_stack_manager, [group], f"{group.get_name()} (flattened)"):
+            logging.warning(f"Stopped at group '{group.get_name()}': its export did not finish")
+            break
+        flattened += 1
+
+    logging.info(f"Flattened {flattened}/{len(groups)} group(s)")
 
 
 def flatten_stack():

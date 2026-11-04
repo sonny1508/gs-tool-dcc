@@ -4,6 +4,7 @@ Substance 3D Painter.
 """
 
 # Modules Import
+import contextlib
 import string
 from substance_painter import textureset, layerstack, project, resource, logging, colormanagement
 
@@ -55,9 +56,22 @@ class LayerManager:
     def refresh_layer_selection(self):
         self.layer_selection = layerstack.get_selected_nodes(self.current_stack)
 
-    def add_layer(self, layer_type, layer_name ="New Layer", active_channels=None, layer_position="Above"):
-        """Add a layer of specified type to the current stack with optional active channels"""
-        
+    def selected_layers(self):
+        """Return the selected layers, top first. A selected effect counts as the layer holding it."""
+        layers = []
+        for node in self.layer_selection or []:
+            while not isinstance(node, layerstack.LayerNode):
+                node = node.get_parent()
+            if node not in layers:
+                layers.append(node)
+        return layers
+
+    def add_layer(self, layer_type, layer_name ="New Layer", active_channels=None, layer_position="Above", above_layer=None):
+        """Add a layer of specified type to the current stack with optional active channels.
+
+        With layer_position "Above", it goes above `above_layer`, or above the selection if None.
+        """
+
         if layer_position not in ["Above", "On Top"]:
             logging.error("layer_position parameter must be 'Above' or 'On Top'")
             return None
@@ -75,8 +89,8 @@ class LayerManager:
             insert_position = layerstack.InsertPosition.from_textureset_stack(self._current_stack)
             
         elif layer_position == "Above":
-            insert_position = layerstack.InsertPosition.above_node(selected_layer[0])
-            
+            insert_position = layerstack.InsertPosition.above_node(above_layer or selected_layer[0])
+
         elif layer_position == "On Top":
             insert_position = layerstack.InsertPosition.from_textureset_stack(self._current_stack)
         
@@ -241,6 +255,52 @@ def iter_layers(nodes):
         yield node
         if node.get_type() == layerstack.NodeType.GroupLayer:
             yield from iter_layers(node.sub_layers())
+
+
+def iter_ancestors(layer):
+    """Yield the groups holding `layer`, innermost first."""
+    parent = layer.get_parent()
+    while parent is not None:
+        yield parent
+        parent = parent.get_parent()
+
+
+def root_layer(layer):
+    """Return the root-level layer holding `layer`: its outermost group, or itself if it has none."""
+    parent = layer.get_parent()
+    return layer if parent is None else root_layer(parent)
+
+
+@contextlib.contextmanager
+def isolated_layers(stack, layers):
+    """Show only `layers` in `stack` inside the `with` block, and put the visibility back after.
+
+    Groups around a layer stay on or it would not render, but their other children go off.
+    A selected group keeps its children as they are.
+    """
+    kept = set(layers)
+    groups = {group for layer in layers for group in iter_ancestors(layer)}
+    changed = []
+
+    def isolate(nodes):
+        for node in nodes:
+            visible = node in kept or node in groups
+            if node.is_visible() != visible:
+                node.set_visible(visible)
+                changed.append(node)
+            if node in groups and node not in kept:
+                isolate(node.sub_layers())
+
+    try:
+        # Two scopes, not one around the block: the textures only compute when a scope closes,
+        # and the code in the block needs them computed.
+        with layerstack.ScopedModification("Isolate selected layers"):
+            isolate(layerstack.get_root_layer_nodes(stack))
+        yield
+    finally:
+        with layerstack.ScopedModification("Restore layer visibility"):
+            for node in changed:
+                node.set_visible(not node.is_visible())
 
 
 def iter_pbr_validator_filters(stacks):

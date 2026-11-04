@@ -191,3 +191,5 @@ re-run. For a tighter loop, point Maya's script paths straight at the working co
   right design.
 - **Explicit instruction beats repo precedent.** If asked to delete, change or replace
   something specific, do it; don't go researching prior art first.
+- **Commit straight on `main`.** When asked to commit, don't create a branch first unless
+  asked for one. Still commit and push only when asked.

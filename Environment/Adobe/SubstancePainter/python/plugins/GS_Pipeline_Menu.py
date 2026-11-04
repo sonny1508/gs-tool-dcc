@@ -113,14 +113,14 @@ def add_mask_with_fill_effect():
 
 ################ GENERATE CONTENT FROM STACK #######################    
 
-def create_layer_from_stack():
-    """Generate a layer from the visible content in the stack."""
-    gs_export.create_layer_from_stack()
+def merge_selected_layers():
+    """Merge the selected layers into a new layer and hide them."""
+    gs_export.merge_selected_layers()
     
 
-def flatten_stack():
-    """Flatten the stack by exporting and importing textures."""    
-    gs_export.flatten_stack()
+def flatten_selected_groups():
+    """Flatten each selected group into its own layer and hide the group."""
+    gs_export.flatten_selected_groups()
 
 
 ############## CREATE REFERENCE POINT LAYER ####################### 
@@ -171,8 +171,8 @@ def create_menu():
         ("Add Mask with AO Generator", add_ao_mask, "Ctrl+Shift+M"),
         ("Add Mask with Curvature Generator", add_curvature_mask, "Ctrl+Alt+M"),
         None,  # Separator
-        ("Create New Layer from Visible Stack", create_layer_from_stack, "Ctrl+Shift+G"),
-        ("Flatten Stack", flatten_stack, None),
+        ("Merge from Selected Layers", merge_selected_layers, "Ctrl+Alt+G"),
+        ("Flatten Each Selected Group", flatten_selected_groups, None),
         None,  # Separator
         ("Create Reference Point Layer", create_ref_point_layer, "Ctrl+R"),
         None,  # Separator
