@@ -50,7 +50,7 @@ TOOLS = [
 
     ("05 Review", [
         {"name": "LOD Checker",   "script": "Review/LOD_Checker/LOD_Checker_UI.py",     "icon": "LOD_Checker_Icon.png"},
-        {"name": "Model Checker", "script": "Review/Model_Checker/Model_Checker_UI.py", "icon": "Model_Checker_Icon.png"},
+        {"name": "Model Checker", "script": "Review/Model_Checker/modelChecker_UI.py", "icon": "Model_Checker_Icon.png"},
     ]),
 
     ("06 Projects", [
