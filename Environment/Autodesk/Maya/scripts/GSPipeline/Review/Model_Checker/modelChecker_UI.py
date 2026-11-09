@@ -28,11 +28,13 @@ except ImportError:
 
 from functools import partial
 import json
+import traceback
 import maya.cmds as cmds
 import maya.OpenMayaUI as omui
 import maya.api.OpenMaya as om
 import gs_style
 import Model_Checker.modelChecker_commands as mcc
+import Model_Checker.modelChecker_debug as mcd
 import Model_Checker.modelChecker_list as mcl
 from Model_Checker.__version__ import __version__
 
@@ -87,11 +89,11 @@ class UI(QtWidgets.QMainWindow):
     categoryButton = {}
     categoryHeader = {}
     categoryCollapse = {}
+    debugViews = mcl.mcDebugViews
     commandWidget = {}
     commandLayout = {}
-    commandLabel = {}
+    commandButton = {}
     commandCheckBox = {}
-    commandRunButton = {}
     commandSelectButton = {}
     # How many columns each category's rows split into, to save height
     rowColumns = 2
@@ -181,9 +183,14 @@ class UI(QtWidgets.QMainWindow):
         mainLayout.addLayout(self.buildTickButtons())
         mainLayout.addWidget(self.buildRunButton())
         mainLayout.addLayout(self.buildActions())
+        mainLayout.addLayout(self.buildDebug())
         mainLayout.addWidget(self.buildContextUI(), 1)
         self.pinSize()
         self.loadSettings()
+        # A view outlives the window that switched it on, and can be switched
+        # off by a scene change, so the buttons follow the views and not the clicks
+        mcd.addListener(self.syncDebugButtons)
+        self.syncDebugButtons()
         
         # Initialize the default context and create report
         self.createReport("Selection")
@@ -439,7 +446,7 @@ class UI(QtWidgets.QMainWindow):
         categories = QtWidgets.QVBoxLayout(content)
         categories.setContentsMargins(4, 4, 4, 4)
         categories.setSpacing(4)
-        names = set(command['category'] for command in self.commandsList.values())
+        names = set(self.commandsList[name]['category'] for name in self.shownNames())
         for category in sorted(names - set(self.actionCategories), key=str.lower):
             self.buildCategory(category, categories)
         categories.addStretch()
@@ -453,7 +460,52 @@ class UI(QtWidgets.QMainWindow):
             self.buildCategory(category, categories)
         return categories
 
-    def buildCategory(self, category, parentLayout):
+    def buildDebug(self):
+        """Toggles for the debug views, which change how the viewport draws. One
+        is on at a time; modelChecker_debug switches the others off, and the
+        buttons follow it."""
+        layout = QtWidgets.QVBoxLayout()
+        layout.setSpacing(4)
+        header, grid = self.buildSection("Debug", layout)
+        header.addWidget(self.sectionTitle("Debug", clickable=False))
+
+        self.debugButtons = {}
+        names = sorted(self.debugViews)
+        rowsPerColumn = (len(names) + self.rowColumns - 1) // self.rowColumns
+        for index, name in enumerate(names):
+            button = QtWidgets.QPushButton(self.debugViews[name]['label'])
+            button.setCheckable(True)
+            button.setFixedHeight(self.actionButtonHeight)
+            button.setToolTip(self.debugViews[name]['tooltip'])
+            gs_style.style_toggle(button)
+            # PySide6 calls this with no arguments, so the button is asked
+            # whether it is on rather than told by the signal
+            button.clicked.connect(
+                lambda checked=False, view=name: self.toggleDebugView(view))
+            self.debugButtons[name] = button
+            grid.addWidget(button, index % rowsPerColumn, index // rowsPerColumn)
+        for column in range(self.rowColumns):
+            grid.setColumnStretch(column, 1)
+        return layout
+
+    def toggleDebugView(self, view):
+        # Qt has already flipped the button by the time it says it was clicked
+        on = self.debugButtons[view].isChecked()
+        try:
+            mcd.setView(view, on)
+        except Exception as e:
+            traceback.print_exc()
+            cmds.warning("Could not switch {}: {}. See the Script Editor.".format(
+                self.debugViews[view]['label'], str(e)))
+        self.syncDebugButtons()
+
+    def syncDebugButtons(self):
+        for name, button in self.debugButtons.items():
+            button.setChecked(mcd.isOn(name))
+
+    def buildSection(self, category, parentLayout):
+        """A section's header row and the grid of rows under it, added to
+        `parentLayout`. Returns both, for the caller to fill."""
         self.categoryWidget[category] = QtWidgets.QWidget()
         self.categoryLayout[category] = QtWidgets.QGridLayout()
         # Set in from the header, so that the rows read as inside its section
@@ -463,22 +515,31 @@ class UI(QtWidgets.QMainWindow):
         self.categoryWidget[category].setLayout(self.categoryLayout[category])
         self.categoryHeader[category] = QtWidgets.QHBoxLayout()
         self.categoryHeader[category].setSpacing(0)
+        parentLayout.addLayout(self.categoryHeader[category])
+        parentLayout.addWidget(self.categoryWidget[category])
+        return self.categoryHeader[category], self.categoryLayout[category]
 
-        isAction = category in self.actionCategories
-        button = QtWidgets.QPushButton(category[0].upper() + category[1:])
+    def sectionTitle(self, text, clickable):
+        button = QtWidgets.QPushButton(text[0].upper() + text[1:])
         font = button.font()
         font.setBold(True)
         button.setFont(font)
         gs_style.style_section_header(button)
-        self.categoryButton[category] = button
-        self.categoryHeader[category].addWidget(button)
-
-        if isAction:
+        if not clickable:
             # Only a title, looking like the other headers: there is nothing to tick
             # in here, and these sections are always in view, so they don't fold
             button.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             button.setFocusPolicy(QtCore.Qt.NoFocus)
-        else:
+        return button
+
+    def buildCategory(self, category, parentLayout):
+        self.buildSection(category, parentLayout)
+        isAction = category in self.actionCategories
+        button = self.sectionTitle(category, clickable=not isAction)
+        self.categoryButton[category] = button
+        self.categoryHeader[category].addWidget(button)
+
+        if not isAction:
             button.setToolTip("Tick or untick everything in this category")
             button.clicked.connect(lambda checked=False, cat=category: self.checkCategory(cat))
 
@@ -492,12 +553,9 @@ class UI(QtWidgets.QMainWindow):
             self.categoryCollapse[category] = collapse
             self.categoryHeader[category].addWidget(collapse)
 
-        parentLayout.addLayout(self.categoryHeader[category])
-        parentLayout.addWidget(self.categoryWidget[category])
-
         # Down one column and then the next, so each reads as a list. Every column
         # stretches, used or not, which lines them up from one category to the next.
-        names = sorted(name for name in self.commandsList
+        names = sorted(name for name in self.shownNames()
                        if self.commandsList[name]['category'] == category)
         rowsPerColumn = (len(names) + self.rowColumns - 1) // self.rowColumns
         for index, name in enumerate(names):
@@ -519,47 +577,45 @@ class UI(QtWidgets.QMainWindow):
         return button
 
     def buildCheckRow(self, name):
-        label = self.commandsList[name]['label']
-
+        """A tick box for Run on Selected, the check itself as a button that runs
+        it there and then, and Select Errors for what it found."""
         self.commandWidget[name] = QtWidgets.QWidget()
         self.commandWidget[name].setMaximumHeight(40)
         self.commandLayout[name] = QtWidgets.QHBoxLayout()
-
         self.commandWidget[name].setLayout(self.commandLayout[name])
-
         self.commandLayout[name].setSpacing(6)
         self.commandLayout[name].setContentsMargins(0, 0, 0, 0)
-        self.commandWidget[name].setStyleSheet(
-            "padding: 0px; margin: 0px;")
-        self.commandLabel[name] = QtWidgets.QLabel(label)
-        self.commandLabel[name].setMinimumWidth(self.labelWidth)
+
         self.commandCheckBox[name] = QtWidgets.QCheckBox()
-
         self.commandCheckBox[name].setChecked(False)
-        self.commandCheckBox[name].setMaximumWidth(20)
+        self.commandCheckBox[name].setToolTip("Tick to include it in Run on Selected.")
 
-        self.commandRunButton[name] = QtWidgets.QPushButton("Run")
-        self.commandRunButton[name].setMaximumWidth(40)
-        self.commandRunButton[name].clicked.connect(
-            lambda checked=False, cmd=name: self.oneOfs(cmd))
+        button = QtWidgets.QPushButton(self.commandsList[name]['label'])
+        button.setMinimumWidth(self.labelWidth)
+        button.setFixedHeight(self.actionButtonHeight)
+        button.setToolTip(self.commandsList[name].get('tooltip', ''))
+        button.clicked.connect(lambda checked=False, cmd=name: self.oneOfs(cmd))
+        self.commandButton[name] = button
 
         self.commandSelectButton[name] = QtWidgets.QPushButton("Select Errors")
         self.commandSelectButton[name].setFixedWidth(self.selectWidth)
+        self.commandSelectButton[name].setFixedHeight(self.actionButtonHeight)
         self.commandSelectButton[name].clicked.connect(
             lambda checked=False, cmd=name: self.selectErrors(cmd))
 
-        # The label takes the slack, so the buttons line up on the column's right edge
-        self.commandLayout[name].addWidget(self.commandLabel[name], 1)
+        # The check takes the slack, so Select Errors lines up on the column's right edge
         self.commandLayout[name].addWidget(self.commandCheckBox[name])
-        self.commandLayout[name].addWidget(self.commandRunButton[name])
+        self.commandLayout[name].addWidget(button, 1)
         self.commandLayout[name].addWidget(self.commandSelectButton[name])
         return self.commandWidget[name]
 
     def buildTickButtons(self):
+        # "Tick", not "Check": every row is a check button now, and "Check All"
+        # would read as running them all
         layout = QtWidgets.QHBoxLayout()
         layout.setSpacing(8)
 
-        uncheckAllButton = QtWidgets.QPushButton("Uncheck All")
+        uncheckAllButton = QtWidgets.QPushButton("Untick All")
         uncheckAllButton.clicked.connect(self.uncheckAll)
         layout.addWidget(uncheckAllButton)
 
@@ -567,7 +623,7 @@ class UI(QtWidgets.QMainWindow):
         invertCheckButton.clicked.connect(self.invertCheck)
         layout.addWidget(invertCheckButton)
 
-        checkAllButton = QtWidgets.QPushButton("Check All")
+        checkAllButton = QtWidgets.QPushButton("Tick All")
         checkAllButton.clicked.connect(self.checkAll)
         layout.addWidget(checkAllButton)
         return layout
@@ -582,10 +638,19 @@ class UI(QtWidgets.QMainWindow):
         button.clicked.connect(self.sanityCheckChecked)
         return button
 
+    def shownNames(self):
+        """The commands on the window. A hidden one still works, but has no button."""
+        return [name for name in self.commandsList
+                if not self.commandsList[name].get('hidden', False)]
+
     def checkNames(self):
         """The commands with a row: those that report rather than change the scene."""
-        return [name for name in self.commandsList
+        return [name for name in self.shownNames()
                 if not self.commandsList[name].get('isAction', False)]
+
+    def checkFailed(self, entry):
+        """Whether a check's result found something, or the check itself broke."""
+        return bool(entry.get('uuids') or entry.get('data') or entry.get('error'))
 
     def commandTitle(self, name):
         """A command's name away from its section, where "History" alone could be
@@ -596,10 +661,10 @@ class UI(QtWidgets.QMainWindow):
         return label
 
     def setRowStatus(self, name, level=None):
-        """Colour a row's label by result; no level means the default text colour."""
+        """Colour a check button's text by result; no level means the default colour."""
         colour = self.LOG_COLOURS.get(level)
-        self.commandLabel[name].setStyleSheet(
-            "color: {};".format(colour) if colour else "")
+        self.commandButton[name].setStyleSheet(
+            "QPushButton {{ color: {}; }}".format(colour) if colour else "")
     
     def textWidth(self, metrics, text):
         """QFontMetrics.width() was replaced by horizontalAdvance() in newer Qt."""
@@ -608,11 +673,11 @@ class UI(QtWidgets.QMainWindow):
         return metrics.width(text)
 
     def measureChecksPanel(self):
-        """Fit the row labels to the text they hold, so the columns line up."""
+        """Fit the check buttons to the text they hold, so the columns line up."""
         metrics = self.fontMetrics()
         self.labelWidth = max(
             self.textWidth(metrics, self.commandsList[name]['label'])
-            for name in self.checkNames()) + 8
+            for name in self.checkNames()) + 24
         self.selectWidth = self.textWidth(metrics, "Select Errors") + 24
 
     def currentScreen(self):
@@ -674,6 +739,9 @@ class UI(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         self.saveSettings()
         self.clearRevertPoint()
+        # With the window gone there is no button left to switch a view off
+        mcd.removeListener(self.syncDebugButtons)
+        mcd.turnAllOff()
         super(UI, self).closeEvent(event)
 
     def checkState(self, name):
@@ -720,7 +788,7 @@ class UI(QtWidgets.QMainWindow):
     def checkCategory(self, category):
         uncheckedCategoryButtons = []
         categoryButtons = []
-        for name in self.commandsList.keys():
+        for name in self.checkNames():
             if self.commandsList[name]['category'] == category:
                 categoryButtons.append(name)
                 if self.commandCheckBox[name].isChecked():
@@ -754,7 +822,10 @@ class UI(QtWidgets.QMainWindow):
     def oneOfs(self, command):
         """Run one check on the current context. Only its own result changes, so
         the other rows keep theirs, and their Select Errors."""
-        if self.currentContextUUID == "Selection":
+        if self.commandsList[command].get('isGlobal', False):
+            # Looks at the whole scene whatever is selected, so it needs no selection
+            nodes = self.filterGetAllNodes()
+        elif self.currentContextUUID == "Selection":
             # Get fresh selection
             selectedNodes = self.selectionUuids()
             if not selectedNodes:
@@ -832,9 +903,10 @@ class UI(QtWidgets.QMainWindow):
         diagnostics = {}
         SLMesh = om.MSelectionList()
         
-        # Filter nodes to ensure they exist
-        nodes = [node for node in nodes if cmds.ls(node, uuid=True)] 
-        if not nodes:
+        # Filter nodes to ensure they exist. A scene-wide command doesn't need any.
+        nodes = [node for node in nodes if cmds.ls(node, uuid=True)]
+        if not nodes and not all(self.commandsList[command].get('isGlobal', False)
+                                 for command in commands):
             cmds.warning("No valid nodes to process")
             return {}
             
@@ -958,8 +1030,9 @@ class UI(QtWidgets.QMainWindow):
             if isAction:
                 failed = outcome != 'changed'
             else:
-                # For checks, having nodes means failure
-                failed = len(parsedErrors) != 0
+                # A check fails on what it found, and on breaking: a check that
+                # couldn't look must never read as a pass
+                failed = self.checkFailed(entry)
             
             # Update UI based on success/failure
             if not isAction:
@@ -980,7 +1053,10 @@ class UI(QtWidgets.QMainWindow):
                 else:
                     html += "{} [ NOTHING TO DO ]<br>".format(label)
             else:
-                if failed:  # Check failed
+                if entry.get('error'):
+                    html += "&#10752; {}<font color={}> [ ERROR ]</font><br>".format(label, errorColour)
+                    html += "&#9492;&#9472; Could not run, see the Script Editor.<br>"
+                elif failed:  # Check failed
                     html += "&#10752; {}<font color={}> [ FAILED ]</font><br>".format(label, errorColour)
                 else:  # Check succeeded
                     html += "{}<font color={}> [ SUCCESS ]</font><br>".format(label, okColour)
@@ -1126,7 +1202,10 @@ class UI(QtWidgets.QMainWindow):
                 button.setToolTip("Run this check first.")
                 continue
             ranCheck = True
-            if not entry.get('uuids'):
+            if entry.get('data'):
+                # Scene Cleanup: what it finds isn't objects, and Cleanup fixes it
+                button.setToolTip("Nothing to select. Press Cleanup to fix it.")
+            elif not entry.get('uuids'):
                 button.setToolTip("Nothing to select.")
             elif entry['type'] in self.componentFormats:
                 button.setToolTip("Selects what this check found inside the meshes.")
@@ -1291,7 +1370,7 @@ class UI(QtWidgets.QMainWindow):
                     count += 1
             else:
                 # For checks, success means no errors
-                if not diagnostics[error]['uuids']:
+                if not self.checkFailed(diagnostics[error]):
                     count += 1
         
         return (count, len(diagnostics))

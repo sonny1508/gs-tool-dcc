@@ -206,6 +206,12 @@ hover, pressed and disabled looks. A window with one primary action uses studio 
 primary actions are coloured; secondary buttons keep Maya's grey. In a `maya.cmds` window
 use `backgroundColor=gs_style.rgb(gs_style.STUDIO_RED)`.
 
+**A toggle that switches something on**, such as a viewport debug view, is a checkable
+button that fills with studio orange while it is on, so nobody forgets it:
+`gs_style.style_toggle(button)`. Off, it is Maya's grey like any other button. Toggles
+that can't be on together, like the debug views, switch each other off: turning one on
+turns the one that was on off, and all of them can be off.
+
 **A list artists have to scroll to see all of** gets a scroll bar they can't miss, since
 Maya's own blends into the greys: `gs_style.style_scrollbar(area.verticalScrollBar())`.
 
@@ -239,7 +245,7 @@ def log(self, message, level="info"):
 **Don't** use:
 
 - hex codes or RGB values typed into the tool, instead of taken from `gs_style`
-- `setStyleSheet` on anything other than a primary button, section header or scroll bar through `gs_style`
+- `setStyleSheet` on anything other than a primary button, toggle, section header or scroll bar through `gs_style`
 - `backgroundColor=` on anything other than a primary `cmds.button`
 - a `THEME` dict or a dark theme of the tool's own
 - per-category or per-section colours

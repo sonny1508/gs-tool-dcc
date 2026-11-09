@@ -70,6 +70,29 @@ def style_button(button, colour):
     return button
 
 
+def toggle_style(colour=STUDIO_ORANGE):
+    """Style sheet for a checkable QPushButton that switches something on, like a
+    viewport view: Maya's grey while off, filled with `colour` while on, so that
+    nobody forgets it is on.
+
+    The border is what makes Qt paint the fill: given a background colour alone,
+    a style may draw its own pressed-in button over it."""
+    return (
+        "QPushButton:checked {{ background-color: {base}; color: {text}; font-weight: bold;"
+        " border: 1px solid {pressed}; border-radius: 2px; }}"
+        "QPushButton:checked:hover {{ background-color: {hover}; }}"
+        "QPushButton:checked:pressed {{ background-color: {pressed}; }}"
+    ).format(base=colour, text=BUTTON_TEXT,
+             hover=mix(colour, "#ffffff", 0.15),
+             pressed=mix(colour, "#000000", 0.2))
+
+
+def style_toggle(button, colour=STUDIO_ORANGE):
+    """Make a checkable QPushButton fill with a studio colour while on. Returns the button."""
+    button.setStyleSheet(toggle_style(colour))
+    return button
+
+
 def section_header_style():
     """Style sheet for a section's header, a QPushButton and any QToolButton beside it.
 

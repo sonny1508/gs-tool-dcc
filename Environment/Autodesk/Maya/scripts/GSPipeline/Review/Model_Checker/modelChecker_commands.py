@@ -67,6 +67,12 @@ MESH_DISPLAY_DEFAULTS = (
 # Maya's four default cameras, and whether each one is orthographic
 DEFAULT_CAMERAS = (("persp", False), ("top", True), ("front", True), ("side", True))
 
+# What a texture or utility node's message may lead to and still count as used,
+# as MLdeleteUnused.mel decides it. Cameras and shaders are told apart by class.
+RENDER_NODE_USERS = frozenset((
+    "shadingEngine", "imagePlane", "arrayMapper", "directionalLight",
+    "spotLight", "pointLight", "areaLight", "transform"))
+
 # Internal Utility Functions
 def _getNodeName(uuid):
     nodeName = cmds.ls(uuid, uuid=True)
@@ -75,11 +81,49 @@ def _getNodeName(uuid):
     return None
 
 
-def _deleteOrphanedBlindDataTemplates():
-    """Delete blindDataTemplate nodes whose typeId nothing in the scene uses."""
+def _sourcePlug(node, attr):
+    """The plug feeding `node`.`attr`, or None."""
+    plugs = cmds.listConnections("{}.{}".format(node, attr), source=True,
+                                 destination=False, plugs=True, shapes=True) or []
+    return plugs[0] if plugs else None
+
+
+def _meshHistoryNode(shape):
+    """The first node building `shape` that is not a deformer, or None.
+
+    Follows the geometry itself, up from inMesh. Only what feeds the geometry
+    is history: a per-face material's groupId is connected to the shape too,
+    and survives Delete History, but builds nothing. Deformers, the groupParts
+    between them and the original shape under them are what a rigged mesh is
+    meant to have, so they are passed through - the same split the Cleanup's
+    bake makes. Anything else (polyExtrude, polyUnite, a live mesh) is history.
+    """
+    plug = _sourcePlug(shape, "inMesh")
+    visited = set()
+    while plug:
+        node, attr = plug.split(".", 1)
+        if node in visited:
+            return None
+        visited.add(node)
+        nodeType = cmds.nodeType(node)
+        if "geometryFilter" in (cmds.nodeType(node, inherited=True) or []):
+            # outputGeometry[i] is built from input[i].inputGeometry
+            index = attr[attr.find("[") + 1:attr.find("]")] if "[" in attr else "0"
+            plug = _sourcePlug(node, "input[{}].inputGeometry".format(index))
+        elif nodeType == "groupParts":
+            plug = _sourcePlug(node, "inputGeometry")
+        elif nodeType == "mesh" and cmds.getAttr(node + ".intermediateObject"):
+            plug = _sourcePlug(node, "inMesh")
+        else:
+            return node
+    return None
+
+
+def _orphanedBlindDataTemplates():
+    """blindDataTemplate nodes whose typeId nothing in the scene uses."""
     templates = cmds.ls(type="blindDataTemplate") or []
     if not templates:
-        return
+        return []
 
     usedIds = set()
     for typ in ("polyBlindData", "subdBlindData"):
@@ -89,12 +133,20 @@ def _deleteOrphanedBlindDataTemplates():
             except Exception:
                 pass
 
+    orphans = []
     for template in templates:
         try:
             if cmds.getAttr(template + ".typeId") in usedIds:
                 continue
         except Exception:
             continue
+        orphans.append(template)
+    return orphans
+
+
+def _deleteOrphanedBlindDataTemplates():
+    """Delete blindDataTemplate nodes whose typeId nothing in the scene uses."""
+    for template in _orphanedBlindDataTemplates():
         try:
             cmds.lockNode(template, lock=False)
         except Exception:
@@ -500,14 +552,17 @@ def shaders(transformNodes, _):
     return "nodes", shaders
 
 def generalHistory(nodes, _):
+    # Not listHistory: that also returns the groupIds of per-face materials,
+    # which stay after Delete History, and every shape when there are several
     generalHistory = []
     for node in nodes:
         nodeName = _getNodeName(node)
-        shape = cmds.listRelatives(nodeName, shapes=True, fullPath=True)
-        if shape and cmds.nodeType(shape[0]) == 'mesh':
-            historySize = len(cmds.listHistory(shape))
-            if historySize > 1:
-                generalHistory.append(node)
+        if not nodeName:
+            continue
+        shapes = cmds.listRelatives(nodeName, shapes=True, type="mesh",
+                                    noIntermediate=True, fullPath=True) or []
+        if any(_meshHistoryNode(shape) for shape in shapes):
+            generalHistory.append(node)
     return "nodes", generalHistory
 
 def uncenteredPivots(nodes, _):
@@ -918,7 +973,9 @@ def deleteInputDataNodes(nodes, _):
     return "nodes", affected_nodes
 
 
-# Cleanup: each step returns how many things it changed
+# Cleanup. Each step is split in two: a find that only looks, and a fix that
+# changes what the find returned. Scene Cleanup runs the finds alone, so the
+# check reports exactly what the Cleanup button would change.
 def _localNodes(*args, **flags):
     """cmds.ls() as long names, minus anything that belongs to a reference."""
     return [node for node in cmds.ls(*args, long=True, **flags) or []
@@ -935,15 +992,28 @@ def _forceDelete(node):
     return 1
 
 
-def _deleteCustomAttributes(node):
-    """Delete the attributes added to `node`. Returns how many went."""
-    removed = 0
+def _deleteNodes(nodes):
+    """Delete each of `nodes` still in the scene. Returns how many went."""
+    return sum(_forceDelete(node) for node in nodes if cmds.objExists(node))
+
+
+def _customAttributes(node):
+    """The attributes added to `node`, as plugs. A compound's children are left
+    out, since they go along with their parent."""
+    plugs = []
     for attr in cmds.listAttr(node, userDefined=True) or []:
         plug = "{}.{}".format(node, attr)
-        # A compound's children are listed as well, and go along with their parent
         if (attr in MAYA_ATTRIBUTES or "." in attr or not cmds.objExists(plug)
                 or cmds.attributeQuery(attr, node=node, listParent=True)):
             continue
+        plugs.append(plug)
+    return plugs
+
+
+def _deleteAttributes(plugs):
+    """Delete the attribute behind each plug. Returns how many went."""
+    removed = 0
+    for plug in plugs:
         try:
             cmds.setAttr(plug, lock=False)
             cmds.deleteAttr(plug)
@@ -953,88 +1023,105 @@ def _deleteCustomAttributes(node):
     return removed
 
 
-def _removeNamespace(namespace):
-    """Empty `namespace` and its children into the root. Returns how many went."""
-    removed = 0
-    for child in cmds.namespaceInfo(namespace, listOnlyNamespaces=True) or []:
-        removed += _removeNamespace(child)
+def _findNamespaces():
+    """Namespaces that are not Maya's, children before their parents. One that
+    holds a referenced node is kept, since the reference needs it."""
+    found = []
 
-    # A reference needs its namespace to keep working
-    contents = cmds.namespaceInfo(
-        namespace, listOnlyDependencyNodes=True, dagPath=True) or []
-    if any(cmds.referenceQuery(node, isNodeReferenced=True) for node in contents):
-        return removed
+    def visit(namespace):
+        for child in cmds.namespaceInfo(namespace, listOnlyNamespaces=True) or []:
+            visit(child)
+        contents = cmds.namespaceInfo(
+            namespace, listOnlyDependencyNodes=True, dagPath=True) or []
+        if not any(cmds.referenceQuery(node, isNodeReferenced=True) for node in contents):
+            found.append(namespace)
 
-    try:
-        cmds.namespace(moveNamespace=(namespace, ":"), force=True)
-        cmds.namespace(removeNamespace=namespace)
-    except RuntimeError as e:
-        cmds.warning("Could not remove namespace {}: {}".format(namespace, str(e)))
-        return removed
-    return removed + 1
+    for namespace in cmds.namespaceInfo(":", listOnlyNamespaces=True) or []:
+        if namespace not in DEFAULT_NAMESPACES:
+            visit(namespace)
+    return found
 
 
-def _cleanupNamespaces():
+def _fixNamespaces(namespaces):
+    """Empty each namespace into the root, then remove it."""
     cmds.namespace(setNamespace=":")
     removed = 0
-    for namespace in cmds.namespaceInfo(listOnlyNamespaces=True) or []:
-        if namespace not in DEFAULT_NAMESPACES:
-            removed += _removeNamespace(namespace)
+    for namespace in namespaces:
+        try:
+            cmds.namespace(moveNamespace=(namespace, ":"), force=True)
+            cmds.namespace(removeNamespace=namespace)
+            removed += 1
+        except RuntimeError as e:
+            cmds.warning("Could not remove namespace {}: {}".format(namespace, str(e)))
     return removed
 
 
-def _cleanupDefaultMaterial():
-    """Put lambert1 back to plain mid grey with no custom attributes."""
+def _findDefaultMaterial():
+    """lambert1's colour if it is not plain mid grey, and any custom attributes."""
     if not cmds.objExists("lambert1.color"):
-        return 0
-
-    changed = 0
+        return []
+    changes = []
     color = cmds.getAttr("lambert1.color")[0]
     if (any(abs(channel - 0.5) > 0.001 for channel in color)
             and not cmds.listConnections("lambert1.color", source=True, destination=False)):
+        changes.append("lambert1.color")
+    return changes + _customAttributes("lambert1")
+
+
+def _fixDefaultMaterial(plugs):
+    changed = 0
+    if "lambert1.color" in plugs:
         cmds.setAttr("lambert1.color", 0.5, 0.5, 0.5, type="float3")
         changed += 1
-
-    return changed + _deleteCustomAttributes("lambert1")
-
-
-def _cleanupEmptyLayers():
-    removed = 0
-    for layer in _localNodes(type="displayLayer"):
-        if layer != "defaultLayer" and not cmds.editDisplayLayerMembers(layer, query=True):
-            removed += _forceDelete(layer)
-    return removed
+    return changed + _deleteAttributes([plug for plug in plugs if plug != "lambert1.color"])
 
 
-def _cleanupHiddenSets(multiAttr, nameAttr):
-    """Remove UV or colour sets with no name, which Maya's UI cannot show."""
-    removed = 0
+def _findEmptyLayers():
+    return [layer for layer in _localNodes(type="displayLayer")
+            if layer != "defaultLayer" and not cmds.editDisplayLayerMembers(layer, query=True)]
+
+
+def _findHiddenSets(multiAttr, nameAttr):
+    """UV or colour sets with no name, which Maya's UI cannot show, as plugs."""
+    plugs = []
     for mesh in _localNodes(type="mesh"):
         for plug in cmds.ls("{}.{}[*]".format(mesh, multiAttr), flatten=True) or []:
             if not cmds.getAttr("{}.{}".format(plug, nameAttr)):
-                cmds.removeMultiInstance(plug, b=True)
-                removed += 1
-    return removed
+                plugs.append(plug)
+    return plugs
 
 
-def _cleanupHiddenUVSets():
-    return _cleanupHiddenSets("uvst", "uvsn")
+def _findHiddenUVSets():
+    return _findHiddenSets("uvst", "uvsn")
 
 
-def _cleanupHiddenColorSets():
-    return _cleanupHiddenSets("clst", "clsn")
+def _findHiddenColorSets():
+    return _findHiddenSets("clst", "clsn")
 
 
-def _cleanupCustomAttributes():
+def _fixHiddenSets(plugs):
+    for plug in plugs:
+        cmds.removeMultiInstance(plug, b=True)
+    return len(plugs)
+
+
+def _findCustomAttributes():
     """Every object in the scene, shapes included. FBX leftovers land here too."""
-    return sum(_deleteCustomAttributes(node) for node in _localNodes(dag=True))
+    plugs = []
+    for node in _localNodes(dag=True):
+        plugs.extend(_customAttributes(node))
+    return plugs
 
 
-def _cleanupPastedNames():
-    """Drop "pasted__" from names, children first so parent paths stay valid."""
-    renamed = 0
+def _findPastedNames():
+    """Names with "pasted__", children first so parent paths stay valid."""
     nodes = _localNodes("*pasted__*", recursive=True)
-    for node in sorted(nodes, key=lambda name: name.count("|"), reverse=True):
+    return sorted(nodes, key=lambda name: name.count("|"), reverse=True)
+
+
+def _fixPastedNames(nodes):
+    renamed = 0
+    for node in nodes:
         newName = node.rsplit("|", 1)[-1].replace("pasted__", "")
         try:
             if newName:
@@ -1045,37 +1132,43 @@ def _cleanupPastedNames():
     return renamed
 
 
-def _cleanupBrokenReferences():
-    """Delete reference nodes tied to no file. An unloaded reference still has one."""
-    removed = 0
+def _findBrokenReferences():
+    """Reference nodes tied to no file. An unloaded reference still has one."""
+    broken = []
     for reference in cmds.ls(type="reference") or []:
         if reference.endswith("sharedReferenceNode"):
             continue
         try:
             cmds.referenceQuery(reference, filename=True)
         except RuntimeError:
-            removed += _forceDelete(reference)
-    return removed
+            broken.append(reference)
+    return broken
 
 
-def _cleanupHistory():
-    """Bake history on every mesh, keeping deformers so rigged meshes still work."""
+def _findHistory():
+    """Meshes with history the bake would remove: the same test as the History check."""
+    return [mesh for mesh in _localNodes(type="mesh", noIntermediate=True)
+            if _meshHistoryNode(mesh)]
+
+
+def _fixHistory(meshes):
+    """Bake history, keeping deformers so rigged meshes still work."""
     baked = 0
-    for mesh in _localNodes(type="mesh", noIntermediate=True):
+    for mesh in meshes:
         try:
-            before = len(cmds.listHistory(mesh) or [])
             cmds.bakePartialHistory(mesh, prePostDeformers=True)
-            if len(cmds.listHistory(mesh) or []) < before:
-                baked += 1
         except RuntimeError as e:
             cmds.warning("Could not bake history on {}: {}".format(mesh, str(e)))
+            continue
+        if not _meshHistoryNode(mesh):
+            baked += 1
     return baked
 
 
-def _cleanupLeftoverNodes():
+def _findLeftoverNodes():
     # cmds.ls() raises on an unregistered type, so only ask for ones this session has
     known = set(cmds.allNodeTypes())
-    removed = 0
+    found = []
 
     # Bookkeeping nodes a model has no use for, unless a USD stage is in the scene
     bookkeeping = ["trackInfoManager"]
@@ -1083,107 +1176,220 @@ def _cleanupLeftoverNodes():
         bookkeeping.append("mayaUsdLayerManager")
     for nodeType in bookkeeping:
         if nodeType in known:
-            for node in _localNodes(type=nodeType):
-                removed += _forceDelete(node)
+            found.extend(_localNodes(type=nodeType))
 
     for nodeType in DISCONNECTED_NODE_TYPES:
         if nodeType in known:
-            for node in _localNodes(type=nodeType):
-                if not cmds.listConnections(node):
-                    removed += _forceDelete(node)
+            found.extend(node for node in _localNodes(type=nodeType)
+                         if not cmds.listConnections(node))
 
-    templates = len(cmds.ls(type="blindDataTemplate") or [])
-    _deleteOrphanedBlindDataTemplates()
-    return removed + templates - len(cmds.ls(type="blindDataTemplate") or [])
+    return found + _orphanedBlindDataTemplates()
 
 
-def _cleanupHiddenMaterials():
+def _findHiddenMaterials():
     """Materials in use but missing from this list do not show in the Hypershade."""
-    restored = 0
     materialTypes = cmds.listNodeTypes("shader/surface") or []
-    for material in _localNodes(type=materialTypes) if materialTypes else []:
-        if (cmds.listConnections(material, type="shadingEngine")
-                and not cmds.listConnections(material, type="defaultShaderList")):
-            cmds.connectAttr(material + ".msg", "defaultShaderList1.s", nextAvailable=True)
-            restored += 1
-    return restored
+    if not materialTypes:
+        return []
+    return [material for material in _localNodes(type=materialTypes)
+            if cmds.listConnections(material, type="shadingEngine")
+            and not cmds.listConnections(material, type="defaultShaderList")]
 
 
-def _cleanupMeshDisplay():
+def _fixHiddenMaterials(materials):
+    for material in materials:
+        cmds.connectAttr(material + ".msg", "defaultShaderList1.s", nextAvailable=True)
+    return len(materials)
+
+
+def _meshDisplayChanges(mesh):
+    """`mesh`'s display options away from Maya's defaults, as (plug, default)."""
+    changes = []
+    for attr, default in MESH_DISPLAY_DEFAULTS:
+        plug = "{}.{}".format(mesh, attr)
+        try:
+            if cmds.getAttr(plug) != default:
+                changes.append((plug, default))
+        except (RuntimeError, ValueError):
+            pass
+    return changes
+
+
+def _findMeshDisplay():
+    return [mesh for mesh in _localNodes(type="mesh") if _meshDisplayChanges(mesh)]
+
+
+def _fixMeshDisplay(meshes):
     changed = 0
-    for mesh in _localNodes(type="mesh"):
+    for mesh in meshes:
         meshChanged = False
-        for attr, default in MESH_DISPLAY_DEFAULTS:
-            plug = "{}.{}".format(mesh, attr)
+        for plug, default in _meshDisplayChanges(mesh):
             try:
-                if cmds.getAttr(plug) != default:
-                    cmds.setAttr(plug, default)
-                    meshChanged = True
+                cmds.setAttr(plug, default)
+                meshChanged = True
             except (RuntimeError, ValueError):
                 pass
         changed += meshChanged
     return changed
 
 
-def _cleanupUnusedNodes():
-    """Maya's own Delete Unused Nodes, which leaves referenced nodes alone."""
+def _deletableNode(node, defaultNodes):
+    """What MLdeleteUnused's deleteIfNotReferenced would agree to delete."""
+    return (node not in defaultNodes and cmds.objExists(node)
+            and not cmds.referenceQuery(node, isNodeReferenced=True)
+            and not cmds.lockNode(node, query=True, lock=True)[0])
+
+
+def _deletionPrevented(node, connection, source):
+    """Whether a plug-in, such as a renderer, asks Delete Unused Nodes to keep
+    `node` because of this one connection."""
+    try:
+        answers = cmds.callbacks(
+            node, connection, source, executeCallbacks=True,
+            hook="preventMaterialDeletionFromCleanUpSceneCommand") or []
+    except RuntimeError:
+        return False
+    return any(answers)
+
+
+def _keepsRenderNode(node, connection, source):
+    """Whether one outgoing connection of a texture or utility node is a use,
+    as stage 3 of MLdeleteUnused.mel decides it."""
+    if not source.endswith(".message"):
+        return True
+    nodeType = cmds.nodeType(connection)
+    if nodeType in RENDER_NODE_USERS or cmds.objectType(connection, isAType="camera"):
+        return True
+    if any(cmds.getClassification(nodeType, satisfies=classification)
+           for classification in ("shader/surface", "shader/volume", "shader/displacement")):
+        return True
+    return _deletionPrevented(node, connection, source)
+
+
+def _findUnusedNodes():
+    """What Maya's Delete Unused Nodes would remove on its first pass, without
+    removing it.
+
+    Mirrors the three stages of MLdeleteUnused.mel. Its later passes only reach
+    nodes that these deletions free up, so if this finds nothing, neither will it.
+    """
+    mel.eval('if (!`exists shadingGroupUnused`) source "MLdeleteUnused.mel";')
+    defaultNodes = set(cmds.ls(defaultNodes=True) or [])
+    found = []
+
+    # Stage 1: shading groups with no members, or no shader
+    for shadingGroup in cmds.ls(sets=True) or []:
+        if not (mel.eval('shadingGroupUnused("{}")'.format(shadingGroup))
+                and _deletableNode(shadingGroup, defaultNodes)):
+            continue
+        outputs = cmds.listConnections(shadingGroup, connections=True, source=False,
+                                       shapes=True) or []
+        if not any(_deletionPrevented(shadingGroup, connection, source)
+                   for source, connection in zip(outputs[0::2], outputs[1::2])):
+            found.append(shadingGroup)
+
+    # Stage 2: materials whose only outputs are message links to no shading group
+    for material in cmds.ls(long=True, materials=True) or []:
+        if not _deletableNode(material, defaultNodes):
+            continue
+        outputs = cmds.listConnections(material, connections=True, source=False,
+                                       shapes=True) or []
+        if outputs and all(
+                source == material + ".message"
+                and not cmds.listConnections(source, type="shadingEngine")
+                and not _deletionPrevented(material, connection, source)
+                for source, connection in zip(outputs[0::2], outputs[1::2])):
+            found.append(material)
+
+    # Stage 3: textures and utilities with no output that uses them
+    renderTypes = []
+    for classification in ("texture", "utility", "math", "imageplane", "shader"):
+        renderTypes.extend(cmds.listNodeTypes(classification) or [])
+    for node in (cmds.ls(long=True, type=renderTypes) or []) if renderTypes else []:
+        if node in found or not _deletableNode(node, defaultNodes):
+            continue
+        nodeType = cmds.nodeType(node)
+        if nodeType == "heightField" and cmds.listConnections(node, source=True, destination=False):
+            continue
+        if nodeType == "imagePlane" and not cmds.getAttr(node + ".lockedToCamera"):
+            continue
+        outputs = cmds.listConnections(node, connections=True, source=False, shapes=True) or []
+        if not any(_keepsRenderNode(node, connection, source)
+                   for source, connection in zip(outputs[0::2], outputs[1::2])):
+            found.append(node)
+    return found
+
+
+def _fixUnusedNodes(_):
+    """Maya's own Delete Unused Nodes, which leaves referenced nodes alone. It
+    runs whatever the find said, as the Cleanup always has."""
     return mel.eval("MLdeleteUnused();")
 
 
-def _cleanupEmptySets():
-    """Remove empty object sets, keeping the ones Maya or a deformer relies on."""
-    removed = 0
+def _findEmptySets():
+    """Empty object sets, apart from the ones Maya or a deformer relies on."""
+    found = []
     defaultNodes = set(cmds.ls(defaultNodes=True) or [])
     for objectSet in _localNodes(exactType="objectSet"):
         if (objectSet in defaultNodes or "ViewSelectedSet" in objectSet
                 or "textureEditor" in objectSet):
             continue
         if not cmds.sets(objectSet, query=True) and not cmds.listConnections(objectSet + ".usedBy"):
-            removed += _forceDelete(objectSet)
-    return removed
+            found.append(objectSet)
+    return found
 
 
-def _cleanupDefaultCameras():
-    """Hide the default cameras and undo view changes left on them.
+def _defaultCameraChanges(camera, orthographic):
+    """View changes left on one of the default cameras, as (plug, value).
 
-    Clip planes and focal length stay as they are, since those suit the scene.
+    Clip planes and focal length are not counted, since those suit the scene.
     """
-    changed = 0
-    for camera, orthographic in DEFAULT_CAMERAS:
-        transform = "|" + camera
-        shapes = (cmds.listRelatives(transform, shapes=True, fullPath=True)
-                  if cmds.objExists(transform) else None)
-        if not shapes:
-            continue
-        cameraChanged = False
-        for plug, value in ((transform + ".visibility", False),
-                            (shapes[0] + ".orthographic", orthographic),
-                            (shapes[0] + ".cameraScale", 1),
-                            (shapes[0] + ".panZoomEnabled", False)):
-            if cmds.getAttr(plug) != value:
-                cmds.setAttr(plug, lock=False)
-                cmds.setAttr(plug, value)
-                cameraChanged = True
-        changed += cameraChanged
-    return changed
+    transform = "|" + camera
+    shapes = (cmds.listRelatives(transform, shapes=True, fullPath=True)
+              if cmds.objExists(transform) else None)
+    if not shapes:
+        return []
+    return [(plug, value) for plug, value in (
+                (transform + ".visibility", False),
+                (shapes[0] + ".orthographic", orthographic),
+                (shapes[0] + ".cameraScale", 1),
+                (shapes[0] + ".panZoomEnabled", False))
+            if cmds.getAttr(plug) != value]
 
 
+def _findDefaultCameras():
+    return [(camera, orthographic) for camera, orthographic in DEFAULT_CAMERAS
+            if _defaultCameraChanges(camera, orthographic)]
+
+
+def _fixDefaultCameras(cameras):
+    """Hide the default cameras and undo view changes left on them."""
+    for camera, orthographic in cameras:
+        for plug, value in _defaultCameraChanges(camera, orthographic):
+            cmds.setAttr(plug, lock=False)
+            cmds.setAttr(plug, value)
+    return len(cameras)
+
+
+# (what Scene Cleanup reports, what Cleanup reports, find, fix)
 CLEANUP_STEPS = (
-    ("Namespaces removed", _cleanupNamespaces),
-    ("Default material settings reset", _cleanupDefaultMaterial),
-    ("Empty display layers removed", _cleanupEmptyLayers),
-    ("Hidden UV sets removed", _cleanupHiddenUVSets),
-    ("Hidden color sets removed", _cleanupHiddenColorSets),
-    ("Custom attributes removed", _cleanupCustomAttributes),
-    ("Pasted prefixes removed", _cleanupPastedNames),
-    ("Broken reference nodes removed", _cleanupBrokenReferences),
-    ("Meshes with history baked", _cleanupHistory),
-    ("Leftover nodes removed", _cleanupLeftoverNodes),
-    ("Hidden materials restored", _cleanupHiddenMaterials),
-    ("Meshes with display reset", _cleanupMeshDisplay),
-    ("Unused rendering nodes removed", _cleanupUnusedNodes),
-    ("Empty sets removed", _cleanupEmptySets),
-    ("Default cameras reset", _cleanupDefaultCameras),
+    ("Namespaces", "Namespaces removed", _findNamespaces, _fixNamespaces),
+    ("Default material changes", "Default material settings reset",
+     _findDefaultMaterial, _fixDefaultMaterial),
+    ("Empty display layers", "Empty display layers removed", _findEmptyLayers, _deleteNodes),
+    ("Hidden UV sets", "Hidden UV sets removed", _findHiddenUVSets, _fixHiddenSets),
+    ("Hidden color sets", "Hidden color sets removed", _findHiddenColorSets, _fixHiddenSets),
+    ("Custom attributes", "Custom attributes removed", _findCustomAttributes, _deleteAttributes),
+    ("Pasted prefixes", "Pasted prefixes removed", _findPastedNames, _fixPastedNames),
+    ("Broken reference nodes", "Broken reference nodes removed",
+     _findBrokenReferences, _deleteNodes),
+    ("Meshes with history", "Meshes with history baked", _findHistory, _fixHistory),
+    ("Leftover nodes", "Leftover nodes removed", _findLeftoverNodes, _deleteNodes),
+    ("Hidden materials", "Hidden materials restored", _findHiddenMaterials, _fixHiddenMaterials),
+    ("Meshes with display changes", "Meshes with display reset", _findMeshDisplay, _fixMeshDisplay),
+    ("Unused rendering nodes", "Unused rendering nodes removed", _findUnusedNodes, _fixUnusedNodes),
+    ("Empty sets", "Empty sets removed", _findEmptySets, _deleteNodes),
+    ("Changed default cameras", "Default cameras reset", _findDefaultCameras, _fixDefaultCameras),
 )
 
 
@@ -1194,13 +1400,30 @@ def cleanup(nodes, _):
     still run.
     """
     report = []
-    for label, step in CLEANUP_STEPS:
+    for _, label, find, fix in CLEANUP_STEPS:
         try:
-            count = step()
+            count = fix(find())
         except Exception as e:
             traceback.print_exc()
             cmds.warning("Cleanup step failed ({}): {}".format(label, str(e)))
             report.append("{}: failed, see the Script Editor".format(label))
+            continue
+        if count:
+            report.append("{}: {}".format(label, count))
+    return "custom", report
+
+
+def sceneCleanup(nodes, _):
+    """The check for Cleanup: what it would change in the whole scene, changing
+    nothing. An empty report is a pass."""
+    report = []
+    for label, _, find, _ in CLEANUP_STEPS:
+        try:
+            count = len(find())
+        except Exception as e:
+            traceback.print_exc()
+            cmds.warning("Scene Cleanup check failed ({}): {}".format(label, str(e)))
+            report.append("{}: could not check, see the Script Editor".format(label))
             continue
         if count:
             report.append("{}: {}".format(label, count))
