@@ -1,9 +1,17 @@
-"""GS File Transfer settings: the file-name contract, the folders, the
-applications and the FBX import / export settings.
+"""GS File Transfer settings: the file-name contract, the folders and the FBX
+import / export settings.
 
-File names are a contract with the Maya and 3ds Max sides of GS File Transfer
-(``<source>_to_<target>.fbx`` and the per-object / per-user variants built in
-transfer.py and ui.py). Change them in all three tools or not at all.
+Folders and file names are a contract with the Maya and 3ds Max sides of GS
+File Transfer. Change them in all three tools or not at all:
+
+- Local: one shared file per machine, ``%TEMP%\\GSPipeline\\FileTransferFbx\\transfer.fbx``,
+  whichever application wrote it, and one ``<object>.fbx`` per mesh in its
+  ``individual`` subfolder.
+- Server: ``<sender>_to_<receiver>.fbx`` in the sender's folder, and the
+  per-object ``<object>_<sender>_to_<receiver>.fbx`` variants built in transfer.py.
+
+No application appears in any name: the file is plain FBX, whatever DCC either
+side runs. Settings that depend on the receiver are toggles instead.
 """
 from __future__ import annotations
 
@@ -16,25 +24,21 @@ import tempfile
 username = getpass.getuser()
 temp_dir = tempfile.gettempdir()
 
-LOCAL_DIR = os.path.join(temp_dir, "fileTransferFbx")
-LOCAL_DIR_INDIVIDUAL = os.path.join(temp_dir, "fileTransferFbxIndividual")
-SERVER_DIR = r"\\192.168.1.210\Temp\File_Transfer"
+LOCAL_DIR = os.path.join(temp_dir, "GSPipeline", "FileTransferFbx")
+LOCAL_DIR_INDIVIDUAL = os.path.join(LOCAL_DIR, "individual")
+LOCAL_STEM = "transfer"  # Merge mode: LOCAL_DIR\transfer.fbx. Individual files carry no stem.
+
+# Individual mode (one FBX per mesh) is shelved: Maya can't send or receive it,
+# so it only worked Blender <-> 3ds Max. Off, the Mode row is hidden and every
+# transfer is Merge, even in a .blend saved with Individual picked. The code
+# stays; turn this on (here and in the 3ds Max tool) to bring it back.
+INDIVIDUAL_MODE = False
+SERVER_DIR = r"\\192.168.1.210\Temp\GSPipeline\FileTransferFbx"
 # Combined into one user list. Same format: a header row with a 'User' column.
 USER_CSVS = (
     r"\\192.168.1.210\Pipeline\Library\Data\Data_Computer_Update.csv",
     r"\\192.168.1.210\Pipeline\Library\Data\Data_Computer_Manual.csv",
 )
-
-# (token used in transfer file names, label shown in the panel). The tokens are
-# shared with the Maya and 3ds Max tools -- don't rename them.
-APPS = (
-    ("maya", "Maya"),
-    ("max", "3ds Max"),
-    ("blender", "Blender"),
-)
-APP_LABELS = dict(APPS)
-APP_ITEMS = [(token, label, "") for token, label in APPS]
-THIS_APP = "blender"
 
 
 class FBXSettings:
@@ -111,9 +115,9 @@ class FBXSettings:
 # ---------------------------------------------------------------------------
 # File names
 # ---------------------------------------------------------------------------
-def transfer_stem(source_app, target_app):
-    """'<source>_to_<target>', the core of every transfer file name."""
-    return f"{source_app}_to_{target_app}"
+def server_stem(sender, receiver):
+    """'<sender>_to_<receiver>', the core of a server transfer's file names."""
+    return f"{sender}_to_{receiver}"
 
 
 def safe_file_name(name):

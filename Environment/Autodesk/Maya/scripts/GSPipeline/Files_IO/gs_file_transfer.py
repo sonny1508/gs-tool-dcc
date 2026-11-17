@@ -3,6 +3,12 @@
 GS File Transfer - move an FBX between DCCs, either through this machine's temp
 folder (Local) or through the studio share (Server).
 
+Local is one shared file per machine, %TEMP%\\GSPipeline\\FileTransferFbx\\transfer.fbx,
+whichever DCC wrote it or reads it - the same path the Blender and 3ds Max tools
+use. Server files name only the two artists: [sender]_to_[receiver].fbx, in the
+sender's folder. The window lists those files with when they were written, so a
+stale one is obvious before it is imported.
+
 Maya 2022+ / Python 3 only. The pipeline no longer ships anything older, so
 every FBX plug-in command used here is called directly instead of being probed
 for support first.
@@ -15,6 +21,7 @@ other. Nothing in this file touches an FBX* command directly.
 import os
 import sys
 import csv
+import datetime
 import getpass
 import tempfile
 
@@ -45,33 +52,34 @@ FBX_SETTINGS = {
     'file_extension': '.fbx',
 
     # Server locations
-    'server_path': r'\\192.168.1.210\Temp\File_Transfer',
+    'server_path': r'\\192.168.1.210\Temp\GSPipeline\FileTransferFbx',
     'library_path': r'\\192.168.1.210\Pipeline\Library\Data',
     'csv_filename': 'Data_Computer_Update.csv',
     'csv_user_column': 'User',
 
-    'local_temp_subfolder': 'fileTransferFbx',
-
-    'supported_apps': ['Blender', 'Maya', 'Max'],
+    # Local hand-off, shared with the Blender and 3ds Max tools: one file in
+    # %TEMP%\GSPipeline\FileTransferFbx, whichever DCC wrote it.
+    'local_subfolders': ('GSPipeline', 'FileTransferFbx'),
+    'local_filename': 'transfer',
 }
 
-VERSION = '1.6'
+VERSION = '1.8'
 
 # UI control names
 WINDOW = 'GS_File_Transfer_Window'
 SEARCH_FIELD = 'GS_FT_UserSearch'
 USER_MENU = 'GS_FT_UserMenu'
-APP_IMPORT_MENU = 'GS_FT_AppImport'
-APP_EXPORT_MENU = 'GS_FT_AppExport'
 STATUS_TEXT = 'GS_FT_Status'
+# File rows: (name text, time text) per row.
+LOCAL_ROW = ('GS_FT_LocalName', 'GS_FT_LocalTime')
+RECEIVED_ROW = ('GS_FT_ReceivedName', 'GS_FT_ReceivedTime')
+SENT_ROW = ('GS_FT_SentName', 'GS_FT_SentTime')
 CB_SMOOTHING = 'GS_FT_Smoothing'
 CB_UNLOCK_NORMALS = 'GS_FT_UnlockNormals'
 CB_ADD_NEW = 'GS_FT_AddNew'
 
 # optionVar keys - remember the last picks between sessions
 OPTVAR_USER = 'GS_FileTransfer_LastUser'
-OPTVAR_APP_IMPORT = 'GS_FileTransfer_ImportApp'
-OPTVAR_APP_EXPORT = 'GS_FileTransfer_ExportApp'
 
 # Placeholder entries so the dropdown is never empty (querying an empty
 # optionMenu raises) and so an unusable state is obvious to the artist.
@@ -209,7 +217,28 @@ def checkbox_value(name, settings_key):
 
 
 def local_transfer_path():
-    return os.path.join(tempfile.gettempdir(), FBX_SETTINGS['local_temp_subfolder'])
+    return os.path.join(tempfile.gettempdir(), *FBX_SETTINGS['local_subfolders'])
+
+
+def describe_time(mtime):
+    """'Today 14:32', 'Yesterday 09:10' or '12 Nov 09:10' - never goes stale while the window is open."""
+    when = datetime.datetime.fromtimestamp(mtime)
+    today = datetime.date.today()
+    if when.date() == today:
+        day = 'Today'
+    elif when.date() == today - datetime.timedelta(days=1):
+        day = 'Yesterday'
+    else:
+        day = '{0} {1}'.format(when.day, when.strftime('%b'))
+    return '{0} {1}'.format(day, when.strftime('%H:%M'))
+
+
+def file_time(path):
+    """When the file at `path` was written, as describe_time() puts it, or 'none yet'."""
+    try:
+        return describe_time(os.path.getmtime(path))
+    except OSError:
+        return 'none yet'
 
 
 def ensure_directory(path):
@@ -264,18 +293,19 @@ def export_fbx(file_path, label):
 
 # --- Local (this machine's temp folder) --------------------------------------
 
-def local_file(source_app, target_app):
-    name = '{0}_to_{1}{2}'.format(source_app.lower(), target_app.lower(),
-                                  FBX_SETTINGS['file_extension'])
-    return os.path.join(local_transfer_path(), name)
+def local_file():
+    return os.path.join(local_transfer_path(),
+                        FBX_SETTINGS['local_filename'] + FBX_SETTINGS['file_extension'])
 
 
-def local_import(app):
-    import_fbx(local_file(app, 'maya'), 'from {0} (local)'.format(app))
+def local_import(*_args):
+    import_fbx(local_file(), '(local)')
+    refresh_files()
 
 
-def local_export(app):
-    export_fbx(local_file('maya', app), 'to {0} (local)'.format(app))
+def local_export(*_args):
+    export_fbx(local_file(), '(local)')
+    refresh_files()
 
 
 # --- Server (studio share) ---------------------------------------------------
@@ -289,29 +319,63 @@ def selected_user():
     return value
 
 
+def server_file(sender, receiver):
+    """[sender]_to_[receiver].fbx, sitting in the sender's folder. No application in the name."""
+    filename = '{0}_to_{1}{2}'.format(sender, receiver, FBX_SETTINGS['file_extension'])
+    return os.path.join(FBX_SETTINGS['server_path'], sender, filename)
+
+
 def server_import(*_args):
     other_user = selected_user()
     if not other_user:
         return
-    source_app = cmds.optionMenu(APP_IMPORT_MENU, query=True, value=True).lower()
-    # [source_user]_[source_app]_to_maya_[me].fbx, sitting in the sender's folder
-    filename = '{0}_{1}_to_maya_{2}{3}'.format(other_user, source_app, current_user(),
-                                               FBX_SETTINGS['file_extension'])
-    import_fbx(os.path.join(FBX_SETTINGS['server_path'], other_user, filename),
-               'from {0}'.format(other_user))
+    import_fbx(server_file(other_user, current_user()), 'from {0}'.format(other_user))
+    refresh_files()
 
 
 def server_export(*_args):
     other_user = selected_user()
     if not other_user:
         return
+    export_fbx(server_file(current_user(), other_user), 'to {0}'.format(other_user))
+    refresh_files()
+
+
+# --- File rows: what is waiting where, and since when ------------------------
+
+def _set_row(row, path):
+    name_text, time_text = row
+    if not cmds.text(name_text, exists=True):
+        return
+    cmds.text(name_text, edit=True, label=os.path.basename(path), annotation=path)
+    cmds.text(time_text, edit=True, label=file_time(path), annotation=path)
+
+
+def _clear_row(row, label):
+    name_text, time_text = row
+    if cmds.text(name_text, exists=True):
+        cmds.text(name_text, edit=True, label=label, annotation='')
+        cmds.text(time_text, edit=True, label='', annotation='')
+
+
+def refresh_files(*_args):
+    """Re-read the local file and, for the picked user, the files in both directions."""
+    _set_row(LOCAL_ROW, local_file())
+    if not ALL_USERS:
+        # The share wasn't reachable when the window opened; don't block on it again.
+        _clear_row(RECEIVED_ROW, '(server unavailable)')
+        _clear_row(SENT_ROW, '')
+        return
+    if not cmds.optionMenu(USER_MENU, exists=True):
+        return
+    other_user = cmds.optionMenu(USER_MENU, query=True, value=True)
+    if not other_user or other_user in PLACEHOLDERS:
+        _clear_row(RECEIVED_ROW, '(pick a user)')
+        _clear_row(SENT_ROW, '')
+        return
     me = current_user()
-    target_app = cmds.optionMenu(APP_EXPORT_MENU, query=True, value=True).lower()
-    # [me]_maya_to_[target_app]_[target_user].fbx, sitting in my own folder
-    filename = '{0}_maya_to_{1}_{2}{3}'.format(me, target_app, other_user,
-                                               FBX_SETTINGS['file_extension'])
-    export_fbx(os.path.join(FBX_SETTINGS['server_path'], me, filename),
-               'to {0}'.format(other_user))
+    _set_row(RECEIVED_ROW, server_file(other_user, me))
+    _set_row(SENT_ROW, server_file(me, other_user))
 
 
 # ============================================================================
@@ -340,11 +404,13 @@ def refresh_user_menu(*_args):
 
     if previous in matches:
         cmds.optionMenu(USER_MENU, edit=True, value=previous)
+    refresh_files()
 
 
 def remember_user(value):
     if value not in PLACEHOLDERS:
         cmds.optionVar(stringValue=(OPTVAR_USER, value))
+    refresh_files()
 
 
 def restore_menu(menu, optvar, valid_values):
@@ -379,40 +445,39 @@ def build_import_settings(parent):
 
 def build_local_section(parent):
     cmds.frameLayout(parent=parent, collapsable=True, label='Local', marginWidth=5, marginHeight=5,
-                     annotation="Hand off through this machine's temp folder")
-    form = cmds.formLayout(numberOfDivisions=100)
-
-    frames = []
-    for app in FBX_SETTINGS['supported_apps']:
-        frame = cmds.frameLayout(parent=form, collapsable=False, label=app)
-        cmds.columnLayout(adjustableColumn=True, rowSpacing=4)
-        cmds.separator(height=2, style='none')
-        cmds.button(height=25, label='Import',
-                    command=lambda _x, a=app: local_import(a),
-                    annotation='Import {0}'.format(local_file(app, 'maya')))
-        cmds.button(height=25, label='Export',
-                    command=lambda _x, a=app: local_export(a),
-                    annotation='Export selection to {0}'.format(local_file('maya', app)))
-        cmds.setParent(form)
-        frames.append(frame)
-
-    # Spread the app frames evenly across the form, whatever their count.
-    step = 100.0 / len(frames)
-    attach_form = []
-    attach_position = []
-    for index, frame in enumerate(frames):
-        attach_form.append((frame, 'top', 5))
-        if index == 0:
-            attach_form.append((frame, 'left', 5))
-        else:
-            attach_position.append((frame, 'left', 2, int(round(index * step))))
-        if index == len(frames) - 1:
-            attach_form.append((frame, 'right', 5))
-        else:
-            attach_position.append((frame, 'right', 2, int(round((index + 1) * step))))
-
-    cmds.formLayout(form, edit=True, attachForm=attach_form, attachPosition=attach_position)
+                     annotation="Hand off through this machine's temp folder, to or from any DCC")
+    # One shared file, so no app picker: whatever exported last is what imports.
+    cmds.columnLayout(adjustableColumn=True, rowSpacing=4)
+    build_two_buttons('Import', local_import, 'Import the last local export, from any DCC',
+                      'Export', local_export, 'Export the selection for any DCC on this machine')
+    build_file_row(LOCAL_ROW, 'File', 'The shared local file and when it was last exported')
     cmds.setParent(parent)
+
+
+def build_two_buttons(left_label, left_command, left_tip, right_label, right_command, right_tip):
+    """Two equal buttons side by side, filling the row."""
+    form = cmds.formLayout(numberOfDivisions=100)
+    left = cmds.button(height=25, label=left_label, command=left_command, annotation=left_tip)
+    right = cmds.button(height=25, label=right_label, command=right_command, annotation=right_tip)
+    cmds.formLayout(form, edit=True,
+                    attachForm=[(left, 'top', 0), (left, 'left', 0),
+                                (right, 'top', 0), (right, 'right', 0)],
+                    attachPosition=[(left, 'right', 2, 50), (right, 'left', 2, 50)])
+    cmds.setParent('..')
+
+
+def build_file_row(row, label, tip):
+    """One file line: what it is, its name, and when it was written."""
+    name_text, time_text = row
+    cmds.rowLayout(numberOfColumns=3, adjustableColumn=2,
+                   columnWidth3=(58, 140, 92),
+                   columnAlign3=('left', 'left', 'right'),
+                   columnAttach=[(1, 'both', 0), (2, 'both', 2), (3, 'both', 0)],
+                   annotation=tip)
+    cmds.text(label=label, align='left', annotation=tip)
+    cmds.text(name_text, label='', align='left', font='smallPlainLabelFont')
+    cmds.text(time_text, label='', align='right', font='smallBoldLabelFont')
+    cmds.setParent('..')
 
 
 def build_server_section(parent):
@@ -421,7 +486,12 @@ def build_server_section(parent):
     column = cmds.columnLayout(adjustableColumn=True, rowSpacing=4)
 
     # --- One user picker, shared by both import and export ---
+    cmds.rowLayout(numberOfColumns=2, adjustableColumn=1,
+                   columnAttach=[(1, 'both', 0), (2, 'both', 0)])
     cmds.text(label='User', align='left')
+    cmds.symbolButton(image='refresh.png', width=20, height=20, command=refresh_files,
+                      annotation='Check the files again')
+    cmds.setParent(column)
     user_form = cmds.formLayout(numberOfDivisions=100)
     search = cmds.textField(SEARCH_FIELD,
                             placeholderText='Search users...',
@@ -439,22 +509,13 @@ def build_server_section(parent):
 
     cmds.separator(height=6, style='in')
 
-    # --- Direction rows: app on the left, action button filling the rest ---
-    for label, menu_name, optvar, callback, button_label in (
-            ('From', APP_IMPORT_MENU, OPTVAR_APP_IMPORT, server_import, 'Import'),
-            ('To', APP_EXPORT_MENU, OPTVAR_APP_EXPORT, server_export, 'Export')):
-        cmds.rowLayout(numberOfColumns=3, adjustableColumn=3,
-                       columnWidth3=(38, 96, 96),
-                       columnAlign=(1, 'left'),
-                       columnAttach=[(1, 'both', 0), (2, 'both', 2), (3, 'both', 2)])
-        cmds.text(label=label, align='left')
-        cmds.optionMenu(menu_name,
-                        changeCommand=lambda value, key=optvar: cmds.optionVar(stringValue=(key, value)))
-        for app in FBX_SETTINGS['supported_apps']:
-            cmds.menuItem(label=app)
-        cmds.setParent('..', menu=True)
-        cmds.button(height=25, label=button_label, command=callback)
-        cmds.setParent(column)
+    # --- What is waiting in each direction, then the two actions ---
+    # No application picker: the file is plain FBX, whatever DCC either side runs.
+    build_file_row(RECEIVED_ROW, 'Received', 'What the selected user sent you, and when')
+    build_file_row(SENT_ROW, 'Sent', 'What you last sent the selected user, and when')
+    cmds.separator(height=4, style='none')
+    build_two_buttons('Import', server_import, 'Import what the selected user sent you',
+                      'Export', server_export, 'Send the selection to the selected user')
 
     cmds.setParent(parent)
 
@@ -485,7 +546,12 @@ def GS_File_Transfer_UI():
     if cmds.window(WINDOW, exists=True):
         cmds.deleteUI(WINDOW)
 
-    window = cmds.window(WINDOW, title='GS File Transfer  v{0}'.format(VERSION), widthHeight=(320, 480),
+    # Drop the remembered size, so the window always opens at what its content needs.
+    if cmds.windowPref(WINDOW, exists=True):
+        cmds.windowPref(WINDOW, remove=True)
+
+    window = cmds.window(WINDOW, title='GS File Transfer  v{0}'.format(VERSION), width=320,
+                         resizeToFitChildren=True,
                          minimizeButton=False, maximizeButton=False, sizeable=False)
     main = cmds.columnLayout(adjustableColumn=True, rowSpacing=4)
 
@@ -497,8 +563,7 @@ def GS_File_Transfer_UI():
     # Populate the user dropdown, then restore last session's picks.
     refresh_user_menu()
     restore_menu(USER_MENU, OPTVAR_USER, ALL_USERS)
-    restore_menu(APP_IMPORT_MENU, OPTVAR_APP_IMPORT, FBX_SETTINGS['supported_apps'])
-    restore_menu(APP_EXPORT_MENU, OPTVAR_APP_EXPORT, FBX_SETTINGS['supported_apps'])
+    refresh_files()
 
     if not ALL_USERS:
         set_status('User list unavailable - check the share', 'warn')

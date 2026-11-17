@@ -85,8 +85,9 @@ Code in `common/` runs on every Max version, so it has to clear all of their bar
   ([§6](#6-compiled-and-encrypted-third-party-plugins)) and stay in the version trees.
 
 All our tool code is in `common/` now: `review/scene_checker`, `normals/N00BY_Scripts`
-(Custom Normals Tool), `projects/hw3_tools` and `projects/mgp27` (MGP27 Kerb Height
-Checker, macro in 2025+ only). The version folders no longer have a `scripts/gstools/`.
+(Custom Normals Tool), `file_io/file_transfer` (GS File Transfer), `projects/hw3_tools` and
+`projects/mgp27` (MGP27 Kerb Height Checker, macro in 2025+ only). The version folders no
+longer have a `scripts/gstools/`.
 New tools go straight into `common/`.
 
 ### Python tools in `common/`

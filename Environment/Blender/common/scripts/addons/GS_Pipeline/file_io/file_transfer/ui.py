@@ -9,10 +9,11 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatPrope
 from bpy.types import Operator
 
 from ... import common
-from .config import APP_ITEMS, APP_LABELS, SERVER_DIR, THIS_APP, transfer_stem, username
+from .config import INDIVIDUAL_MODE, SERVER_DIR, server_stem, username
+from .file_status import ServerFiles, local_row
 from .server import ServerStatus
 from .smoothing_groups import fbx_supports_smoothing_groups
-from .transfer import local_dir, run_export, run_import
+from .transfer import individual_mode, local_location, run_export, run_import
 
 
 # ---------------------------------------------------------------------------
@@ -25,47 +26,28 @@ class GS_PersonItem(bpy.types.PropertyGroup):
 # ---------------------------------------------------------------------------
 # Operators
 # ---------------------------------------------------------------------------
+# Local: one shared file on this machine, whichever application wrote it or reads
+# it. The ids predate that (they used to take an application) and may be in keymaps.
 class IMPORT_OT_from_application(Operator):
     bl_idname = "gs.import_from_application"
     bl_label = "Import"
-    bl_description = "Import what another application exported on this machine"
+    bl_description = "Import the last transfer exported on this machine, from any application"
     bl_options = {'UNDO'}
 
-    source_app: StringProperty(default="")
-
-    @classmethod
-    def description(cls, context, properties):
-        label = APP_LABELS.get(properties.source_app, "another application")
-        stem = transfer_stem(properties.source_app, THIS_APP)
-        return f"Import what {label} last exported on this machine ({stem}.fbx)"
-
     def execute(self, context):
-        if self.source_app not in APP_LABELS:
-            self.report({'ERROR'}, "Invalid source application")
-            return {'CANCELLED'}
-        return run_import(self, context, local_dir(context), transfer_stem(self.source_app, THIS_APP))
+        directory, stem = local_location(context)
+        return run_import(self, context, directory, stem)
 
 
 class EXPORT_OT_to_application(Operator):
     bl_idname = "gs.export_to_application"
     bl_label = "Export"
-    bl_description = "Export the selection for another application on this machine"
+    bl_description = "Export the selection for any application on this machine to import"
     bl_options = {'UNDO'}
 
-    target_app: StringProperty(default="")
-
-    @classmethod
-    def description(cls, context, properties):
-        label = APP_LABELS.get(properties.target_app, "another application")
-        stem = transfer_stem(THIS_APP, properties.target_app)
-        return f"Export the selection for {label} to import on this machine ({stem}.fbx)"
-
     def execute(self, context):
-        if self.target_app not in APP_LABELS:
-            self.report({'ERROR'}, "Invalid target application")
-            return {'CANCELLED'}
-        return run_export(self, context, local_dir(context),
-                          transfer_stem(THIS_APP, self.target_app), self.target_app)
+        directory, stem = local_location(context)
+        return run_export(self, context, directory, stem)
 
 
 def _server_user_or_report(op, gs_props):
@@ -95,18 +77,18 @@ class IMPORT_OT_from_server(_NeedsServer, Operator):
 
     @classmethod
     def description(cls, context, properties):
-        gs_props = context.scene.gs_file_transfer_props
-        other = gs_props.server_user or "the selected user"
-        return f"Import what {other} sent you from {APP_LABELS[gs_props.server_app]}"
+        other = context.scene.gs_file_transfer_props.server_user or "the selected user"
+        return f"Import what {other} sent you"
 
     def execute(self, context):
         gs_props = context.scene.gs_file_transfer_props
         other = _server_user_or_report(self, gs_props)
         if not other:
             return {'CANCELLED'}
-        # <sender>_<app>_to_blender_<me>.fbx, sitting in the sender's folder
-        stem = f"{other}_{transfer_stem(gs_props.server_app, THIS_APP)}_{username}"
-        return run_import(self, context, os.path.join(SERVER_DIR, other), stem)
+        # <sender>_to_<me>.fbx, sitting in the sender's folder
+        result = run_import(self, context, os.path.join(SERVER_DIR, other), server_stem(other, username))
+        ServerFiles.clear()
+        return result
 
 
 class EXPORT_OT_to_server(_NeedsServer, Operator):
@@ -117,19 +99,18 @@ class EXPORT_OT_to_server(_NeedsServer, Operator):
 
     @classmethod
     def description(cls, context, properties):
-        gs_props = context.scene.gs_file_transfer_props
-        other = gs_props.server_user or "the selected user"
-        return f"Send the selection to {other}, to import in {APP_LABELS[gs_props.server_app]}"
+        other = context.scene.gs_file_transfer_props.server_user or "the selected user"
+        return f"Send the selection to {other}"
 
     def execute(self, context):
         gs_props = context.scene.gs_file_transfer_props
         other = _server_user_or_report(self, gs_props)
         if not other:
             return {'CANCELLED'}
-        target_app = gs_props.server_app
-        # <me>_blender_to_<app>_<receiver>.fbx, sitting in my own folder
-        stem = f"{username}_{transfer_stem(THIS_APP, target_app)}_{other}"
-        return run_export(self, context, os.path.join(SERVER_DIR, username), stem, target_app)
+        # <me>_to_<receiver>.fbx, sitting in my own folder
+        result = run_export(self, context, os.path.join(SERVER_DIR, username), server_stem(username, other))
+        ServerFiles.clear()
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -182,24 +163,14 @@ class GSFileTransferProperties(bpy.types.PropertyGroup):
     )
     export_smooth_groups: BoolProperty(
         name="Export Smoothing Groups",
-        description="When exporting to 3ds Max, turn your sharp edges into smoothing groups. "
-                    "In Max, tick 'Import Smoothing Groups'. Needs Blender 4.5 or newer",
+        description="For 3ds Max: turn your sharp edges into smoothing groups. In Max, tick "
+                    "'Import Smoothing Groups'. Turn off when sending to Maya or Blender. "
+                    "Needs Blender 4.5 or newer",
         default=True,
     )
 
-    # --- Local / Server ---
-    local_app: EnumProperty(
-        name="Software",
-        description="The application on this machine you are transferring with",
-        items=APP_ITEMS,
-        default="maya",
-    )
-    server_app: EnumProperty(
-        name="Software",
-        description="The application the other artist is using",
-        items=APP_ITEMS,
-        default="maya",
-    )
+    # --- Server ---
+    # No application picker: transfer files are plain FBX, whatever DCC either side runs.
     server_user: StringProperty(
         name="User",
         description="The artist you are sending to or receiving from. Click and type to search",
@@ -210,10 +181,11 @@ class GSFileTransferProperties(bpy.types.PropertyGroup):
 class GS_OT_check_server(Operator):
     bl_idname = "gs.check_server"
     bl_label = "Check Server"
-    bl_description = "Check the server connection again and reload the user list"
+    bl_description = "Check the server connection and the files again, and reload the user list"
 
     def execute(self, context):
         ServerStatus.check()
+        ServerFiles.clear()
         return {'FINISHED'}
 
 
@@ -222,9 +194,10 @@ class GS_OT_check_server(Operator):
 # ---------------------------------------------------------------------------
 def _draw_settings(layout, gs_props):
     box = layout.box()
-    mode_row = box.split(factor=0.3)
-    mode_row.label(text="Mode")
-    mode_row.row(align=True).prop(gs_props, "export_mode", expand=True)
+    if INDIVIDUAL_MODE:     # shelved: see config.INDIVIDUAL_MODE
+        mode_row = box.split(factor=0.3)
+        mode_row.label(text="Mode")
+        mode_row.row(align=True).prop(gs_props, "export_mode", expand=True)
 
     columns = box.split(factor=0.5)
     import_col = columns.column()
@@ -247,9 +220,31 @@ def _draw_settings(layout, gs_props):
 def _draw_transfer_buttons(layout, import_op, export_op):
     row = layout.row()
     row.scale_y = 1.3
-    imp = row.operator(import_op, text="Import", icon='IMPORT')
-    exp = row.operator(export_op, text="Export", icon='EXPORT')
-    return imp, exp
+    row.operator(import_op, text="Import", icon='IMPORT')
+    row.operator(export_op, text="Export", icon='EXPORT')
+
+
+def _draw_file_row(layout, icon, name, when):
+    """One file line: its name, and when it was written on the right."""
+    row = layout.row()
+    row.label(text=name, icon=icon)
+    right = row.row()
+    right.alignment = 'RIGHT'
+    right.label(text=when)
+
+
+def _draw_server_files(layout, context, gs_props, people):
+    other = gs_props.server_user.strip()
+    if not other or other not in people:
+        layout.label(text="Pick a user to see the files", icon='INFO')
+        return
+    rows = ServerFiles.rows_for(other, individual_mode(context))
+    if rows is None:
+        layout.label(text="Checking the files...", icon='TIME')
+        return
+    received, sent = rows
+    _draw_file_row(layout, 'IMPORT', *received)     # what they sent me
+    _draw_file_row(layout, 'EXPORT', *sent)         # what I last sent them
 
 
 def draw_file_transfer(layout, context):
@@ -260,10 +255,8 @@ def draw_file_transfer(layout, context):
 
     local = layout.box()
     local.label(text="Local", icon='HOME')
-    local.prop(gs_props, "local_app")
-    imp, exp = _draw_transfer_buttons(local, "gs.import_from_application", "gs.export_to_application")
-    imp.source_app = gs_props.local_app
-    exp.target_app = gs_props.local_app
+    _draw_file_row(local, 'FILE', *local_row(context))
+    _draw_transfer_buttons(local, "gs.import_from_application", "gs.export_to_application")
 
     server = layout.box()
     header = server.row()
@@ -281,7 +274,8 @@ def draw_file_transfer(layout, context):
     body.prop_search(gs_props, "server_user", context.window_manager, "gs_person_list", icon='USER')
     if online and len(people) == 0:
         body.label(text="User list unavailable", icon='ERROR')
-    body.prop(gs_props, "server_app")
+    if online:
+        _draw_server_files(body, context, gs_props, people)
     _draw_transfer_buttons(body, "gs.import_from_server", "gs.export_to_server")
 
     layout.label(text="Current User: " + username)

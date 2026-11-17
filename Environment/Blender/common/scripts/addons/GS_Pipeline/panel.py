@@ -49,7 +49,7 @@ _category_items = []
 _group_items = {}       # category id -> items
 _tab_items = {}         # (category id, group id) -> items
 _NO_ITEMS = [("NONE", "None", "")]
-_keymap_items = []      # the Ctrl+Shift+G pop-up
+_keymap_items = []      # Ctrl+Shift+G
 
 
 def _tab_id(tab):
@@ -97,12 +97,13 @@ def _tab_enum_items(wm, context):
 # 3.6 - 5.2), so tabs lay themselves out for the width they get instead; see
 # common.is_wide().
 #
-# Ctrl+Shift+G (any 3D View) opens the same panel as a pop-up at the mouse.
-# Scripts can't switch the sidebar to a tab (Region.active_panel_category is
-# missing in 3.6, read-only in 5.2), so a pop-up is the one way a shortcut can
-# reliably bring GS Pipeline up. In Object Mode the key takes over Blender's
-# "Add Selected to Active Collection" (add-on keys win in the same keymap); in
-# the other modes Ctrl+Shift+G is free in 3.6, 4.5 and 5.2.
+# Ctrl+Shift+G (any 3D View) runs GS_OT_toggle_sidebar: it opens the sidebar on
+# the GS Pipeline tab, or closes it when that tab is already showing. Switching
+# the tab needs a writable Region.active_panel_category (missing in 3.6); where
+# Blender won't take it, the same panel opens as a pop-up at the mouse instead.
+# In Object Mode the key takes over Blender's "Add Selected to Active
+# Collection" (add-on keys win in the same keymap); in the other modes
+# Ctrl+Shift+G is free in 3.6, 4.5 and 5.2.
 
 # Pop-up width in UI units (20 px at 1x): the 5.2 sidebar's default.
 _POPUP_UNITS = 14
@@ -140,6 +141,91 @@ class GS_PT_Pipeline(bpy.types.Panel):
 
 
 # ----------------------------------------------------------------------------
+# Ctrl+Shift+G: open the sidebar on GS Pipeline
+# ----------------------------------------------------------------------------
+_SWITCH_RETRIES = 10        # a sidebar that has never drawn lists no tabs yet
+_SWITCH_INTERVAL = 0.05     # seconds between tries
+
+
+def _can_switch_tab():
+    prop = bpy.types.Region.bl_rna.properties.get("active_panel_category")
+    return prop is not None and not prop.is_readonly
+
+
+def _sidebar(area):
+    return next((region for region in area.regions if region.type == 'UI'), None)
+
+
+def _show_tab(region):
+    """Switch the sidebar to GS Pipeline. False while the region lists no such tab yet."""
+    try:
+        region.active_panel_category = GS_PT_Pipeline.bl_category
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return True
+
+
+def _area_by_pointer(pointer):
+    wm = bpy.context.window_manager
+    for window in wm.windows if wm else ():
+        for area in window.screen.areas:
+            if area.as_pointer() == pointer:
+                return area
+    return None
+
+
+def _switch_when_drawn(area_pointer):
+    """A sidebar just opened has no tabs until it draws, so try again shortly after."""
+    tries = [0]
+
+    def attempt():
+        area = _area_by_pointer(area_pointer)
+        region = _sidebar(area) if area else None
+        if region is None:
+            return None
+        if _show_tab(region):
+            area.tag_redraw()
+            return None
+        tries[0] += 1
+        return _SWITCH_INTERVAL if tries[0] < _SWITCH_RETRIES else None
+
+    bpy.app.timers.register(attempt, first_interval=_SWITCH_INTERVAL)
+
+
+class GS_OT_toggle_sidebar(bpy.types.Operator):
+    bl_idname = "gs_pipeline.toggle_sidebar"
+    bl_label = "GS Pipeline"
+    bl_description = ("Open the sidebar on the GS Pipeline tab, or close it if GS Pipeline "
+                      "is already showing")
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
+
+    def execute(self, context):
+        area, space = context.area, context.space_data
+        region = _sidebar(area)
+        if region is None or not _can_switch_tab():
+            # Blender 3.6: the tab can't be chosen from a script.
+            bpy.ops.wm.call_panel('INVOKE_DEFAULT', name=GS_PT_Pipeline.bl_idname, keep_open=True)
+            return {'FINISHED'}
+
+        if space.show_region_ui:
+            if region.active_panel_category == GS_PT_Pipeline.bl_category:
+                space.show_region_ui = False
+            elif not _show_tab(region):
+                _switch_when_drawn(area.as_pointer())
+            area.tag_redraw()
+            return {'FINISHED'}
+
+        space.show_region_ui = True
+        if not _show_tab(region):
+            _switch_when_drawn(area.as_pointer())
+        area.tag_redraw()
+        return {'FINISHED'}
+
+
+# ----------------------------------------------------------------------------
 # Registration (by the addon's __init__.py, after the tools)
 # ----------------------------------------------------------------------------
 def register(categories, default_category):
@@ -166,18 +252,19 @@ def register(categories, default_category):
     wm.gs_subtab = bpy.props.EnumProperty(
         name="Tab", description="Active tool tab within the group", items=_tab_enum_items)
     bpy.utils.register_class(GS_PT_Pipeline)
+    bpy.utils.register_class(GS_OT_toggle_sidebar)
 
     # "Object Mode" to win over Blender's Ctrl+Shift+G there, "3D View" for every other mode.
-    popup = ("wm.call_panel", 'G', {"ctrl": True, "shift": True},
-             {"name": GS_PT_Pipeline.bl_idname, "keep_open": True})
+    shortcut = (GS_OT_toggle_sidebar.bl_idname, 'G', {"ctrl": True, "shift": True}, {})
     _keymap_items[:] = common.register_keymap_items([
-        ("Object Mode", 'EMPTY') + popup,
-        ("3D View", 'VIEW_3D') + popup,
+        ("Object Mode", 'EMPTY') + shortcut,
+        ("3D View", 'VIEW_3D') + shortcut,
     ])
 
 
 def unregister():
     common.unregister_keymap_items(_keymap_items)
+    bpy.utils.unregister_class(GS_OT_toggle_sidebar)
     bpy.utils.unregister_class(GS_PT_Pipeline)
     for attr in ("gs_category", "gs_group", "gs_subtab"):
         if hasattr(bpy.types.WindowManager, attr):

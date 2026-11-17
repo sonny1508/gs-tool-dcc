@@ -8,6 +8,7 @@ Everything here is a thin wrapper over one shared engine, [`_core/install_core.b
 ```
 Deploy/
 ├── install_server.bat                        publish whole repo → Pipeline share
+├── install_local.bat                         run every *_install_user.bat below, in one go
 ├── _core/
 │   └── install_core.bat                      the shared robocopy engine
 ├── Autodesk/
@@ -54,6 +55,18 @@ used a single `..\`, resolving to the nonexistent `Deploy\Adobe\_core\`. Fixed b
 
 **When adding a new DCC:** place its wrapper, count how many folders deep it is below
 `Deploy\`, and use that many `..\` before `_core\`.
+
+## Installing everything on one machine
+
+`install_local.bat` runs every `*_install_user.bat` it finds under `Autodesk\`, `Blender\`
+and `Adobe\`, one after another, then reports how many failed (exit code 1 if any did). A
+new DCC's wrapper is picked up by its name, with nothing to add here.
+
+Every installer copies from the tree it sits in, so where you run it from decides what
+gets installed: from the share, the published tools; from a working copy, your local
+changes, without publishing first. Started by double-click, it waits for a key at the
+end so the result can be read (also when launched from PowerShell, which runs it the
+same way).
 
 ## Publishing to the server
 

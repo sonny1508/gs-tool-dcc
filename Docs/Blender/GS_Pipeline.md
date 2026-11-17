@@ -93,14 +93,18 @@ Category(id, label, modules)      # a top-level category; modules each have GROU
   uses `_active_group()` (category and group only); only `draw` uses `_active()`, which
   also reads the tab. This shipped once and froze 4.5 on HW3's tab bar (see API_Notes.md).
 - A tab id is its label upper-cased, so two tabs of one group can't share a label.
-- **Ctrl+Shift+G** (any 3D View) opens the same panel as a pop-up at the mouse
-  (`wm.call_panel`, keep open). Scripts can't switch the sidebar to our tab
-  (`Region.active_panel_category` is missing in 3.6, read-only in 5.2), so a pop-up is the
-  only way a shortcut reliably brings GS Pipeline up. No Ctrl / Shift / Alt + G is free in
-  Object Mode in 3.6 / 4.5 / 5.2; Ctrl+Shift+G takes over Blender's "Add Selected to Active
-  Collection" there (bound in the "Object Mode" keymap so it wins) and is free in the other
-  modes. In a pop-up `context.region` is the 3D View it was opened from, so the panel draws
-  inside `common.drawing_popup(width)` and tabs read their width through
+- **Ctrl+Shift+G** (any 3D View) runs `gs_pipeline.toggle_sidebar`: it opens the sidebar
+  on the GS Pipeline tab, and closes it when GS Pipeline is already showing. The tab is
+  set through `Region.active_panel_category`. A sidebar that has never drawn lists no
+  tabs yet, so a timer retries the switch for half a second. Where the property is missing
+  (3.6) or read-only, the shortcut opens the same panel as a pop-up at the mouse instead
+  (`wm.call_panel`, keep open). The API reference lists the property as writable from 4.2,
+  but an earlier session noted it as read-only in 5.2. That isn't settled at runtime yet.
+  No Ctrl / Shift / Alt + G is free in Object Mode in 3.6 / 4.5 / 5.2; Ctrl+Shift+G takes
+  over Blender's "Add Selected to Active Collection" there (bound in the "Object Mode"
+  keymap so it wins) and is free in the other modes. Maya uses the same key for GS File
+  Transfer. In a pop-up `context.region` is the 3D View it was opened from, so the panel
+  draws inside `common.drawing_popup(width)` and tabs read their width through
   `common.panel_width` / `is_wide`, never `context.region.width` directly.
 - Category bar order is `CATEGORIES` in the add-on's `__init__.py`; the category shown on
   launch is `DEFAULT_CATEGORY` (`"FILE_IO"`).
@@ -215,9 +219,12 @@ row itself, such as a file path, so a click reads one item rather than rebuildin
 - **CM object names** (`projects/cm/names.py`) are the client's contract (spec v.3 and
   their example car), not ours: the LOD / part tokens and the essential anchors.
 - **Operator ids** may be in artists' keymaps and quick favourites.
-- **GS File Transfer file names** (`<source>_to_<target>.fbx` and the per-object /
-  per-user variants, built in `file_transfer/config.py` and `transfer.py` / `ui.py`) are a
-  contract with the Maya and 3ds Max sides of the tool. Change all three or none.
+- **GS File Transfer folders and file names** (local `%TEMP%\GSPipeline\FileTransferFbx\transfer.fbx`
+  and its `individual\` folder; server `<sender>_to_<receiver>.fbx` in the sender's folder
+  and its per-object variants; built in `file_transfer/config.py` and `transfer.py` / `ui.py`)
+  are a contract with the Maya (`GSPipeline/Files_IO/gs_file_transfer.py`) and 3ds Max
+  (`3dsMax/common/gstools/file_io/file_transfer/gs_file_transfer.py`) sides of the tool.
+  Change all three or none.
 - **HW3 payload folders** (`%TEMP%\GSApplication\...` in `hw3/payloads.py`) are where the
   Unreal and 3ds Max exporters write; they mirror the Maya HW3 tool.
 
@@ -278,12 +285,34 @@ Asset_Validation.md).
 ### File I/O > GS File Transfer (`file_io/file_transfer/`)
 
 Moves FBX files between Blender, Maya and 3ds Max: **Local** through this machine's temp
-folder, **Server** through `\\192.168.1.210\Temp\File_Transfer\<user>\`. Merge (one file)
-or Individual (one file per mesh).
+folder, **Server** through `\\192.168.1.210\Temp\GSPipeline\FileTransferFbx\<user>\`. Always
+one file per transfer (Merge).
 
+- **Individual mode is shelved** (Sonny, 2026-11-17): one FBX per mesh only ever worked
+  Blender <-> 3ds Max, since Maya has no such mode. `config.INDIVIDUAL_MODE = False` hides
+  the Mode row, and `transfer.individual_mode()` answers False, so every transfer is
+  Merge, even in a .blend saved with Individual picked. The code is kept; the 3ds Max tool
+  has the same switch. Everything below about Individual applies once it is back.
+
+- **Local is one shared file per machine**, not one per application pair:
+  `%TEMP%\GSPipeline\FileTransferFbx\transfer.fbx` (Merge), or every `<object>.fbx` in its
+  `individual\` subfolder, which each Individual export empties first. Whatever exported
+  last is what any DCC imports, like a clipboard.
+- **No application in any name or picker**, Server included: `<sender>_to_<receiver>.fbx`
+  in the sender's folder (`<object>_<sender>_to_<receiver>.fbx` per mesh in Individual
+  mode). Settings that depend on the receiver are toggles instead: **Export Smoothing
+  Groups** applies to every export, so untick it when sending to Maya or Blender.
+- **File rows** show what is waiting where and when it was written ("Today 14:32"), so a
+  stale file is seen before it is imported: Local shows the shared file (or the
+  individual folder's count and newest), Server shows Received and Sent for the picked
+  user. Local rows are read while drawing. Server rows are read on a worker thread
+  (`file_status.ServerFiles`), once per user and mode, and are cleared by a server transfer
+  or the refresh button, never re-read on every redraw.
+  Decisions (Sonny, 2026-11-17), the same in the Maya and 3ds Max tools.
 - The server check runs on a **worker thread**, because an unreachable UNC path can block
   for tens of seconds. A main-thread timer applies the result, since `bpy` must not be
-  touched off the main thread. Server buttons are greyed (with the reason, via `poll`)
+  touched off the main thread. It probes the share (`\\192.168.1.210\Temp`), not
+  `SERVER_DIR`: the transfer folder only exists once someone has exported to it. Server buttons are greyed (with the reason, via `poll`)
   until the share is known to be reachable. The check re-runs on file load and from the
   refresh button.
 - The user list is read from two deployment CSVs on the share, de-duplicated, and copied

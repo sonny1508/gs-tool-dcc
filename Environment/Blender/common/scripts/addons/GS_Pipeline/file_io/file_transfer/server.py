@@ -88,8 +88,10 @@ class ServerStatus:
 
     @staticmethod
     def _probe(result):
-        # Worker thread: file system only, never bpy.
-        result["online"] = os.path.isdir(SERVER_DIR)
+        # Worker thread: file system only, never bpy. Probes the share itself
+        # (\\server\Temp), not SERVER_DIR: the transfer folder only exists once
+        # someone has sent something, and an export creates it.
+        result["online"] = os.path.isdir(os.path.splitdrive(SERVER_DIR)[0] + os.sep)
         result["users"] = read_user_list()
 
 

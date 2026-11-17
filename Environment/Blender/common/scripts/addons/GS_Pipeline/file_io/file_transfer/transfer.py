@@ -14,16 +14,35 @@ from ...common import (
     select_only,
     set_auto_smooth,
 )
-from .config import LOCAL_DIR, LOCAL_DIR_INDIVIDUAL, FBXSettings, safe_file_name
+from .config import (INDIVIDUAL_MODE, LOCAL_DIR, LOCAL_DIR_INDIVIDUAL, LOCAL_STEM, FBXSettings,
+                     safe_file_name)
 from .smoothing_groups import fbx_supports_smoothing_groups, temporarily_filled_sharp_edges
 
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+def individual_mode(context):
+    """True when transfers go one FBX per mesh. Always False while the mode is shelved."""
+    return INDIVIDUAL_MODE and context.scene.gs_file_transfer_props.export_mode == "INDIVIDUAL"
+
+
+def individual_name(object_name, stem):
+    """'<object>_<stem>.fbx', or plain '<object>.fbx' when ``stem`` is empty (local)."""
+    name = safe_file_name(object_name)
+    return f"{name}_{stem}.fbx" if stem else f"{name}.fbx"
+
+
+def individual_pattern(stem):
+    return f"*_{stem}.fbx" if stem else "*.fbx"
+
+
 def individual_files(directory, stem):
-    """Every '<object>_<stem>.fbx' in ``directory`` -- the per-object files of one transfer."""
-    suffix = f"_{stem}.fbx".lower()
+    """Every '<object>_<stem>.fbx' in ``directory`` -- the per-object files of one transfer.
+
+    With an empty ``stem`` the folder holds only one transfer (local), so that's every FBX in it.
+    """
+    suffix = f"_{stem}.fbx".lower() if stem else ".fbx"
     try:
         names = sorted(os.listdir(directory))
     except OSError:
@@ -104,15 +123,18 @@ def import_fbx_with_settings(filepath, context):
     )
 
 
-def export_fbx_with_settings(filepath, context, target_app):
-    """Export the selection for ``target_app``. Returns how many sharp edges were filled in."""
+def export_fbx_with_settings(filepath, context):
+    """Export the selection. Returns how many sharp edges were filled in.
+
+    The receiving application isn't known (transfer files are plain FBX), so the
+    Export Smoothing Groups toggle alone decides whether 3ds Max smoothing groups go out.
+    """
     gs_props = context.scene.gs_file_transfer_props
     settings = dict(FBXSettings.EXPORT)
     if gs_props.export_mesh_only:
         # Selected empties are skipped and meshes under them come out in world space.
         settings['object_types'] = {'MESH'}
-    smoothing_groups =(target_app == "max" and gs_props.export_smooth_groups
-                        and fbx_supports_smoothing_groups())
+    smoothing_groups = gs_props.export_smooth_groups and fbx_supports_smoothing_groups()
     if smoothing_groups:
         settings['mesh_smooth_type'] = 'SMOOTH_GROUP'
     # Closing open-ended sharp edges is part of exporting smoothing groups, not
@@ -161,13 +183,12 @@ def _import_one(op, context, path):
 
 def run_import(op, context, directory, stem):
     """Import '<stem>.fbx' (All) or every '<object>_<stem>.fbx' (Individual) from ``directory``."""
-    gs_props = context.scene.gs_file_transfer_props
     ensure_object_mode(context)
 
-    if gs_props.export_mode == "INDIVIDUAL":
+    if individual_mode(context):
         files = individual_files(directory, stem)
         if not files:
-            op.report({'ERROR'}, f"No *_{stem}.fbx files found in {directory}")
+            op.report({'ERROR'}, f"No {individual_pattern(stem)} files found in {directory}")
             return {'CANCELLED'}
     else:
         path = os.path.join(directory, stem + ".fbx")
@@ -192,20 +213,19 @@ def run_import(op, context, directory, stem):
     return {'FINISHED'}
 
 
-def _export_one(op, context, path, target_app):
+def _export_one(op, context, path):
     """Export the current selection to ``path``. Returns filled-edge count, or None on failure."""
     print("Attempting to export to: " + path)
     try:
         pre_process_export_objects(context)
-        return export_fbx_with_settings(path, context, target_app)
+        return export_fbx_with_settings(path, context)
     except Exception as e:
         op.report({'ERROR'}, f"Failed to export to {path}: {e}")
         return None
 
 
-def run_export(op, context, directory, stem, target_app):
+def run_export(op, context, directory, stem):
     """Export the selection as '<stem>.fbx' (All) or one '<object>_<stem>.fbx' per mesh (Individual)."""
-    gs_props = context.scene.gs_file_transfer_props
     ensure_object_mode(context)
     selected = list(context.selected_objects)
     meshes = [obj for obj in selected if obj.type == 'MESH']
@@ -218,10 +238,11 @@ def run_export(op, context, directory, stem, target_app):
         op.report({'ERROR'}, f"Failed to create directory: {directory}")
         return {'CANCELLED'}
 
-    if gs_props.export_mode == "INDIVIDUAL":
+    if individual_mode(context):
         # Clear out the previous per-object files of this same transfer, so the
         # receiver doesn't pick up objects from an older send. Other transfers'
-        # files in the folder are left alone.
+        # files in a shared server folder are left alone; the local individual
+        # folder holds only this one transfer, so it is emptied.
         for stale in individual_files(directory, stem):
             try:
                 os.remove(stale)
@@ -235,8 +256,8 @@ def run_export(op, context, directory, stem, target_app):
             # holding a lone empty would only clutter the receiver's scene.
             for obj in meshes:
                 select_only(context, [obj])
-                path = os.path.join(directory, f"{safe_file_name(obj.name)}_{stem}.fbx")
-                result = _export_one(op, context, path, target_app)
+                path = os.path.join(directory, individual_name(obj.name, stem))
+                result = _export_one(op, context, path)
                 if result is None:
                     op.report({'WARNING'}, f"Failed to export {obj.name}")
                     continue
@@ -248,7 +269,7 @@ def run_export(op, context, directory, stem, target_app):
         message = f"Exported {exported} object(s) individually"
     else:
         path = os.path.join(directory, stem + ".fbx")
-        filled = _export_one(op, context, path, target_app)
+        filled = _export_one(op, context, path)
         if filled is None:
             return {'CANCELLED'}
         message = f"Exported to {path}"
@@ -259,6 +280,9 @@ def run_export(op, context, directory, stem, target_app):
     return {'FINISHED'}
 
 
-def local_dir(context):
-    mode = context.scene.gs_file_transfer_props.export_mode
-    return LOCAL_DIR_INDIVIDUAL if mode == "INDIVIDUAL" else LOCAL_DIR
+def local_location(context):
+    """(folder, stem) of the local transfer: 'transfer.fbx' in LOCAL_DIR in Merge mode, or
+    every '<object>.fbx' in LOCAL_DIR_INDIVIDUAL in Individual mode."""
+    if individual_mode(context):
+        return LOCAL_DIR_INDIVIDUAL, ""
+    return LOCAL_DIR, LOCAL_STEM

@@ -21,10 +21,18 @@ TOOLS is a list of entries. Each entry is one of:
             "name":   "HW3 Tools",                              # menu/shelf label
             "script": "05_Projects/HW3/HW3_Tools.py",    # relative to this folder
             "icon":   "HW3_Tools_Icon.png",                     # optional; in Icons/, omit for default
+            "hotkey": "Ctrl+Shift+G",                           # optional; see below
         }
 
 Both name and icon are explicit. Icons live in the Icons/ folder next to this
 file; a tool with no "icon" (or a missing icon file) uses Maya's default.
+
+"hotkey" binds a shortcut to the tool at startup, in the editable "GSTools"
+hotkey set (cloned from Maya_Default if that's current, since Maya_Default is
+locked). Modifiers are Ctrl, Alt and Shift, joined with '+'. A shortcut the
+artist has already bound to something else is left alone, with a warning. Check
+Maya's factory keys first: Maya20XX/scripts/startup/hotkeySetup.mel, where an
+upper-case key means Shift.
 """
 
 TOOLS = [
@@ -45,7 +53,9 @@ TOOLS = [
 
     ("04 Files I/O", [
         {"name": "GS File Export",   "script": "Files_IO/gs_file_export.py",   "icon": "GS_File_Export_Icon.png"},
-        {"name": "GS File Transfer", "script": "Files_IO/gs_file_transfer.py", "icon": "GS_File_Transfer_Icon.png"},
+        # Ctrl+Shift+G: free in Maya 2022 and 2026; the same key Blender's GS Pipeline uses.
+        {"name": "GS File Transfer", "script": "Files_IO/gs_file_transfer.py", "icon": "GS_File_Transfer_Icon.png",
+         "hotkey": "Ctrl+Shift+G"},
     ]),
 
     ("05 Review", [
