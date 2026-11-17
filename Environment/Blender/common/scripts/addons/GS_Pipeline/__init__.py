@@ -14,7 +14,7 @@ bl_info = {
 #   common.py       helpers every tool shares (scene, log, preferences, registration)
 #   object_log.py   the Log with a list of objects that check-style tools share
 #   file_io/        File I/O category: file_transfer/
-#   review/         Review category: asset_validation/
+#   review/         Review category: asset_validation/, lod_check.py
 #   projects/       Projects category: one package per project (cm/, hw3/, mgp27/)
 
 from . import common, object_log, panel

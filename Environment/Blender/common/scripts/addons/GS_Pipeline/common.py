@@ -2,11 +2,11 @@
 
 Tool modules import from here instead of copying code between them:
 
-  * Scene helpers: selection, Object Mode, auto smooth across 3.6 / 4.1+,
+  * Scene helpers: selection, a Scope collection's objects, Object Mode, auto smooth across 3.6 / 4.1+,
     folding duplicate materials an import created.
   * ToolLog: the short result log a tool draws at the bottom of its tab.
   * Remembered preferences: the Blender counterpart of the Maya tools' optionVars.
-  * Registration: classes and tool modules, in order and back.
+  * Registration: classes, tool modules and shortcuts, in order and back.
 
 Only what more than one tool uses belongs here; a project's own helpers live in
 its package (e.g. projects/hw3/payloads.py).
@@ -35,6 +35,17 @@ def select_only(context, objects):
         obj.select_set(True)
     if objects:
         context.view_layer.objects.active = objects[0]
+
+
+def scope_objects(context, collection, view_layer_only=True):
+    """The objects in ``collection`` and the collections inside it (the whole
+    scene when None). By default only those in this view layer: an object in
+    an excluded collection can't be hidden."""
+    source = collection.all_objects if collection is not None else context.scene.objects
+    if not view_layer_only:
+        return list(source)
+    layer = context.view_layer.objects
+    return [obj for obj in source if layer.get(obj.name) is not None]
 
 
 def ensure_object_mode(context):
@@ -77,16 +88,43 @@ def _ui_scale(context):
     return context.preferences.system.ui_scale or 1.0
 
 
+# Width (px at 1x) of the pop-up the panel is drawing in, None in the sidebar.
+_popup_width = None
+
+
+@contextlib.contextmanager
+def drawing_popup(width):
+    """While the panel draws as a pop-up ``width`` px wide (at 1x), so tabs lay out for it.
+
+    In a pop-up context.region is still the region it was opened from (the
+    whole 3D View), so its width says nothing about the room a tab has.
+    """
+    global _popup_width
+    _popup_width = width
+    try:
+        yield
+    finally:
+        _popup_width = None
+
+
+def panel_width(context):
+    """The width a tab draws in, px at 1x UI scale: the sidebar's or the pop-up's. None without a region."""
+    if _popup_width:
+        return _popup_width
+    region = context.region
+    if region is None:
+        return None
+    return region.width / _ui_scale(context)
+
+
 def is_wide(context, width):
-    """True when the sidebar is at least ``width`` px wide (at 1x UI scale).
+    """True when the sidebar (or pop-up) is at least ``width`` px wide (at 1x UI scale).
 
     Blender can't hold the sidebar at a minimum width, so tabs use this to put
     settings side by side when there is room and stack them when there isn't.
     """
-    region = context.region
-    if region is None:
-        return True
-    return region.width >= width * _ui_scale(context)
+    available = panel_width(context)
+    return available is None or available >= width
 
 
 # Blender's rename-on-collision suffix: "Material" -> "Material.001", "Material.002"...
@@ -169,6 +207,15 @@ class ToolLog:
             op.report(_REPORT_TYPES.get(level, {'INFO'}), message)
         redraw_view3d()
 
+    def report(self, op):
+        """Send the lines to the status bar through ``op``, for an action run
+        by a shortcut while the tab may not be on screen."""
+        for level, message in self.lines:
+            op.report(_REPORT_TYPES.get(level, {'INFO'}), message)
+
+    def has_errors(self):
+        return any(level == "error" for level, _ in self.lines)
+
     def draw(self, layout, context):
         box = layout.box()
         box.label(text="Log")
@@ -177,9 +224,7 @@ class ToolLog:
     def draw_lines(self, layout, context):
         """The lines (or the placeholder) without the box, for a log that draws more in it."""
         col = layout.column(align=True)
-        region = context.region
-        scale = _ui_scale(context)
-        width =max(16, int(((region.width if region else 300) - 70 * scale) / (_CHAR_WIDTH * scale)))
+        width = max(16, int(((panel_width(context) or 300) - 70) / _CHAR_WIDTH))
         if not self.lines:
             col.enabled = False
             for part in textwrap.wrap(self.placeholder, width):
@@ -255,6 +300,38 @@ def unregister_classes(classes):
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+
+
+def register_keymap_items(entries):
+    """Add shortcuts to Blender's add-on keyconfig (they show, and can be changed,
+    in Preferences > Keymap). Add-on items take priority over Blender's own in
+    the same keymap.
+
+    entries: (keymap name, space type, operator id, key, modifiers, properties),
+    e.g. ("3D View", 'VIEW_3D', "gs_pipeline.x", 'NUMPAD_0', {"alt": True}, {"lod": "0"}).
+    Returns the items added; hand them to unregister_keymap_items().
+    """
+    wm = bpy.context.window_manager
+    keyconfig = wm.keyconfigs.addon if wm else None
+    added = []
+    if not keyconfig:       # background mode has no keyconfig
+        return added
+    for keymap_name, space_type, idname, key, modifiers, properties in entries:
+        keymap = keyconfig.keymaps.new(name=keymap_name, space_type=space_type)
+        item = keymap.keymap_items.new(idname, key, 'PRESS', **modifiers)
+        for name, value in properties.items():
+            setattr(item.properties, name, value)
+        added.append((keymap, item))
+    return added
+
+
+def unregister_keymap_items(added):
+    for keymap, item in added:
+        try:
+            keymap.keymap_items.remove(item)
+        except (ReferenceError, RuntimeError):
+            pass
+    added.clear()
 
 
 def register_modules(modules):

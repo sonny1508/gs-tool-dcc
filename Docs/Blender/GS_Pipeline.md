@@ -40,7 +40,8 @@ GS_Pipeline/
 │       ├── server.py        is the share reachable, the user list (worker thread)
 │       └── ui.py            properties, operators, drawing the tab
 ├── review/                  Review category
-│   └── asset_validation/    see Asset_Validation.md
+│   ├── asset_validation/    see Asset_Validation.md
+│   └── lod_check.py         LOD Check: show one LOD (0-6, numbers or letters) at a time
 └── projects/                Projects category: one package per project
     ├── cm/
     │   ├── __init__.py      GROUP (one tab), register
@@ -91,6 +92,15 @@ Category(id, label, modules)      # a top-level category; modules each have GROU
   uses `_active_group()` (category and group only); only `draw` uses `_active()`, which
   also reads the tab. This shipped once and froze 4.5 on HW3's tab bar (see API_Notes.md).
 - A tab id is its label upper-cased, so two tabs of one group can't share a label.
+- **Ctrl+Shift+G** (any 3D View) opens the same panel as a pop-up at the mouse
+  (`wm.call_panel`, keep open). Scripts can't switch the sidebar to our tab
+  (`Region.active_panel_category` is missing in 3.6, read-only in 5.2), so a pop-up is the
+  only way a shortcut reliably brings GS Pipeline up. No Ctrl / Shift / Alt + G is free in
+  Object Mode in 3.6 / 4.5 / 5.2; Ctrl+Shift+G takes over Blender's "Add Selected to Active
+  Collection" there (bound in the "Object Mode" keymap so it wins) and is free in the other
+  modes. In a pop-up `context.region` is the 3D View it was opened from, so the panel draws
+  inside `common.drawing_popup(width)` and tabs read their width through
+  `common.panel_width` / `is_wide`, never `context.region.width` directly.
 - Category bar order is `CATEGORIES` in the add-on's `__init__.py`; the category shown on
   launch is `DEFAULT_CATEGORY` (`"FILE_IO"`).
 
@@ -187,7 +197,7 @@ A package whose `__init__.py` has `CATEGORY = Category(id, label, modules)`, add
 
 | Where                          | Lasts                                   | Use it for                                    | In use                                     |
 | ------------------------------ | --------------------------------------- | --------------------------------------------- | ------------------------------------------ |
-| `Scene` PointerProperty        | saved in the .blend                     | settings that belong to the file              | `gs_hw3`, `gs_file_transfer_props`, `gs_cm` |
+| `Scene` PointerProperty        | saved in the .blend                     | settings that belong to the file              | `gs_hw3`, `gs_file_transfer_props`, `gs_cm`, `gs_lod_check` |
 | `WindowManager` properties     | this Blender session only, never saved  | UI state, lists rebuilt at runtime, spec values that must not quietly stick | `gs_category`, `gs_group`, `gs_subtab`, `gs_mgp27_kerb`, `gs_person_list`, `gs_av_log`, `gs_av_log_index`, `gs_cm_parts`, `gs_cm_log` |
 | `common.pref_get` / `pref_set` | across sessions (`gs_pipeline_prefs.json` in this Blender version's config folder) | an artist's own preferences; the counterpart of Maya optionVars | MGP27 up axis, measure along ground, fix mode |
 | module globals                 | this session                            | caches, data RNA can't hold (numpy arrays)    | Asset Validation `log._found`              |
@@ -199,7 +209,7 @@ row itself, such as a file path, so a click reads one item rather than rebuildin
 
 ## 6. Names that must not change
 
-- **Scene property names** (`gs_hw3`, `gs_file_transfer_props`, `gs_cm`) and their fields are
+- **Scene property names** (`gs_hw3`, `gs_file_transfer_props`, `gs_cm`, `gs_lod_check`) and their fields are
   saved in artists' .blend files.
 - **CM object names** (`projects/cm/names.py`) are the client's contract (spec v.3 and
   their example car), not ours: the LOD / part tokens and the essential anchors.
@@ -219,12 +229,15 @@ Class names can change freely; nothing outside the add-on refers to them.
 | Helper                                   | What for                                                  |
 | ---------------------------------------- | --------------------------------------------------------- |
 | `select_only`, `ensure_object_mode`      | selection and mode                                        |
+| `scope_objects`                          | the objects in a Scope collection (empty: the scene), by default only those in this view layer (CM, LOD Check) |
 | `legacy_auto_smooth`, `set_auto_smooth`  | auto smooth, which works differently in 3.6 and 4.1+ (API_Notes.md) |
 | `merge_duplicate_materials`              | fold the `Name.001` copies an import made into the existing `Name` |
 | `redraw_view3d`, `is_wide`, `wait_cursor`| UI: redraw after state changed outside a draw; responsive layout; long actions |
 | `ToolLog`, `LOG_ICONS`, `plural`         | the short result log at the bottom of a tab; "3 parts" in its lines |
 | `pref_get`, `pref_set`                   | remembered preferences (JSON, per Blender version)        |
 | `register_classes`, `unregister_classes`, `register_modules`, `unregister_modules` | registration |
+| `register_keymap_items`, `unregister_keymap_items` | shortcuts in Blender's add-on keyconfig (Preferences > Keymap can change them); add-on items beat Blender's own in the same keymap |
+| `panel_width`, `drawing_popup`           | the width a tab draws in, sidebar or Ctrl+Shift+G pop-up (`is_wide` uses it) |
 
 `ToolLog` levels, as in the Maya tools: `ok` done as asked, `warn` done but look at this,
 `error` nothing done (the message says why), `info`. Blender can't colour label text, so
@@ -356,6 +369,25 @@ optionVars).
 ### Review > Asset Validation (`review/asset_validation/`)
 
 Checks and quick fixes before an asset moves on. See [Asset_Validation.md](Asset_Validation.md).
+
+### Review > LOD Check (`review/lod_check.py`)
+
+CM's LOD switching for any asset: show All or one of LOD0-LOD6 in **Scope**, hiding the
+rest with Blender's eye. **Naming** picks how the names spell the level: Numbers
+(`Tree_LOD0`) or Letters (`Tree_LODA`, A being LOD0, the older studio convention also
+read by Maya's `gs_lod.py`). An object's LOD is read as in CM (the last `_LOD<n>` token,
+else the nearest one above it; no LOD anywhere above: left alone), except that a letter
+must be a capital, so a word like `_lods` is never a level. A LOD past 6 / G shows only
+under All and is counted in the log. Switching Naming re-applies the choice once the panel
+has hidden anything; if nothing in scope has a LOD in the chosen naming but some has one
+in the other, the log says to switch. Choices are on the scene (`gs_lod_check`), saved
+with the file.
+
+Shortcuts, mouse over a 3D View: **Alt + Numpad 0-6** shows that LOD, **Alt + Numpad \***
+shows all (`gs_pipeline.lod_check_show`), using the tab's Scope and Naming even when the
+tab isn't on screen; the result also goes to the status bar. Numpad keys alone (and most
+Ctrl / Shift + Numpad) are Blender's view keys; Alt + Numpad 0-9 and \* are free in 3.6,
+4.5 and 5.2 (Alt + Numpad . is not). The tab shows the keys under the LOD buttons.
 
 ---
 

@@ -18,6 +18,8 @@ from collections import namedtuple
 
 import bpy
 
+from . import common
+
 # One screen of a tool: its label in the tab bar, and draw(layout, context).
 Tab = namedtuple("Tab", "label draw")
 
@@ -47,6 +49,7 @@ _category_items = []
 _group_items = {}       # category id -> items
 _tab_items = {}         # (category id, group id) -> items
 _NO_ITEMS = [("NONE", "None", "")]
+_keymap_items = []      # the Ctrl+Shift+G pop-up
 
 
 def _tab_id(tab):
@@ -93,14 +96,34 @@ def _tab_enum_items(wm, context):
 # Blender has no API for a minimum sidebar width (Region.width is read-only in
 # 3.6 - 5.2), so tabs lay themselves out for the width they get instead; see
 # common.is_wide().
+#
+# Ctrl+Shift+G (any 3D View) opens the same panel as a pop-up at the mouse.
+# Scripts can't switch the sidebar to a tab (Region.active_panel_category is
+# missing in 3.6, read-only in 5.2), so a pop-up is the one way a shortcut can
+# reliably bring GS Pipeline up. In Object Mode the key takes over Blender's
+# "Add Selected to Active Collection" (add-on keys win in the same keymap); in
+# the other modes Ctrl+Shift+G is free in 3.6, 4.5 and 5.2.
+
+# Pop-up width in UI units (20 px at 1x): the 5.2 sidebar's default.
+_POPUP_UNITS = 14
+
+
 class GS_PT_Pipeline(bpy.types.Panel):
     bl_label = "GS Pipeline"
     bl_idname = "GS_PT_Pipeline"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "GS Pipeline"
+    bl_ui_units_x = _POPUP_UNITS    # pop-up only; the sidebar sets its own width
 
     def draw(self, context):
+        if self.is_popover:
+            with common.drawing_popup(_POPUP_UNITS * 20):
+                self._draw(context)
+        else:
+            self._draw(context)
+
+    def _draw(self, context):
         layout = self.layout
         wm = context.window_manager
         category, group, tab = _active(wm)
@@ -144,8 +167,17 @@ def register(categories, default_category):
         name="Tab", description="Active tool tab within the group", items=_tab_enum_items)
     bpy.utils.register_class(GS_PT_Pipeline)
 
+    # "Object Mode" to win over Blender's Ctrl+Shift+G there, "3D View" for every other mode.
+    popup = ("wm.call_panel", 'G', {"ctrl": True, "shift": True},
+             {"name": GS_PT_Pipeline.bl_idname, "keep_open": True})
+    _keymap_items[:] = common.register_keymap_items([
+        ("Object Mode", 'EMPTY') + popup,
+        ("3D View", 'VIEW_3D') + popup,
+    ])
+
 
 def unregister():
+    common.unregister_keymap_items(_keymap_items)
     bpy.utils.unregister_class(GS_PT_Pipeline)
     for attr in ("gs_category", "gs_group", "gs_subtab"):
         if hasattr(bpy.types.WindowManager, attr):

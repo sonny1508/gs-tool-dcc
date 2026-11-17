@@ -75,7 +75,7 @@ def _on_door_angle(props, context):
     LOG.clear_messages()
     closed = props.closed_doors
     if props.door_angle and not len(closed):
-        animation.keep_closed(closed, variants.scope_objects(context, props.scope))
+        animation.keep_closed(closed, common.scope_objects(context, props.scope))
         if not len(closed):
             LOG.add("No doors found.", "error")
             return
@@ -347,7 +347,7 @@ class GS_OT_CM_CheckNames(Operator):
 
     def execute(self, context):
         LOG.clear(context)
-        objects = variants.scope_objects(context, _props(context).scope, view_layer_only=False)
+        objects = common.scope_objects(context, _props(context).scope, view_layer_only=False)
         if not objects:
             LOG.add("Nothing in Scope.", "error", self)
             return {'CANCELLED'}

@@ -6,7 +6,7 @@ The addons folder defaults to ``Environment/Blender/common/scripts/addons``.
 Checks the package wiring only: relative imports, import cycles, the panel's
 Category / Group / Tab tree, that every tab can be switched to without the bar
 enums' callbacks recursing, and that unregister() undoes register() (classes,
-window-manager / scene properties, load handlers). It says nothing about how the
+window-manager / scene properties, load handlers, shortcuts). It says nothing about how the
 tools behave in Blender. That is tested in Blender (Docs/Blender/README.md).
 
 Needs numpy, which the add-on imports (Blender bundles it; ``pip install numpy``
@@ -58,8 +58,29 @@ timers = types.SimpleNamespace(register=lambda *a, **k: None,
 utils = types.SimpleNamespace(register_class=registered.append,
                               unregister_class=lambda cls: registered.remove(cls),
                               user_resource=lambda kind: ".")
+
+
+class KeymapItems(list):
+    """A keymap's items, as Blender's add-on keyconfig holds them."""
+
+    def new(self, idname, key, value, **modifiers):
+        item = types.SimpleNamespace(idname=idname, type=key, properties=types.SimpleNamespace())
+        self.append(item)
+        return item
+
+
+keymaps = {}    # keymap name -> its items
+keyconfig = types.SimpleNamespace(keymaps=types.SimpleNamespace(
+    new=lambda name, space_type: types.SimpleNamespace(
+        keymap_items=keymaps.setdefault(name, KeymapItems()))))
+
+
+class Context(Any):
+    window_manager = types.SimpleNamespace(keyconfigs=types.SimpleNamespace(addon=keyconfig))
+
+
 module("bpy", types=bpy_types, props=bpy_props, utils=utils, ops=Any(), data=Any(),
-       context=Any(), path=Any(),
+       context=Context(), path=Any(),
        app=types.SimpleNamespace(handlers=handlers, timers=timers, version=(4, 5, 0)))
 module("bmesh")
 module("mathutils", **{name: type(name, (), {}) for name in ("Euler", "Matrix", "Quaternion", "Vector")})
@@ -128,10 +149,13 @@ def main():
     for owner, names in owned_props().items():
         print(owner, names)
     print("load_post handlers:", len(handlers.load_post))
+    for name, items in keymaps.items():
+        print("shortcuts in", name, ":", ", ".join("{} {}".format(i.type, i.idname) for i in items))
     check_bars(addon)
 
     addon.unregister()
-    leftovers = registered + [n for names in owned_props().values() for n in names] + handlers.load_post
+    leftovers = (registered + [n for names in owned_props().values() for n in names]
+                 + handlers.load_post + [i for items in keymaps.values() for i in items])
     assert not leftovers, "left behind after unregister: {}".format(leftovers)
     print("OK: unregister undid everything")
 

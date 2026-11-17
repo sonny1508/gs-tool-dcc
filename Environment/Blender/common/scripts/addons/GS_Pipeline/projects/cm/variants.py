@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from ... import common
 from . import names
 
 # The LOD choice that shows every LOD.
@@ -56,17 +57,6 @@ class Found:
         return sorted(self.slots.values(), key=lambda slot: slot.label)
 
 
-def scope_objects(context, collection, view_layer_only=True):
-    """The objects in ``collection`` and the collections inside it (the whole
-    scene when None). By default only those in this view layer: an object in
-    an excluded collection can't be hidden."""
-    source = collection.all_objects if collection is not None else context.scene.objects
-    if not view_layer_only:
-        return list(source)
-    layer = context.view_layer.objects
-    return [obj for obj in source if layer.get(obj.name) is not None]
-
-
 def _part_root(obj):
     """The outermost object, from ``obj`` up, with _part_<A to E> in its name; None if there is none."""
     root = None
@@ -88,7 +78,7 @@ def _subtree(root, children):
 def scan(context, collection):
     """Read the LODs and custom parts in scope (``collection``, or the whole scene)."""
     found = Found()
-    found.objects = scope_objects(context, collection)
+    found.objects = common.scope_objects(context, collection)
     in_scope = set(found.objects)
     lods = found.lod
 
