@@ -45,7 +45,8 @@ GS_Pipeline/
 └── projects/                Projects category: one package per project
     ├── cm/
     │   ├── __init__.py      GROUP (one tab), register
-    │   ├── vehicle.py       the tab: scope, LOD / custom part switching, Check Names, Animation Check, its Log
+    │   ├── vehicle.py       the tab: Quick Tools, scope, LOD / custom part switching, Check Names, Animation Check, its Log
+    │   ├── quick_tools.py   Create Anchor, Rename Mesh Data (on the selection)
     │   ├── variants.py      which LOD / part version each object is; hiding the rest
     │   ├── animation.py     Animation Check: turning the LOD0 doors open and closed
     │   ├── name_check.py    the Check Names rules
@@ -302,8 +303,22 @@ or Individual (one file per mesh).
 ### Projects > CM (`projects/cm/`)
 
 Client project Rev Match Racing (VR cars; spec and example car under
-`M:\cm\documentation\Vehicle`). One tab, four jobs on the objects in **Scope** (a
-collection and everything in it; empty = the whole scene):
+`M:\cm\documentation\Vehicle`). One tab. At the top, **Quick Tools**, the everyday
+building steps, on the selection (`quick_tools.py`):
+
+- **Create Anchor**: an empty at the active object's origin and orientation (not its
+  scale), named `anchor_` + the active object's name, made the parent of the selection.
+  The anchor takes the selection's place in the hierarchy: it goes under the active
+  object's nearest unselected parent, in the active object's collections. Only the
+  outermost selected objects are re-parented (a selected child of a selected object stays
+  under it), with no parent inverse, so the active object sits at 0 under its anchor.
+  Everything keeps its place in the world. The new anchor is left selected and active.
+- **Rename Mesh Data**: each selected object's mesh named after the object. A mesh
+  several objects use is left alone (logged); names swapped among the selection are
+  sorted out in two passes rather than ending in `.001`.
+
+Below them, four jobs on the objects in **Scope** (a collection and everything in it;
+empty = the whole scene):
 
 - **LOD**: All, LOD0, LOD1, LOD2: every CM car has exactly those (`names.LODS`); any
   other number is a mistake, shown only under All and reported by Check Names. An

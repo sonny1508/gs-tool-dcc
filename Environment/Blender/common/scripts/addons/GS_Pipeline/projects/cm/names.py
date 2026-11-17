@@ -26,6 +26,9 @@ LODS = (0, 1, 2)
 # The custom part letters a CM car can have, in button order.
 PART_LETTERS = ("A", "B", "C", "D", "E")
 
+# What an anchor's name starts with: anchor_hood_LOD0.
+ANCHOR_PREFIX = "anchor_"
+
 # _LOD0, _LOD0_highlight, _LOD0.001. Any case, so a stray "_lod1" still
 # switches; Check Names asks for capitals.
 _LOD = re.compile(r"_(LOD)(\d+)(?=$|[_.])", re.IGNORECASE)
@@ -73,8 +76,8 @@ def slot_key(part_name):
 
 def slot_label(key):
     """What the panel calls a part: anchor_front_bumper -> Front Bumper."""
-    if key.lower().startswith("anchor_"):
-        key = key[len("anchor_"):]
+    if key.lower().startswith(ANCHOR_PREFIX):
+        key = key[len(ANCHOR_PREFIX):]
     return key.replace("_", " ").strip().title() or key
 
 

@@ -1,8 +1,10 @@
 """CM project tools (the client's Rev Match Racing cars), under Projects > CM.
 One tab:
 
-    vehicle.py      the tab: Scope, LOD and Custom Parts switching, Check Names,
-                    Animation Check, and its Log (the add-on's object_log.ObjectLog)
+    vehicle.py      the tab: Quick Tools, Scope, LOD and Custom Parts switching,
+                    Check Names, Animation Check, and its Log (the add-on's
+                    object_log.ObjectLog)
+    quick_tools.py  Create Anchor and Rename Mesh Data on the selection
     variants.py     which LOD / part version each object is; hiding the rest
     animation.py    Animation Check: turning the LOD0 doors open and closed
     name_check.py   the Check Names rules

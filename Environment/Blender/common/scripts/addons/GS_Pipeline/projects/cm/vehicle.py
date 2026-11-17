@@ -1,5 +1,7 @@
 """CM tab (Projects > CM): choose what's on show in a CM car file, and check its names.
 
+    Quick Tools   Create Anchor and Rename Mesh Data on the selection, the
+                  everyday building steps (the work is in quick_tools.py)
     Scope         the collection to work on (empty: the whole scene), Reload,
                   and Check Names, which artists run first
     LOD           All, LOD0, LOD1, LOD2
@@ -31,13 +33,16 @@ from bpy.types import Operator, PropertyGroup, UIList
 from ... import common
 from ...object_log import ObjectLog
 from ...panel import Tab
-from . import animation, name_check, names, variants
+from . import animation, name_check, names, quick_tools, variants
 
 # Property group on the scene, saved with the .blend.
 PROP = "gs_cm"
 
 # Rows the part list shows before it scrolls.
 _PART_ROWS = 10
+
+# Panel width (px) from which the Quick Tools buttons sit side by side.
+_QUICK_TOOLS_WIDE = 300
 
 LOG = ObjectLog("cm", "Pick a Scope, then press Check Names.")
 
@@ -355,6 +360,71 @@ class GS_OT_CM_CheckNames(Operator):
         return {'FINISHED'}
 
 
+class GS_OT_CM_CreateAnchor(Operator):
+    bl_idname = "gs_pipeline.cm_create_anchor"
+    bl_label = "Create Anchor"
+    bl_description = ("Add an empty at the active object's origin, named anchor_ + its name,\n"
+                      "and parent the selection to it")
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != 'OBJECT':
+            cls.poll_message_set("Object Mode only")
+            return False
+        active = context.active_object
+        if active is None or not active.select_get():
+            cls.poll_message_set("Select the objects, the anchor's one last")
+            return False
+        return True
+
+    def execute(self, context):
+        LOG.clear_messages()
+        active = context.active_object
+        wanted = quick_tools.anchor_name(active)
+        anchor = quick_tools.create_anchor(context, active, context.selected_objects)
+        common.select_only(context, [anchor])
+        _read(context)      # the new name may add a custom part
+        if anchor.name == wanted:
+            LOG.add("Created {}.".format(anchor.name), "ok", self)
+        else:
+            LOG.add("Created {}: {} was taken.".format(anchor.name, wanted), "warn", self)
+        return {'FINISHED'}
+
+
+class GS_OT_CM_RenameMeshData(Operator):
+    bl_idname = "gs_pipeline.cm_rename_mesh_data"
+    bl_label = "Rename Mesh Data"
+    bl_description = "Name each selected object's mesh after the object"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        if not context.selected_objects:
+            cls.poll_message_set("Select the objects")
+            return False
+        return True
+
+    def execute(self, context):
+        LOG.clear_messages()
+        objects = context.selected_objects
+        if not any(obj.type == 'MESH' for obj in objects):
+            LOG.add("No meshes selected.", "error", self)
+            return {'CANCELLED'}
+        renamed, shared, taken = quick_tools.rename_mesh_data(objects)
+        if renamed:
+            LOG.add("Renamed {}.".format(common.plural(renamed, "mesh", "meshes")), "ok", self)
+        elif not shared:
+            LOG.add("Mesh names already match.", "ok", self)
+        if shared:
+            LOG.add("{} used by several objects: left as they are.".format(
+                common.plural(shared, "mesh", "meshes")), "warn", self)
+        if taken:
+            LOG.add("{} got .001: another mesh has the name.".format(
+                common.plural(taken, "mesh", "meshes")), "warn", self)
+        return {'FINISHED'}
+
+
 # ---------------------------------------------------------------------------
 # Draw (the panel calls it under Projects > CM)
 # ---------------------------------------------------------------------------
@@ -381,6 +451,12 @@ def _parts_button(row, rows, choices, part, text):
 def draw_vehicle(layout, context):
     props = _props(context)
     wm = context.window_manager
+
+    box = _section(layout, "Quick Tools", 'TOOL_SETTINGS')
+    buttons = box.row() if common.is_wide(context, _QUICK_TOOLS_WIDE) else box.column()
+    buttons.scale_y = 1.3
+    buttons.operator(GS_OT_CM_CreateAnchor.bl_idname, icon='EMPTY_AXIS')
+    buttons.operator(GS_OT_CM_RenameMeshData.bl_idname, icon='MESH_DATA')
 
     box = _section(layout, "Scope", 'OUTLINER_COLLECTION')
     row = box.row(align=True)
@@ -439,6 +515,8 @@ CLASSES = (
     GS_OT_CM_SetParts,
     GS_OT_CM_ShowPart,
     GS_OT_CM_CheckNames,
+    GS_OT_CM_CreateAnchor,
+    GS_OT_CM_RenameMeshData,
 )
 
 
