@@ -15,6 +15,7 @@ session. Where something has not been confirmed, it says so.
 6. [Compiled and encrypted third-party plugins](#6-compiled-and-encrypted-third-party-plugins)
 7. [Finding answers when the docs don't have them](#7-finding-answers-when-the-docs-dont-have-them)
 8. [Testing a change](#8-testing-a-change)
+9. [TODO: GSTools to GSPipeline](#9-todo-gstools-to-gspipeline)
 
 ---
 
@@ -210,7 +211,8 @@ The rules:
 - Call `callbacks.removeScripts id:` before `addScript`. Otherwise running the script twice
   registers the callback twice.
 - Registering from `scripts/startup` works on 2025 and 2027. `gs_menu_startup.ms` also
-  has a `#postSystemStartup` safety net that
+  has a safety net (`gsCheckCuiMenu`, run once startup is over, see
+  [Running code after startup](#running-code-after-startup)) that
   reloads the menus if the callback never fired. Whether `CuiMenuMgr` is reachable as a
   global outside the callback is unconfirmed; if the log ever says
   `Could not reload menus`, that is the part that failed.
@@ -249,6 +251,44 @@ Before the callback approach, we tried adding a `QMenu` directly to
 `qtmax.GetQMaxMainWindow().menuBar()` from Python. It does not work: Max recreates the menu
 bar, so held references die (`Internal C++ object already deleted`), and anything added is
 wiped on the next rebuild. Use `#cuiRegisterMenus`.
+
+### Hotkeys (every version)
+
+2023 through 2027 all use the same hotkey sets: `.hsx` files that hold only the changes
+from Max's factory keys (`<Assign_Hotkey Shortcut="Ctrl+G" Id="<table>-<action>"/>`, plus
+`Unassign_Hotkey`). A macro's id is `647394-MacroName`Category`, for example
+``647394-GS_File_Transfer`GSTools``. The factory keys are compiled into Max: the shipped
+`UI_ln/CUI/3dsmaxShortcuts.hsx` is empty, and `LegacyDefaultUI-2019.kbdx` is the only
+readable list of them.
+
+MAXScript has no call to bind a single key, so `gs_menu_startup.ms` does it once startup
+is over (see [Running code after startup](#running-code-after-startup)):
+
+1. Reads the artist's active set (`actionMan.getKeyboardFile()`).
+2. Adds each `gsHotkeys` entry, unless the key is already bound to something else in that
+   set, or the artist removed our binding (an `Unassign_Hotkey` with our id). Either one is
+   logged and the key is skipped.
+3. If anything was added, saves the result as `<year> - 64bit\ENU\GSPipeline\GSPipeline.hsx`
+   and loads it with `actionMan.loadKeyboardFile`, so GSPipeline becomes the active set.
+
+Nothing is rewritten when nothing was added, so later Hotkey Editor changes are kept and
+every launch is a no-op. To add a hotkey, append `#("Shortcut", "MacroName")` to
+`gsHotkeys`. Confirmed on 2025 (run by hand): `actionMan.getKeyboardFile()` returns the
+active `.hsx` (the factory `UI_LN/CUI/3dsmaxShortcuts.hsx` when the artist has none),
+`loadKeyboardFile` takes the written set, and the macro id spelling works. Not yet
+confirmed: 2023 / 2026 / 2027 (the startup run is confirmed on 2025). The `[GSTools]` lines in the Listener say which step stopped.
+
+Current keys: **Ctrl+Shift+G** = GS File Transfer (the same key as in Maya and Blender).
+
+### Running code after startup
+
+**`#postSystemStartup` does not fire for a callback added from a user startup script on
+2025.** `callbacks.show` lists it, and it never runs. So anything that has to wait for Max
+to finish starting (the hotkey setup, the CUI menu safety net) runs from a one-shot
+`System.Windows.Forms.Timer` started by the startup script (`gsAfterStartup`). The timer
+can only tick once Max's main window is processing events, which is after startup, on the
+main thread. Keep the timer in a global and call `dotNet.setLifetimeControl <timer>
+#dotnet`, or MAXScript garbage collection can drop the handler before it fires.
 
 ---
 
@@ -391,3 +431,29 @@ Edit the repo, publish, install, then test in real Max. Startup-script errors ap
 *MAXScript Auto-load Script Error* popup and in the MAXScript Listener. Our scripts log
 lines prefixed with `[GSTools]`. Test on every version folder you changed. A change that
 works on 2023 says nothing about 2025+, and the reverse is also true.
+
+---
+
+## 9. TODO: GSTools to GSPipeline
+
+The 3ds Max side is to be rebranded from GSTools to GSPipeline. So far only the hotkey set
+carries the new name (`ENU\GSPipeline\GSPipeline.hsx`, Description "GSPipeline"). Still
+GSTools, and what to watch when renaming each:
+
+- **Macro category** (`Category:"GSTools"` in every `.mcr`, `gsMacroCategory`). The
+  category is part of every action id (``MacroName`GSTools``), so the menus and the
+  hotkey binding (``647394-GS_File_Transfer`GSTools``) change with it. The menus are rebuilt
+  by the script, but anything an artist placed by hand (a toolbar button, a quad-menu
+  entry, their own hotkey) keeps pointing at the old id. The hotkey setup should treat the
+  old GSTools id as ours and replace it; today it would see it as "Ctrl+Shift+G taken by
+  something else" and skip the key.
+- **Menu title** (`gsMenuTitle`). Keep the 2025+ GUIDs, change only the title, so artists'
+  menu customisations still match. The 2023 `menuMan` cleanup removes menus by title, so
+  it must remove the old "GSTools" title as well, or both menus show.
+- **Folders and files**: `common/gstools/`, `gstools_prefs.json` (read the old file once
+  when the new one doesn't exist, or every artist's tool settings reset), the old
+  `ENU\GSTools\GSTools.hsx` (only on the dev machine that tested it). The installer never
+  deletes ([§2](#the-installer-never-deletes)), so clean the old copies off workstations
+  with the deploy system.
+- **Log prefix** `[GSTools]`, the `#GSToolsMenu` callback id and the `GSToolsMenuInstalled`
+  app-data flag.

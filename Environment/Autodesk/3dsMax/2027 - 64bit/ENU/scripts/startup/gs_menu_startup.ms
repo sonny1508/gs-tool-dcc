@@ -428,10 +428,164 @@ fn gsCheckCuiMenu =
 fn gsRegisterCuiMenu =
 (
     -- Replace any earlier registration so re-running this script never stacks callbacks.
+    -- gsCheckCuiMenu runs from gsAfterStartup (see HOTKEYS): #postSystemStartup
+    -- doesn't fire for callbacks added from a user startup script on 2025.
     callbacks.removeScripts id:#GSToolsMenu
     callbacks.addScript #cuiRegisterMenus gsBuildCuiMenu id:#GSToolsMenu
-    callbacks.addScript #postSystemStartup gsCheckCuiMenu id:#GSToolsMenu
     logMessage "Registered GSTools menu callback"
+)
+
+-- ============================================================================
+--  HOTKEYS (every version: 2023+ all use .hsx hotkey sets)
+-- ============================================================================
+-- MAXScript has no call to bind a single key, so the artist's active hotkey set
+-- is copied into GSPipeline.hsx with the keys below added, and that copy is made
+-- the active set. It's redone at every launch from whatever set is active, so
+-- what the artist changes in the Hotkey Editor is kept. A key the artist has
+-- bound to something else, or a GSPipeline key they removed, is left alone.
+-- (The macros themselves are still category GSTools, so that's in the ids:
+-- renaming the category is part of the GSTools -> GSPipeline transition TODO.)
+--
+-- An .hsx holds only the changes from Max's factory keys: <Assign_Hotkey
+-- Shortcut="Ctrl+G" Id="<action table>-<action id>"/>. Macros are table 647394,
+-- action "MacroName`Category" (as in the shipped LegacyDefaultUI-2019.kbdx).
+-- Ctrl+Shift+G isn't a factory key in 2023-2027.
+global gsHotkeys = #(
+    -- #("Shortcut", "MacroName")
+    #("Ctrl+Shift+G", "GS_File_Transfer")
+)
+
+fn gsHotkeyFile =
+(
+    -- #userScripts is ...\<year> - 64bit\ENU\scripts; the set goes in ...\ENU\GSPipeline
+    pathConfig.appendPath (pathConfig.removePathLeaf (getDir #userScripts)) "GSPipeline\\GSPipeline.hsx"
+)
+
+-- The artist's active set as an XmlDocument, or an empty one. undefined when it
+-- can't be read, so nothing gets overwritten.
+fn gsReadHotkeySet current =
+(
+    local doc = dotNetObject "System.Xml.XmlDocument"
+    if current == undefined or current == "" or not (doesFileExist current) then
+    (
+        doc.LoadXml "<?xml version=\"1.0\" encoding=\"UTF-8\"?><MaxHotkeyTransformations/>"
+        doc
+    )
+    else if (getFilenameType current) != ".hsx" then
+    (
+        logMessage ("Active hotkey file isn't an .hsx set, leaving hotkeys alone: " + current)
+        undefined
+    )
+    else
+    (
+        doc.Load current
+        if doc.DocumentElement == undefined or doc.DocumentElement.Name != "MaxHotkeyTransformations" then
+        (
+            logMessage ("Active hotkey set not understood, leaving hotkeys alone: " + current)
+            undefined
+        )
+        else doc
+    )
+)
+
+fn gsSetupHotkeys =
+(
+    try
+    (
+        local target = gsHotkeyFile()
+        local current = actionMan.getKeyboardFile()
+        logMessage ("Active hotkey set: " + (current as string))
+        local doc = gsReadHotkeySet current
+        if doc != undefined then
+        (
+            local root = doc.DocumentElement
+            local assigns = root.SelectNodes "Assign_Hotkey"
+            local unassigns = root.SelectNodes "Unassign_Hotkey"
+            local added = 0
+            for hk in gsHotkeys do
+            (
+                local shortcut = hk[1]
+                local actionId = "647394-" + hk[2] + "`" + gsMacroCategory
+                local bound = false
+                local takenBy = undefined
+                local removed = false
+                -- MAXScript string == ignores case, as Max does for these.
+                for i = 0 to assigns.Count - 1 do
+                (
+                    local el = assigns.Item i
+                    local elKey = el.GetAttribute "Shortcut"
+                    if elKey == shortcut then
+                    (
+                        if (el.GetAttribute "Id") == actionId then bound = true
+                        else if takenBy == undefined then takenBy = el.GetAttribute "Id"
+                    )
+                )
+                for i = 0 to unassigns.Count - 1 do
+                    if ((unassigns.Item i).GetAttribute "Id") == actionId do removed = true
+
+                if bound then
+                    logMessage (shortcut + " already runs " + hk[2])
+                else if removed then
+                    logMessage (hk[2] + "'s hotkey was removed in the Hotkey Editor; left off")
+                else if takenBy != undefined then
+                    logMessage ("WARNING: " + shortcut + " is already bound to " + takenBy + "; " + hk[2] + " gets no hotkey")
+                else
+                (
+                    local el = doc.CreateElement "Assign_Hotkey"
+                    el.SetAttribute "Shortcut" shortcut
+                    el.SetAttribute "Id" actionId
+                    root.AppendChild el
+                    added += 1
+                    logMessage ("Binding " + shortcut + " to " + hk[2])
+                )
+            )
+
+            -- Nothing new: the active set (GSPipeline or the artist's own) already has
+            -- everything it can, so it isn't rewritten or switched.
+            if added > 0 then
+            (
+                root.SetAttribute "Description" "GSPipeline"
+                root.RemoveAttribute "Locked"   -- copied from a shipped set, which is locked
+                makeDir (getFilenamePath target) all:true
+                doc.Save target
+                if actionMan.loadKeyboardFile target then
+                    logMessage ("Hotkey set GSPipeline is now active: " + target)
+                else
+                    logMessage ("ERROR: Max wouldn't load the hotkey set " + target)
+            )
+        )
+    )
+    catch
+    (
+        logMessage ("ERROR setting up hotkeys: " + (getCurrentException()))
+    )
+)
+
+-- Runs once Max has finished starting, so the macros are registered and Max has
+-- loaded its own hotkey set. Not a #postSystemStartup callback: registered from a
+-- user startup script, that one never fires on 2025 (callbacks.show lists it, it
+-- never runs). A WinForms timer only ticks once Max's main window is processing
+-- events, which is after startup, on the main thread.
+global gsAfterStartupTimer
+
+fn gsAfterStartup sender args =
+(
+    sender.Stop()
+    gsSetupHotkeys()
+    if (maxVersion())[1] >= 27000 do gsCheckCuiMenu()
+)
+
+fn gsRegisterHotkeys =
+(
+    callbacks.removeScripts id:#GSToolsHotkeys   -- the old #postSystemStartup registration
+    if gsAfterStartupTimer != undefined do gsAfterStartupTimer.Stop()
+    gsAfterStartupTimer = dotNetObject "System.Windows.Forms.Timer"
+    gsAfterStartupTimer.Interval = 1000
+    dotNet.addEventHandler gsAfterStartupTimer "Tick" gsAfterStartup
+    -- Keep the handler alive through MAXScript garbage collection until it has fired.
+    dotNet.setLifetimeControl gsAfterStartupTimer #dotnet
+    gsAfterStartupTimer.Start()
+    logMessage "Hotkey setup will run once Max has finished starting"
 )
 
 -- ============================================================================
@@ -445,6 +599,8 @@ if (maxVersion())[1] >= 27000 then
     gsRegisterCuiMenu()
 else
     createGSToolsMenu()
+
+gsRegisterHotkeys()
 
 -- Print a message to confirm the script has run
 logMessage "GSTools menu script has completed execution"
