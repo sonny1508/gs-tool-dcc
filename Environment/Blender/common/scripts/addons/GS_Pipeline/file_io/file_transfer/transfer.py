@@ -127,7 +127,7 @@ def export_fbx_with_settings(filepath, context):
     """Export the selection. Returns how many sharp edges were filled in.
 
     The receiving application isn't known (transfer files are plain FBX), so the
-    Export Smoothing Groups toggle alone decides whether 3ds Max smoothing groups go out.
+    Smoothing Groups (3ds Max) toggle, off by default, alone decides whether 3ds Max smoothing groups go out.
     """
     gs_props = context.scene.gs_file_transfer_props
     settings = dict(FBXSettings.EXPORT)

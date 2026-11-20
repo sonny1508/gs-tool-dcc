@@ -100,7 +100,6 @@ GSPipeline/Projects/R6/R6_Asset_Validation_UI.py
 GSPipeline/Projects/SCR1/Scr1_Asset_Validation_UI.py
 GSPipeline/_core/gs_fbx.py
 GSTools/common/scripts/tools/baking/rename.py
-GSTools/common/scripts/tools/modeling/set_length_edge.py
 GSTools/common/scripts/tools/rigging/SkinSaverDeluxe.py
 GSTools/common/scripts/tools/utilities/GS_path_manager.py
 GSTools/common/scripts/tools/uv/RizomUV_tool.py

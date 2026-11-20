@@ -368,7 +368,7 @@ class FileTransferWindow(QtWidgets.QDialog):
         self.smoothing_check = QtWidgets.QCheckBox("Import Smoothing Groups")
         self.smoothing_check.setToolTip(
             "Rebuild the FBX's smoothing groups on import.\n"
-            "Tick it for a Blender export made with Export Smoothing Groups.")
+            "Tick it for a Blender export made with Smoothing Groups (3ds Max).")
         rows.addWidget(self.smoothing_check)
         root.addWidget(box)
 

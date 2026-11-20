@@ -300,8 +300,10 @@ one file per transfer (Merge).
   last is what any DCC imports, like a clipboard.
 - **No application in any name or picker**, Server included: `<sender>_to_<receiver>.fbx`
   in the sender's folder (`<object>_<sender>_to_<receiver>.fbx` per mesh in Individual
-  mode). Settings that depend on the receiver are toggles instead: **Export Smoothing
-  Groups** applies to every export, so untick it when sending to Maya or Blender.
+  mode). Settings that depend on the receiver are toggles instead: **Smoothing Groups
+  (3ds Max)** applies to every export, so it is **off by default** and ticked only when
+  sending to Max. On, it adds the filled-in hard edges below to the exported normals, which
+  Maya and Blender show as extra hard edges. Decision (Sonny, 2026-11-19).
 - **File rows** show what is waiting where and when it was written ("Today 14:32"), so a
   stale file is seen before it is imported: Local shows the shared file (or the
   individual folder's count and newest), Server shows Received and Sent for the picked

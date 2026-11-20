@@ -162,11 +162,11 @@ class GSFileTransferProperties(bpy.types.PropertyGroup):
         default=False,
     )
     export_smooth_groups: BoolProperty(
-        name="Export Smoothing Groups",
-        description="For 3ds Max: turn your sharp edges into smoothing groups. In Max, tick "
-                    "'Import Smoothing Groups'. Turn off when sending to Maya or Blender. "
-                    "Needs Blender 4.5 or newer",
-        default=True,
+        name="Smoothing Groups (3ds Max)",
+        description="Only when sending to 3ds Max: turn your sharp edges into smoothing groups. "
+                    "In Max, tick 'Import Smoothing Groups'. Leave off for Maya and Blender, "
+                    "or extra hard edges show up. Needs Blender 4.5 or newer",
+        default=False,
     )
 
     # --- Server ---

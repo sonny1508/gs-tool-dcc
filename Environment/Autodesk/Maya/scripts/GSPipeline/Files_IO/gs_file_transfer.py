@@ -430,9 +430,10 @@ def build_import_settings(parent):
     cmds.frameLayout(parent=parent, collapsable=True, label='Import Settings',
                      marginWidth=5, marginHeight=5)
     cmds.columnLayout(adjustableColumn=True, rowSpacing=2)
-    cmds.checkBox(CB_SMOOTHING, label='Import Smoothing Groups',
+    cmds.checkBox(CB_SMOOTHING, label='Smoothing Groups',
                   value=FBX_SETTINGS['import_smoothing_groups_default'],
-                  annotation='Rebuild the FBX smoothing groups as Maya soft/hard edges')
+                  annotation='Rebuild the soft/hard edges from the FBX smoothing groups. '
+                             'Maya and 3ds Max exports carry them; Blender exports do not')
     cmds.checkBox(CB_UNLOCK_NORMALS, label='Unlock Normals',
                   value=FBX_SETTINGS['import_unlock_normals_default'],
                   annotation='Unlock the imported vertex normals so Maya recomputes them')
