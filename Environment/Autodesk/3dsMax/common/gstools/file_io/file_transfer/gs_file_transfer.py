@@ -25,10 +25,12 @@ GS_File_Transfer.mcr in each version folder runs it.
 import csv
 import datetime
 import getpass
+import glob
 import html
 import os
 import sys
 import tempfile
+import time
 import traceback
 
 import pymxs
@@ -129,6 +131,113 @@ def read_user_list():
 
 
 # ---------------------------------------------------------------------------
+# Listener log
+# ---------------------------------------------------------------------------
+# For us, not artists: every import and export prints to the MAXScript Listener
+# the file, every FBX plugin setting it ran with (* marks the ones this tool
+# changed from what the FBX dialog had, i.e. how it differs from a manual
+# import / export) and anything the FBX plugin wrote to its own log for that
+# run. The Blender add-on prints the same to its system console. The window
+# itself still shows only the one-line result.
+
+# Every FBX plugin setting worth seeing; one the running plugin doesn't know is skipped.
+_IMPORT_PARAMS = ("Mode", "SmoothingGroups", "ScaleFactor", "ConvertUnit", "ScaleConversion",
+                  "AxisConversion", "UpAxis", "Animation", "BakeAnimationLayers", "FillTimeline",
+                  "KeepFrameRate", "Resampling", "Cameras", "Lights", "Markers", "PointCache",
+                  "Shape", "Skin", "ImportBoneAsDummy", "GenerateLog", "ShowWarnings")
+_EXPORT_PARAMS = ("SmoothingGroups", "NormalsPerPoly", "TangentSpaceExport", "SmoothMeshExport",
+                  "Triangulate", "PreserveEdgeOrientation", "PreserveInstances",
+                  "SelectionSetExport", "GeomAsBone", "Shape", "Skin", "Animation",
+                  "BakeAnimation", "Cameras", "Lights", "PointCache", "EmbedTextures",
+                  "UseSceneName", "ConvertUnit", "ScaleFactor", "AxisConversionMethod", "UpAxis",
+                  "ASCII", "FileVersion", "GenerateLog", "ShowWarnings")
+
+def _log(message=""):
+    print("[{}] {}".format(WINDOW_TITLE, message) if message else "")
+
+
+def _log_header(title):
+    _log("=" * 70)
+    _log(title)
+
+
+def _log_file(path):
+    try:
+        stat = os.stat(path)
+        _log("  File: {} ({:,} bytes, written {})".format(
+            path, stat.st_size, datetime.datetime.fromtimestamp(stat.st_mtime)
+            .strftime("%Y-%m-%d %H:%M:%S")))
+    except OSError:
+        _log("  File: {} (not there)".format(path))
+
+
+def _read_params(getter, names):
+    """{name: value as text} for every setting the plugin answers for."""
+    values = {}
+    for name in names:
+        try:
+            values[name] = str(getter(name))
+        except Exception:              # a setting this plugin version doesn't have
+            continue
+    return values
+
+
+def _log_params(label, before, after):
+    """Every setting the run used, marking those this tool changed.
+
+    'before' is what the FBX plugin held going in: the FBX dialog's last values,
+    or this tool's own from its previous run (they're shared and persist).
+    """
+    _log("  {} settings (* = set by this tool; 'was' = the FBX dialog's value going in):"
+         .format(label))
+    for name, value in after.items():
+        was = before.get(name)
+        if was is not None and was != value:
+            _log("   * {:<24} {}   (was {})".format(name, value, was))
+        else:
+            _log("     {:<24} {}".format(name, value))
+
+
+def _fbx_log_files(kind):
+    """The FBX plugin's own log files ('imp' or 'exp'), with their current sizes.
+
+    The plugin appends to Documents\\3dsMax\\FBX\\3dsMax<year>_X64\\Logs\\<fbx version>\\max<year><kind>.log.
+    """
+    pattern = os.path.join(os.path.expanduser("~"), "Documents", "3dsMax", "FBX", "*", "Logs", "*",
+                           "*{}.log".format(kind))
+    sizes = {}
+    for path in glob.glob(pattern):
+        try:
+            sizes[path] = os.path.getsize(path)
+        except OSError:
+            pass
+    return sizes
+
+
+def _log_fbx_plugin_log(kind, sizes_before):
+    """Echo what the FBX plugin wrote to its own log during this run."""
+    found = False
+    for path, size in sorted(_fbx_log_files(kind).items()):
+        start = sizes_before.get(path, 0)
+        if size <= start:
+            continue
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(start)
+                text = fh.read().decode("utf-8", "replace")
+        except OSError as exc:
+            _log("  FBX plugin log: couldn't read {}: {}".format(path, exc))
+            continue
+        found = True
+        _log("  FBX plugin log ({}):".format(path))
+        for line in text.splitlines():
+            if line.strip():
+                _log("     " + line.rstrip())
+    if not found:
+        _log("  FBX plugin log: nothing new written (no warnings, or logging is off).")
+
+
+# ---------------------------------------------------------------------------
 # FBX import / export
 # ---------------------------------------------------------------------------
 def _ensure_dir(path):
@@ -140,16 +249,28 @@ def _ensure_dir(path):
 
 def import_fbx(path, smoothing_groups):
     """Import one FBX into the scene, scaled to the system unit. Returns True."""
+    _log_header("Import {}".format(path))
+    _log_file(path)
     if not os.path.isfile(path):
         raise TransferError("Nothing to import: no file at {}.".format(path))
     kind = str(rt.units.SystemType).lstrip("#").lower()
     rt.pluginManager.loadClass(rt.FBXIMP)
+    before = _read_params(rt.FBXImporterGetParam, _IMPORT_PARAMS)
     rt.FBXImporterSetParam("Mode", rt.Name("create"))
     rt.FBXImporterSetParam("SmoothingGroups", bool(smoothing_groups))
     rt.FBXImporterSetParam("ScaleFactor", 1.0 / float(rt.units.SystemScale))
     rt.FBXImporterSetParam("ConvertUnit", _UNIT_CODES.get(kind, "cm"))
     rt.FBXImporterSetParam("Animation", False)
-    if not rt.importFile(path, rt.Name("noPrompt"), using=rt.FBXIMP):
+    rt.FBXImporterSetParam("GenerateLog", True)
+    _log_params("FBX import", before, _read_params(rt.FBXImporterGetParam, _IMPORT_PARAMS))
+    _log("  Scene units: {} (system scale {})".format(kind, rt.units.SystemScale))
+
+    log_sizes = _fbx_log_files("imp")
+    started = time.time()
+    ok = rt.importFile(path, rt.Name("noPrompt"), using=rt.FBXIMP)
+    _log("  importFile returned {} in {:.2f}s".format(ok, time.time() - started))
+    _log_fbx_plugin_log("imp", log_sizes)
+    if not ok:
         raise TransferError("Max couldn't import {}.".format(path))
     return True
 
@@ -173,6 +294,7 @@ def _exportable(node):
 
 def _set_export_params():
     rt.pluginManager.loadClass(rt.FBXEXP)
+    before = _read_params(rt.FBXExporterGetParam, _EXPORT_PARAMS)
     for name, value in (("Animation", False),
                         ("SmoothingGroups", True),
                         ("SmoothMeshExport", False),
@@ -183,8 +305,10 @@ def _set_export_params():
                         ("Preserveinstances", True),
                         ("EmbedTextures", False),
                         ("ASCII", False),
-                        ("FileVersion", "FBX202000")):
+                        ("FileVersion", "FBX202000"),
+                        ("GenerateLog", True)):
         rt.FBXExporterSetParam(name, value)
+    _log_params("FBX export", before, _read_params(rt.FBXExporterGetParam, _EXPORT_PARAMS))
 
 
 def export_nodes(nodes, path):
@@ -195,7 +319,11 @@ def export_nodes(nodes, path):
     nor anything else selected comes along. The copies and the selection juggling
     stay out of the undo history; the selection is put back afterwards.
     """
+    _log_header("Export {}".format(path))
     geometry = [node for node in nodes if _exportable(node)]
+    skipped = [str(node.name) for node in nodes if not _exportable(node)]
+    if skipped:
+        _log("  Not geometry, left out: {}".format(", ".join(skipped)))
     if not geometry:
         raise TransferError("Select some geometry to export.")
     _ensure_dir(os.path.dirname(path))
@@ -210,7 +338,13 @@ def export_nodes(nodes, path):
             rt.clearSelection()
             rt.select(copies)
             _set_export_params()
+            _log("  Exporting {} object(s): {}".format(len(copies), ", ".join(str(n.name) for n in copies)))
+            log_sizes = _fbx_log_files("exp")
+            started = time.time()
             ok = rt.exportFile(path, rt.Name("noPrompt"), selectedOnly=True, using=rt.FBXEXP)
+            _log("  exportFile returned {} in {:.2f}s".format(ok, time.time() - started))
+            _log_fbx_plugin_log("exp", log_sizes)
+            _log_file(path)
         finally:
             for duplicate in copies:
                 if rt.isValidNode(duplicate):

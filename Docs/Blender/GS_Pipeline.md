@@ -36,7 +36,8 @@ GS_Pipeline/
 │       ├── __init__.py      GROUP, register
 │       ├── config.py        file-name contract, folders, applications, FBX settings
 │       ├── transfer.py      FBX import / export, the runners Local and Server share
-│       ├── smoothing_groups.py   closing open sharp edges for 3ds Max smoothing groups
+│       ├── smoothing_groups.py   can this Blender export 3ds Max smoothing groups
+│       ├── fbx_log.py       console report: FBX settings used, steps added around them
 │       ├── server.py        is the share reachable, the user list (worker thread)
 │       └── ui.py            properties, operators, drawing the tab
 ├── review/                  Review category
@@ -302,8 +303,7 @@ one file per transfer (Merge).
   in the sender's folder (`<object>_<sender>_to_<receiver>.fbx` per mesh in Individual
   mode). Settings that depend on the receiver are toggles instead: **Smoothing Groups
   (3ds Max)** applies to every export, so it is **off by default** and ticked only when
-  sending to Max. On, it adds the filled-in hard edges below to the exported normals, which
-  Maya and Blender show as extra hard edges. Decision (Sonny, 2026-11-19).
+  sending to Max. Decision (Sonny, 2026-11-19).
 - **File rows** show what is waiting where and when it was written ("Today 14:32"), so a
   stale file is seen before it is imported: Local shows the shared file (or the
   individual folder's count and newest), Server shows Received and Sent for the picked
@@ -320,10 +320,18 @@ one file per transfer (Merge).
 - The user list is read from two deployment CSVs on the share, de-duplicated, and copied
   into `WindowManager.gs_person_list` for the User search field.
 - **3ds Max smoothing groups**: the FBX exporter's `SMOOTH_GROUP` mode exists in 4.5 and
-  5.2 only; the option is greyed out in 3.6. A hard edge only survives as a smoothing-group
-  border if it closes a region, so `smoothing_groups.py` walks open-ended sharp edges
-  onward. It marks them on the real mesh for the length of the export only, then takes them
-  out again.
+  5.2 only; the option is greyed out in 3.6. The export is exactly a manual File > Export
+  with Smoothing = Smoothing Groups: a hard edge only survives as a smoothing-group border
+  if it closes off a region, and a sharp edge that stops partway across a surface comes out
+  soft in Max. Decision (Sonny, 2026-11-20): no filling-in of those open ends. An earlier
+  version walked them onward to the next sharp edge or border; on soft surfaces the lines
+  it guessed cut extra hard edges and smoothing groups into the mesh (2 → 5 groups on a
+  test mesh). Don't bring it back without asking.
+- **Console report** (`fbx_log.py`, Window > Toggle System Console): every transfer prints
+  the file, every FBX operator setting (`*` = differs from the dialog's factory default)
+  and the steps the tool adds around the FBX call. It's for comparing a transfer with a
+  manual export. The 3ds Max tool prints the same to its Listener, marking the settings it
+  changed from the FBX dialog's values.
   Decision (Sonny, 2026-10-19): smoothing groups travel **inside the FBX**, read by Max's
   own "Import Smoothing Groups", not as a JSON sidecar. 3.6 not supporting it was
   accepted. Don't reintroduce a sidecar without asking.
