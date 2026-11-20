@@ -1,173 +1,140 @@
-import pymel.core as pm
-import maya.mel as mel
-import pymel.core.datatypes as dt
-import maya.OpenMaya as om
+"""Edge Length Tool.
+
+Reads the world-space length of an edge and sets the selected edges to a given length,
+by moving the first vertex (Left), the second vertex (Right) or both ends (Center) along
+the edge.
+
+Pure maya.cmds / om2: no PyMEL, so it runs on Maya 2022 and 2026 alike.
+"""
 import math
 
+import maya.api.OpenMaya as om2
+from maya import cmds
+
+WINDOW = "setEdgeWindow"
+LENGTH_FIELD = "setEdgeLength_value"
+DIRECTION_COLLECTION = "setEdgeLength_direction"
+DIRECTION_BUTTONS = {
+    "setEdgeLength_left": "left",
+    "setEdgeLength_center": "center",
+    "setEdgeLength_right": "right",
+}
+STEP = 0.001
+
+
+# --------------------------------------------------------------------------- geometry
+
+def _selected_edges():
+    """Flattened list of the selected mesh edges."""
+    return cmds.filterExpand(selectionMask=32, expand=True) or []
+
+
+def _edge_vertices(edge):
+    """The two vertices of an edge, in index order."""
+    return cmds.ls(cmds.polyListComponentConversion(edge, toVertex=True), flatten=True)
+
+
+def _edge_points(edge):
+    v1, v2 = _edge_vertices(edge)
+    return v1, v2, cmds.pointPosition(v1, world=True), cmds.pointPosition(v2, world=True)
+
+
+def _distance(p1, p2):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
+
+
 def getLength(edge):
-    pm.polyListComponentConversion(edge, tv = True)
-    p = pm.xform(edge, q = True, t = True, ws = True)
-    length = math.sqrt(math.pow(p[0]-p[3],2) + math.pow(p[1]-p[4],2) + math.pow(p[2]-p[5],2))
-    return float('%.3f' % length)
-     
-def setEdgeLength(desLeg, direction = "center"):
-    selEdge = pm.ls(sl = True, fl = True)
-    if direction == "left": 
-        for i in range(0, len(selEdge),1):
-            curLeg = getLength(selEdge[i])
-            #toVert = pm.polyListComponentConversion(selEdge[i], tv = True)
-            pm.select(selEdge[i])
-            mel.eval("PolySelectConvert 3;")
-            toVert = pm.ls(sl = True, fl = True)
-            vertPos1 = pm.xform(toVert[0], q = True, ws = True, t = True)
-            vertPos2 = pm.xform(toVert[1], q = True, ws = True, t = True)
+    """World-space edge length, rounded to the 3 decimals the field shows."""
+    _, _, p1, p2 = _edge_points(edge)
+    return round(_distance(p1, p2), 3)
 
-            vectorV1 = dt.Vector(vertPos1)
-            vectorV2 = dt.Vector(vertPos2)
-            
-            direction = vectorV1 - vectorV2
-            des = (direction/dt.length(direction))*(desLeg-curLeg)
-            pm.polyMoveVertex( toVert[0], t = des, ch = False)
-            
-    elif direction == "right":
-        for i in range(0, len(selEdge),1):
-            curLeg = getLength(selEdge[i])
-            #toVert = pm.polyListComponentConversion(selEdge[i], tv = True)
-            pm.select(selEdge[i])
-            mel.eval("PolySelectConvert 3;")
-            toVert = pm.ls(sl = True, fl = True)
-            vertPos1 = pm.xform(toVert[0], q = True, ws = True, t = True)
-            vertPos2 = pm.xform(toVert[1], q = True, ws = True, t = True)
 
-            vectorV1 = dt.Vector(vertPos1)
-            vectorV2 = dt.Vector(vertPos2)
-            
-            direction = vectorV2 - vectorV1
-            des = (direction/dt.length(direction))*(desLeg-curLeg)
-            pm.polyMoveVertex( toVert[1], t = des, ch = False)
-            
-    else:
-        for i in range(0, len(selEdge),1):
-            curLeg = getLength(selEdge[i])
-            #toVert1 = pm.polyListComponentConversion(selEdge[i], tv = True, internal = True)
-            pm.select(selEdge[i])
-            mel.eval("PolySelectConvert 3;")
-            toVert = pm.ls(sl = True, fl = True)
-            vertPos1 = pm.xform(toVert[0], q = True, ws = True, t = True)
-            vertPos2 = pm.xform(toVert[1], q = True, ws = True, t = True)
+def _move(vertex, unit, amount):
+    cmds.move(unit[0] * amount, unit[1] * amount, unit[2] * amount,
+              vertex, relative=True, worldSpace=True)
 
-            vectorV1 = dt.Vector(vertPos1)
-            vectorV2 = dt.Vector(vertPos2)
-            
-            direction1 = vectorV1 - vectorV2
-            direction2 = vectorV2 - vectorV1 
-            
-            des1 = ((direction1/dt.length(direction1))*(desLeg-curLeg))/2
-            des2 = ((direction2/dt.length(direction2))*(desLeg-curLeg))/2
-            
-            pm.polyMoveVertex( toVert[0], t = des1, ch = False)
-            pm.polyMoveVertex( toVert[1], t = des2, ch = False)
-    mel.eval("DeleteAllHistory;")       
-    mel.eval("PolySelectConvert 2;")        
-    pm.select(selEdge)
-    
-def selEdge():
-    
-    sel = pm.ls(sl = True, o = True)
-    
-    if len(sel) != 0:
-        listToCheck = []
-        results = []
-        for s in sel:
-            if s.type() == "mesh":
-                listToCheck.append(pm.listRelatives(s, p = True)[0])
+
+def setEdgeLength(target, direction="center"):
+    """Set every selected edge to ``target`` length.
+
+    left   - move the first vertex, the second stays put
+    right  - move the second vertex, the first stays put
+    center - move both ends by half
+    """
+    edges = _selected_edges()
+    if not edges:
+        om2.MGlobal.displayError("Select one or more edges.")
+        return
+
+    cmds.undoInfo(openChunk=True, chunkName="setEdgeLength")
+    try:
+        for edge in edges:
+            # Re-read per edge: edges sharing a vertex see the previous move.
+            v1, v2, p1, p2 = _edge_points(edge)
+            current = _distance(p1, p2)
+            if current < 1e-9:
+                continue  # zero-length edge has no direction
+            unit = [(a - b) / current for a, b in zip(p1, p2)]  # points from v2 to v1
+            delta = target - current
+
+            if direction == "left":
+                _move(v1, unit, delta)
+            elif direction == "right":
+                _move(v2, unit, -delta)
             else:
-                listToCheck.append(s)
-                
-        value =  pm.floatField("floatField1", q = True, value = True)
-        
-        for obj in listToCheck:
-            edgeCount = pm.polyEvaluate(obj, e = True)
-            pm.select(obj + '.e[0:'+str(edgeCount)+']')
-            edgeSel = pm.ls(sl = True, fl = True)
-            edgeSel.remove(edgeSel[0])
-            for edge in edgeSel:
-                if getLength(edge) < value:
-                    results.append(edge)
-        pm.select(cl = True)
-        for i in range(0, len(results),1):
-            pm.select(results[i], add = True)
-    else:
-        om.MGlobal.displayError("Select obj!")
-    
-def lenghtToField():
-    sel = pm.ls(sl = True, fl = True)
-    if not sel or len(sel) > 1:
-        om.MGlobal.displayError("Select one edge!")
-    else:
-        leg = getLength(sel[0])
-        pm.floatField("floatField2", e = True, value = leg)
-    
-    
-def setLenght():
-    value = pm.floatField("floatField2", q = True, value = True)
-    direction = pm.radioCollection("direction", q = True, sl = True)
-    
-    if direction == "left":
-        setEdgeLength(value, direction = "left")
-    elif direction == "center":
-        setEdgeLength(value)
-    else:
-        setEdgeLength(value, direction = "right")
+                _move(v1, unit, delta * 0.5)
+                _move(v2, unit, -delta * 0.5)
+    finally:
+        cmds.undoInfo(closeChunk=True)
 
-def increaseValue():
-    value = pm.floatField("floatField2", q = True, value = True)
-    pm.floatField("floatField2", e = True, value = value + 0.001)
-    
-def decreaseValue():
-    value = pm.floatField("floatField2", q = True, value = True)
-    pm.floatField("floatField2", e = True, value = value - 0.001)
 
-def UnbevelFn():
-        import Unbevel as Unbevel
-        reload(Unbevel)
+# --------------------------------------------------------------------------- UI callbacks
+
+def lengthToField():
+    edges = _selected_edges()
+    if len(edges) != 1:
+        om2.MGlobal.displayError("Select one edge.")
+        return
+    cmds.floatField(LENGTH_FIELD, edit=True, value=getLength(edges[0]))
+
+
+def setLength():
+    value = cmds.floatField(LENGTH_FIELD, query=True, value=True)
+    selected = cmds.radioCollection(DIRECTION_COLLECTION, query=True, select=True)
+    setEdgeLength(value, direction=DIRECTION_BUTTONS.get(selected, "center"))
+
+
+def nudgeValue(amount):
+    value = cmds.floatField(LENGTH_FIELD, query=True, value=True)
+    cmds.floatField(LENGTH_FIELD, edit=True, value=value + amount)
+
+
+# --------------------------------------------------------------------------- window
 
 def Gui():
-    winName = "setEdgeWindow"
+    if cmds.window(WINDOW, query=True, exists=True):
+        cmds.deleteUI(WINDOW)
+    if cmds.windowPref(WINDOW, query=True, exists=True):
+        cmds.windowPref(WINDOW, remove=True)
 
-    if pm.window( winName, q = True, ex = True):
-        pm.deleteUI(winName)
-        
-    if pm.windowPref( winName, q = True, ex = True):
-        pm.windowPref(winName, r = True)
-        
-    UI = pm.window(winName, t = "Edge Length Tool", widthHeight = (160, 130), mnb = False, mxb = False, rtf = True)
+    cmds.window(WINDOW, title="Edge Length Tool", widthHeight=(160, 130),
+                minimizeButton=False, maximizeButton=False, resizeToFitChildren=True)
 
-    layout = pm.columnLayout(adjustableColumn=True)
-    
-    pm.button(l = "Get Length", c = lambda *a: lenghtToField(), parent = layout)
-    pm.button(l = chr(int("1e", 16)), c = lambda *a: increaseValue(), parent = layout)
-    pm.floatField("floatField2", minValue=-1, maxValue=10000, precision=3, step=.001 , parent = layout)
-    pm.button(l = chr(int("1f", 16)), c = lambda *a: decreaseValue() , parent = layout)
-    
-    rowLayout = pm.rowLayout( cw = (80,80) , height = 40, numberOfColumns=3, adjustableColumn=2, columnAlign=(1, 'right'), parent = layout)
-    #pm.button(l = "Select Edge  <  ", c = lambda *a: selEdge(), parent = rowLayout)
-    #pm.floatField("floatField1", minValue=-1, maxValue=10000, precision=3, step=.001 , parent = rowLayout)
+    layout = cmds.columnLayout(adjustableColumn=True)
 
-   
+    cmds.button(label="Get Length", command=lambda *_: lengthToField(), parent=layout)
+    cmds.button(label=chr(0x1e), command=lambda *_: nudgeValue(STEP), parent=layout)
+    cmds.floatField(LENGTH_FIELD, minValue=-1, maxValue=10000, precision=3, step=STEP,
+                    parent=layout)
+    cmds.button(label=chr(0x1f), command=lambda *_: nudgeValue(-STEP), parent=layout)
 
-    #rowLayout2 = pm.rowLayout( cw = (80,80), height = 40, numberOfColumns=3, adjustableColumn=2, columnAlign=(1, 'right'), parent = layout)
-    
+    row = cmds.rowLayout(columnWidth=(80, 80), height=40, numberOfColumns=3,
+                         adjustableColumn=2, columnAlign=(1, "right"), parent=layout)
+    cmds.radioCollection(DIRECTION_COLLECTION, parent=row)
+    cmds.radioButton("setEdgeLength_left", label="Left", parent=row)
+    cmds.radioButton("setEdgeLength_center", label="Center", select=True, parent=row)
+    cmds.radioButton("setEdgeLength_right", label="Right", parent=row)
 
-    #rowLayout2 = pm.rowLayout( numberOfColumns=3, columnAlign=(1, 'right'), columnAttach=[(1, 'both', 0), (2, 'both', 0), (3, 'both', 0)] , parent = layout)
+    cmds.button(label="Set Length", command=lambda *_: setLength(), parent=layout)
 
-    pm.radioCollection("direction", parent = rowLayout)
-    pm.radioButton("left", label='Left' , parent = rowLayout)
-    pm.radioButton("center", label='Center' , sl = True, parent = rowLayout)
-    pm.radioButton("right", label='Right' , parent = rowLayout)
-
-    pm.button(l = "Set Length", c = lambda *a: setLenght(), parent = layout)
-    #pm.button(l = "Unbevel", c = lambda *a: UnbevelFn(), parent = layout)
-
-
-    pm.showWindow(UI)
+    cmds.showWindow(WINDOW)
